@@ -1,0 +1,40 @@
+@import "tailwindcss";
+
+/* 1. CONFIGURATION DU MODE SOMBRE */
+/* Cette ligne permet à Tailwind d'appliquer les styles dark: quand la classe .dark est sur <html> */
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Couleurs personnalisées GariConnect - Mode Clair (Par défaut) */
+  --color-brand-dark: #1e3a8a;     /* Bleu profond */
+  --color-brand-primary: #2563eb;  /* Bleu vif */
+  --color-brand-light: #eff6ff;    /* Bleu très clair */
+  
+  /* Arrondis modernes */
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+
+  /* On peut aussi définir des couleurs spécifiques qui changent en mode sombre ici */
+  /* Mais il est plus simple d'utiliser les classes dark:bg-... dans le HTML */
+}
+
+/* 2. RÉGLAGES DE BASE ET TRANSITIONS */
+:root {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: #f8fafc; /* Gris très clair en mode clair */
+  color: #1e293b;            /* Texte sombre en mode clair */
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Styles appliqués quand la classe .dark est active */
+:root.dark {
+  background-color: #0f172a; /* Bleu nuit très sombre (Slate 950) */
+  color: #f8fafc;            /* Texte clair */
+}
+
+/* Force la transition douce sur tous les éléments pour un effet premium */
+*, ::after, ::before {
+  transition-property: background-color, border-color, color, fill, stroke;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}

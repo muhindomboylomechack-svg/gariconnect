@@ -1,0 +1,64 @@
+<mxfile host="Electron" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) draw.io/26.0.4 Chrome/128.0.6613.186 Electron/32.2.5 Safari/537.36" version="26.0.4">
+  <diagram name="GariConnect Use Case" id="B2LFAKJ3DDDTWDThBDVU">
+    <mxGraphModel dx="1034" dy="511" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="3El4UAnv5STr6uHcCCJE-1" value="GariConnect" style="shape=rectangle;rounded=1;strokeWidth=2;whiteSpace=wrap;" vertex="1" parent="1">
+          <mxGeometry x="380" y="100" width="500" height="600" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-2" value="Réserver un véhicule" style="ellipse;whiteSpace=wrap;" vertex="1" parent="3El4UAnv5STr6uHcCCJE-1">
+          <mxGeometry x="240" y="60" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-3" value="Annuler une réservation" style="ellipse;whiteSpace=wrap;" vertex="1" parent="3El4UAnv5STr6uHcCCJE-1">
+          <mxGeometry x="240" y="140" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-4" value="Voir missions" style="ellipse;whiteSpace=wrap;" vertex="1" parent="3El4UAnv5STr6uHcCCJE-1">
+          <mxGeometry x="240" y="220" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-5" value="Assigner chauffeur" style="ellipse;whiteSpace=wrap;" vertex="1" parent="3El4UAnv5STr6uHcCCJE-1">
+          <mxGeometry x="240" y="300" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-6" value="Gérer paiements" style="ellipse;whiteSpace=wrap;" vertex="1" parent="3El4UAnv5STr6uHcCCJE-1">
+          <mxGeometry x="240" y="380" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-7" value="Gérer utilisateurs" style="ellipse;whiteSpace=wrap;" vertex="1" parent="3El4UAnv5STr6uHcCCJE-1">
+          <mxGeometry x="240" y="460" width="180" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-8" value="Client" style="shape=umlActor;" vertex="1" parent="1">
+          <mxGeometry x="200" y="140" width="40" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-9" value="Chauffeur" style="shape=umlActor;" vertex="1" parent="1">
+          <mxGeometry x="200" y="260" width="40" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-10" value="Agent du guichet" style="shape=umlActor;" vertex="1" parent="1">
+          <mxGeometry x="200" y="380" width="40" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-11" value="Gestionnaire" style="shape=umlActor;" vertex="1" parent="1">
+          <mxGeometry x="200" y="500" width="40" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-12" value="Administrateur" style="shape=umlActor;" vertex="1" parent="1">
+          <mxGeometry x="200" y="620" width="40" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-13" edge="1" parent="1" source="3El4UAnv5STr6uHcCCJE-8" target="3El4UAnv5STr6uHcCCJE-2">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-14" edge="1" parent="1" source="3El4UAnv5STr6uHcCCJE-8" target="3El4UAnv5STr6uHcCCJE-3">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-15" edge="1" parent="1" source="3El4UAnv5STr6uHcCCJE-9" target="3El4UAnv5STr6uHcCCJE-4">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-16" edge="1" parent="1" source="3El4UAnv5STr6uHcCCJE-11" target="3El4UAnv5STr6uHcCCJE-5">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-17" edge="1" parent="1" source="3El4UAnv5STr6uHcCCJE-10" target="3El4UAnv5STr6uHcCCJE-6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="3El4UAnv5STr6uHcCCJE-18" edge="1" parent="1" source="3El4UAnv5STr6uHcCCJE-12" target="3El4UAnv5STr6uHcCCJE-7">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -1,8 +1,13 @@
 package com.example.gariconnectbackend.model;
 
 import jakarta.persistence.*;
-        import java.time.LocalDateTime;
+import lombok.Getter;
+import lombok.Setter;
 
+import java.time.LocalDateTime;
+
+@Setter
+@Getter
 @Entity
 @Table(name = "paiements")
 public class Paiement {
@@ -23,24 +28,4 @@ public class Paiement {
 
     // --- GETTERS ET SETTERS (Obligatoires pour enlever le rouge) ---
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-
-    public Double getMontant() { return montant; }
-    public void setMontant(Double montant) { this.montant = montant; }
-
-    public String getModePaiement() { return modePaiement; }
-    public void setModePaiement(String modePaiement) { this.modePaiement = modePaiement; }
-
-    public String getStatut() { return statut; }
-    public void setStatut(String statut) { this.statut = statut; }
-
-    public String getReferenceTransaction() { return referenceTransaction; }
-    public void setReferenceTransaction(String referenceTransaction) { this.referenceTransaction = referenceTransaction; }
-
-    public Reservation getReservation() { return reservation; }
-    public void setReservation(Reservation reservation) { this.reservation = reservation; }
-
-    public LocalDateTime getDatePaiement() { return datePaiement; }
-    public void setDatePaiement(LocalDateTime datePaiement) { this.datePaiement = datePaiement; }
 }

@@ -1,6 +1,7 @@
 package com.example.gariconnectbackend.service;
 
 
+import com.example.gariconnectbackend.model.Role;
 import com.example.gariconnectbackend.model.User;
 import com.example.gariconnectbackend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,6 @@ public class UserService {
         return userRepository.findAll();
     }
     public List<User> listerChauffeurs() {
-        return userRepository.findByRole("CHAUFFEUR");
+        return userRepository.findByRole(Role.valueOf("CHAUFFEUR"));
     }
 }

@@ -1,32 +1,80 @@
 package com.example.gariconnectbackend.security;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
-import static org.springframework.security.config.Customizer.withDefaults;
+import java.util.Arrays;
 
 @Configuration
-@EnableWebSecurity
 public class SecurityConfig {
+
+    @Autowired
+    private JwtFilter jwtFilter;
+
+    /**
+     * Bean PasswordEncoder pour le hachage des mots de passe.
+     */
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .csrf(csrf -> csrf.disable()) // Désactive la protection CSRF
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+                .csrf(csrf -> csrf.disable())
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .anyRequest().permitAll() // AUTORISE TOUT SANS EXCEPTION
-                )
-                .headers(headers -> headers.frameOptions(frame -> frame.disable())); // Utile pour la console H2 si tu l'utilises
+                        // 1. Public
+                        .requestMatchers("/api/auth/**", "/api/public/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/trajets/**").permitAll()
 
+                        // 2. Route spécifique CHAUFFEUR (doit être AVANT la route générale)
+                        .requestMatchers("/api/evaluations/mon-rapport").hasRole("CHAUFFEUR")
+
+                        // 3. Autres évaluations
+                        .requestMatchers("/api/evaluations/**").hasAnyRole("CLIENT", "AGENCE", "ADMIN")
+
+                        // 4. Autres services
+                        .requestMatchers("/api/reservations/**").hasAnyRole("CLIENT", "AGENCE", "CHAUFFEUR", "ADMIN")
+                        .requestMatchers("/api/paiements/**", "/api/finance/**").hasAnyRole("AGENCE", "ADMIN")
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+
+                        .anyRequest().authenticated()
+                );
+
+        http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
+
     @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+
+        // MODIFICATION ICI : On autorise ton frontend local ET ton frontend en production
+        config.setAllowedOrigins(Arrays.asList(
+                "http://localhost:5173",             // Pour tes tests sur ton PC
+                "https://gariconnect.onrender.com"   // Pour la production (⚠️ Vérifie que c'est bien l'URL de ton FRONTEND, pas du backend)
+        ));
+
+        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept"));
+        config.setAllowCredentials(true); // Indispensable pour que le token soit bien transmis
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
     }
 }

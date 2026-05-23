@@ -6,7 +6,7 @@ import jakarta.persistence.*;
 import java.util.List;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-
+import jakarta.persistence.Column;
 @Entity
 @Table(name = "users")
 @Getter @Setter
@@ -21,8 +21,16 @@ public class User {
     private String email;
 
     @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @Column(name = "mot_de_passe", nullable = false)
     private String password;
 
+
+// ... (reste de ta classe User)
+
+
+   //  private String password;
+
+    // ...
     private String codeAcces;
     private String statut;
     private String nom;

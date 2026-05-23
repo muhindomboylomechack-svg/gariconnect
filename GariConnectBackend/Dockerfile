@@ -6,15 +6,17 @@ WORKDIR /app
 COPY .mvn/ .mvn
 COPY mvnw pom.xml ./
 
+# SÉCURITÉ 1 : Nettoyer les retours à la ligne invisibles de Windows (CRLF vers LF)
+RUN sed -i 's/\r$//' mvnw
+
 # Assurer les permissions d'exécution sur le script mvnw
-# (Indispensable pour éviter l'erreur "Permission denied" sur les serveurs Linux de Render)
 RUN chmod +x ./mvnw
 
 # Copier le code source de l'application
 COPY src ./src
 
-# Compiler le projet et générer le fichier JAR en ignorant les tests pour accélérer le build
-RUN ./mvnw clean package -DskipTests
+# SÉCURITÉ 2 : Compiler le projet en forçant l'encodage UTF-8 au niveau du système
+RUN ./mvnw clean package -DskipTests -Dfile.encoding=UTF-8 -Dproject.build.sourceEncoding=UTF-8
 
 # Étape 2 : Exécution (Run)
 FROM eclipse-temurin:21-jre-alpine

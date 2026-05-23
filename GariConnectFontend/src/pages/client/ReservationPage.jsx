@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next'; // Hook pour les langues
 import { useAuth } from '../../context/AuthContext';
 import { 
     FaMoon, FaSun, FaTimes, FaChair, FaInfoCircle, 
-    FaCheck, FaMoneyBillWave, FaMobileAlt 
+    FaCheck, FaMoneyBillWave, FaExclamationTriangle
 } from 'react-icons/fa';
 
 const ReservationPage = () => {
@@ -38,6 +38,11 @@ const ReservationPage = () => {
                 });
                 const found = res.data.find(t => t.id === parseInt(id));
                 setTrajet(found);
+                
+                // Présélectionner automatiquement le premier siège disponible si possible
+                if (found && found.placesDisponibles > 0) {
+                    setSelectedSeat('1');
+                }
             } catch (err) {
                 console.error("Erreur chargement trajet", err);
             } finally {
@@ -101,6 +106,9 @@ const ReservationPage = () => {
 
     if (!trajet) return <div className="text-center p-10 font-bold">{t('trip_not_found')}</div>;
 
+    // Vérifier si le trajet est complet
+    const isFull = !trajet.placesDisponibles || trajet.placesDisponibles <= 0;
+
     return (
         <div className={`min-h-screen transition-colors duration-500 flex flex-col items-center justify-center p-4 ${darkMode ? 'bg-slate-950' : 'bg-slate-50'}`}>
             
@@ -121,35 +129,63 @@ const ReservationPage = () => {
                 </div>
 
                 <div className="p-10">
-                    {/* Sélection Siège */}
+                    {/* Sélection Siège Dynamique avec support Sombre/Clair parfait */}
                     <div className="mb-8">
-                        <label className={`block text-[10px] font-black uppercase mb-3 ml-2 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                        <label className={`block text-[10px] font-black uppercase mb-3 ml-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                             <FaChair className="inline mr-2 text-indigo-500"/> {t('seat_number')}
                         </label>
-                        <input 
-                            type="number" 
-                            className={`w-full p-5 rounded-[1.5rem] outline-none font-black text-xl text-center border-2 transition-all ${darkMode ? 'bg-slate-950 text-white border-slate-800 focus:border-indigo-500' : 'bg-slate-50 text-slate-800 border-slate-100 focus:border-indigo-300'}`}
-                            placeholder="Ex: 05"
-                            min="1"
-                            value={selectedSeat}
-                            onChange={(e) => setSelectedSeat(e.target.value)}
-                        />
+                        
+                        {isFull ? (
+                            <div className="w-full p-5 rounded-[1.5rem] bg-red-500/10 border-2 border-red-500/30 text-red-500 font-bold text-sm flex items-center justify-center gap-2">
+                                <FaExclamationTriangle /> {t('bus_full') || "Désolé, ce trajet est complet !"}
+                            </div>
+                        ) : (
+                            <>
+                                {/* Le select et ses options possèdent des couleurs forcées pour le Dark Mode */}
+                                <select 
+                                    className={`w-full p-5 rounded-[1.5rem] outline-none font-black text-xl text-center border-2 appearance-none transition-all cursor-pointer ${
+                                        darkMode 
+                                        ? 'bg-slate-950 text-white border-slate-800 focus:border-indigo-500' 
+                                        : 'bg-slate-50 text-slate-800 border-slate-100 focus:border-indigo-300'
+                                    }`}
+                                    value={selectedSeat}
+                                    onChange={(e) => setSelectedSeat(e.target.value)}
+                                >
+                                    {[...Array(trajet.placesDisponibles).keys()].map(i => (
+                                        <option 
+                                            key={i + 1} 
+                                            value={i + 1}
+                                            className={`${darkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-800'}`}
+                                        >
+                                            {t('seat') || "Siège"} {i + 1}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs font-bold text-emerald-500 mt-2 ml-2">
+                                    🟢 {trajet.placesDisponibles} {t('available_seats') || "places encore disponibles"}
+                                </p>
+                            </>
+                        )}
                     </div>
 
-                    {/* Affichage Prix (Indigo Soft Background) */}
-                    <div className={`p-8 rounded-[2rem] border-2 mb-10 text-center ${darkMode ? 'bg-indigo-900/10 border-indigo-900/30' : 'bg-indigo-50 border-indigo-100'}`}>
+                    {/* Affichage Prix */}
+                    <div className={`p-8 rounded-[2rem] border-2 mb-10 text-center ${darkMode ? 'bg-indigo-900/20 border-indigo-900/40' : 'bg-indigo-50 border-indigo-100'}`}>
                         <p className="text-[10px] font-black uppercase mb-1 text-indigo-400 tracking-widest">{t('amount_to_pay')}</p>
-                        <p className="text-4xl font-black text-indigo-600">
+                        <p className="text-4xl font-black text-indigo-500 dark:text-indigo-400">
                             {trajet?.prix?.toLocaleString()} <span className="text-sm font-bold">FC</span>
                         </p>
                     </div>
 
                     <button 
                         onClick={() => { setShowModal(true); setPaymentStep(1); }}
-                        disabled={!selectedSeat || isSubmitting}
-                        className={`w-full font-black py-5 rounded-[1.8rem] uppercase text-xs tracking-widest transition-all active:scale-95 ${!selectedSeat ? 'bg-slate-200 text-slate-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-xl shadow-indigo-500/20'}`}
+                        disabled={isFull || !selectedSeat || isSubmitting}
+                        className={`w-full font-black py-5 rounded-[1.8rem] uppercase text-xs tracking-widest transition-all active:scale-95 ${
+                            (isFull || !selectedSeat) 
+                            ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed' 
+                            : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-xl shadow-indigo-500/20'
+                        }`}
                     >
-                        {isSubmitting ? t('processing') : t('continue_to_payment')}
+                        {isSubmitting ? t('processing') : (isFull ? (t('sold_out') || "COMPLET") : t('continue_to_payment'))}
                     </button>
                 </div>
             </div>
@@ -185,13 +221,13 @@ const ReservationPage = () => {
                                 <h3 className="text-xl font-black text-center mb-2">{t('payment_method')}</h3>
                                 
                                 {/* INFOS MARCHAND */}
-                                <div className={`p-5 rounded-3xl border-2 border-emerald-500/20 bg-emerald-500/5`}>
-                                    <p className="text-[9px] font-black uppercase text-emerald-600 mb-2 flex items-center gap-2">
+                                <div className={`p-5 rounded-3xl border-2 ${darkMode ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-emerald-500/20 bg-emerald-500/5'}`}>
+                                    <p className="text-[9px] font-black uppercase text-emerald-500 mb-2 flex items-center gap-2">
                                         <FaInfoCircle/> {t('agency_info')}
                                     </p>
                                     <div className="flex justify-between items-center">
                                         <span className="text-[10px] font-bold text-slate-500 uppercase">{t('contact')}</span>
-                                        <span className="text-sm font-black text-emerald-600">{trajet?.agence?.telephone || "N/A"}</span>
+                                        <span className="text-sm font-black text-emerald-500">{trajet?.agence?.telephone || "N/A"}</span>
                                     </div>
                                 </div>
 
@@ -212,9 +248,9 @@ const ReservationPage = () => {
                                             className={`w-full p-4 rounded-2xl font-bold outline-none border-2 appearance-none ${darkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-100 text-slate-800'}`}
                                             onChange={(e) => setPaymentData({...paymentData, modePaiement: e.target.value})}
                                         >
-                                            <option value="M-PESA">M-PESA</option>
-                                            <option value="ORANGE_MONEY">ORANGE MONEY</option>
-                                            <option value="AIRTEL_MONEY">AIRTEL MONEY</option>
+                                            <option value="M-PESA" className={`${darkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-800'}`}>M-PESA</option>
+                                            <option value="ORANGE_MONEY" className={`${darkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-800'}`}>ORANGE MONEY</option>
+                                            <option value="AIRTEL_MONEY" className={`${darkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-800'}`}>AIRTEL MONEY</option>
                                         </select>
                                         
                                         <input 

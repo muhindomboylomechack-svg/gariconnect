@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { 
-    PlusCircle, Wallet, FileText, Printer, Filter, Edit2, X, Check, ArrowUpRight, ArrowDownLeft, Trash2 
+    PlusCircle, Wallet, FileText, Printer, Filter, X, ArrowUpRight, ArrowDownLeft 
 } from 'lucide-react';
 
 const GestionFinance = () => {
     const [transactions, setTransactions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showForm, setShowForm] = useState(false);
-    const [editId, setEditId] = useState(null);
     const [nomAgence, setNomAgence] = useState("Chargement..."); 
     
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -81,39 +80,17 @@ const GestionFinance = () => {
         ? transactionsWithBalances[transactionsWithBalances.length - 1] 
         : { computedSoldeUSD: 0, computedSoldeCDF: 0 };
 
-    const handleEdit = (t) => {
-        setEditId(t.id);
-        setFormData({
-            date: t.date,
-            typeTransaction: t.entree > 0 ? 'ENTREE' : 'SORTIE',
-            description: t.description,
-            devise: t.devise || 'USD',
-            montant: t.entree > 0 ? t.entree : t.sortie,
-            entite: t.entite,
-            documentRef: t.documentRef || ''
-        });
-        setShowForm(true);
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
             const token = localStorage.getItem('token');
             const payload = { ...formData, montant: parseFloat(formData.montant) };
 
-            if (editId) {
-                await axios.put(`http://localhost:8080/api/finance/transactions/${editId}`, payload, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-            } else {
-                await axios.post('http://localhost:8080/api/finance/transactions', payload, {
-                    headers: { 'Authorization': `Bearer ${token}` }
-                });
-            }
+            await axios.post('http://localhost:8080/api/finance/transactions', payload, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
 
             setShowForm(false);
-            setEditId(null);
             setFormData({ ...formData, description: '', montant: '', entite: '', documentRef: '' });
             fetchLivreDeCaisse();
         } catch (error) {
@@ -193,7 +170,7 @@ const GestionFinance = () => {
                         <Printer size={18} /> <span>Imprimer</span>
                     </button>
 
-                    <button onClick={() => { setShowForm(!showForm); setEditId(null); }} className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 p-2.5 px-6 rounded-2xl border border-slate-200 dark:border-slate-800 font-bold flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all flex-1 lg:flex-none">
+                    <button onClick={() => { setShowForm(!showForm); }} className="bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 p-2.5 px-6 rounded-2xl border border-slate-200 dark:border-slate-800 font-bold flex items-center justify-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all flex-1 lg:flex-none">
                         <PlusCircle size={18} /> <span>Nouveau</span>
                     </button>
                 </div>
@@ -216,7 +193,7 @@ const GestionFinance = () => {
                 <div className="bg-white dark:bg-slate-900 p-6 md:p-8 rounded-[2.5rem] shadow-xl mb-10 border border-blue-50 dark:border-slate-800 no-print transition-all">
                     <div className="flex justify-between items-center mb-6">
                         <h2 className="text-xl font-black flex items-center gap-2 text-slate-800 dark:text-slate-100">
-                            <FileText size={22} className="text-blue-600" /> {editId ? "Modifier l'écriture" : "Nouvelle écriture de caisse"}
+                            <FileText size={22} className="text-blue-600" /> Nouvelle écriture de caisse
                         </h2>
                         <button onClick={() => setShowForm(false)} className="text-slate-400 hover:text-rose-500 transition-colors"><X size={24} /></button>
                     </div>
@@ -244,7 +221,7 @@ const GestionFinance = () => {
                         </select>
                         <div className="md:col-span-3 flex justify-end gap-3 mt-2">
                             <button type="submit" className="bg-blue-600 text-white px-10 py-3 rounded-2xl font-black hover:bg-blue-700 shadow-lg shadow-blue-200 dark:shadow-none transition-all active:scale-95">
-                                {editId ? "Mettre à jour" : "Enregistrer l'opération"}
+                                Enregistrer l'opération
                             </button>
                         </div>
                     </form>
@@ -283,7 +260,6 @@ const GestionFinance = () => {
                                     <th className="px-4 py-4 text-center text-[10px] font-black uppercase text-slate-400">Sortie</th>
                                     <th className="px-4 py-4 text-center text-[10px] font-black uppercase text-slate-400">Solde USD</th>
                                     <th className="px-4 py-4 text-center text-[10px] font-black uppercase text-slate-400">Solde CDF</th>
-                                    <th className="px-4 py-4 text-center text-[10px] font-black uppercase text-slate-400 no-print">Actions</th>
                                 </tr>
                                 {/* Header spécifique pour l'impression */}
                                 <tr className="print-only">
@@ -299,9 +275,9 @@ const GestionFinance = () => {
                             </thead>
                             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                                 {loading ? (
-                                    <tr><td colSpan="9" className="p-10 text-center font-bold text-slate-400 animate-pulse">Chargement des données financières...</td></tr>
+                                    <tr><td colSpan="8" className="p-10 text-center font-bold text-slate-400 animate-pulse">Chargement des données financières...</td></tr>
                                 ) : filteredTransactions.length === 0 ? (
-                                    <tr><td colSpan="9" className="p-10 text-center font-bold text-slate-400">Aucune transaction pour ce mois.</td></tr>
+                                    <tr><td colSpan="8" className="p-10 text-center font-bold text-slate-400">Aucune transaction pour ce mois.</td></tr>
                                 ) : filteredTransactions.map((t, i) => (
                                     <tr key={t.id || i} className="hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
                                         <td className="px-4 py-4 text-center font-bold text-slate-400">{i + 1}</td>
@@ -312,11 +288,6 @@ const GestionFinance = () => {
                                         <td className="px-4 py-4 text-center font-bold text-rose-500">{t.sortie > 0 ? t.sortie.toLocaleString() : '-'}</td>
                                         <td className="px-4 py-4 text-center font-black bg-slate-50/50 dark:bg-slate-800/50 text-blue-600 dark:text-blue-400">{t.computedSoldeUSD.toLocaleString()}</td>
                                         <td className="px-4 py-4 text-center font-black bg-slate-50/50 dark:bg-slate-800/50 text-slate-700 dark:text-slate-300">{t.computedSoldeCDF.toLocaleString()}</td>
-                                        <td className="px-4 py-4 text-center no-print">
-                                            <button onClick={() => handleEdit(t)} className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors">
-                                                <Edit2 size={16} />
-                                            </button>
-                                        </td>
                                     </tr>
                                 ))}
                             </tbody>

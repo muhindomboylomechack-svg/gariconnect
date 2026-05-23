@@ -3,11 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
     FaMapMarkerAlt, FaSearch, FaBus, 
-    FaClock, FaChevronRight 
+    FaClock, FaChevronRight, FaCalendarAlt 
 } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 
-// ✅ CORRECTION DU CHEMIN : On remonte de deux dossiers pour atteindre src/services
 import api from '../../services/api'; 
 
 const Home = () => {
@@ -37,7 +36,11 @@ const Home = () => {
         setLoading(true);
         try {
             const response = await api.get('/trajets/recherche', {
-                params: { depart: searchQuery.depart, destination: searchQuery.destination }
+                params: { 
+                    depart: searchQuery.depart, 
+                    destination: searchQuery.destination,
+                    date: searchQuery.date 
+                }
             });
             setTrajets(response.data);
         } catch (error) {
@@ -51,23 +54,21 @@ const Home = () => {
         const token = localStorage.getItem('token');
         
         if (!token) {
-            alert(t('auth.login_required_reservation') || "Veuillez vous connecter pour réserver.");
+            alert(t('auth.login_required_reservation', "Veuillez vous connecter pour réserver."));
             navigate('/login');
             return;
         }
 
-        // Récupération des infos utilisateur stockées localement à la connexion
         const storedUser = localStorage.getItem('user');
         const user = storedUser ? JSON.parse(storedUser) : null;
-        const clientId = user?.id || 1; // ID 1 par défaut si non trouvé pour le test, à ajuster selon votre auth
+        const clientId = user?.id || 1;
 
         try {
-            // ✅ MODIFICATION MAJEURE : Restructuration du payload pour correspondre aux entités Spring Boot
             const reservationPayload = {
-                client: { id: parseInt(clientId) },         // Structure d'objet pour @ManyToOne User
-                trajet: { id: parseInt(trajetId) },         // Structure d'objet pour @ManyToOne Trajet
-                nbPlaces: 1,                                // Requis par votre modèle backend
-                statut: "EN_ATTENTE"                        // Statut d'initialisation
+                client: { id: parseInt(clientId) },
+                trajet: { id: parseInt(trajetId) },
+                nbPlaces: 1,
+                statut: "EN_ATTENTE"
             };
 
             const response = await api.post('/reservations/creer-simple', reservationPayload);
@@ -78,158 +79,97 @@ const Home = () => {
             }
         } catch (error) {
             console.error("Erreur création réservation:", error);
-            alert(error.response?.data?.error || error.response?.data?.message || t('checkout.error_confirm') || "Une erreur est survenue.");
+            alert(error.response?.data?.error || error.response?.data?.message || t('checkout.error_confirm', "Une erreur est survenue."));
         }
     };
 
     return (
-        <div className="pb-20 space-y-8">
+        <div className="pb-20 space-y-8 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-800 dark:text-slate-100 transition-colors duration-300">
             
-            {/* SECTION HERO ANIMÉE */}
+            {/* SECTION HERO */}
             <motion.div 
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="relative bg-gradient-to-br from-indigo-700 via-indigo-600 to-violet-700 rounded-[2.5rem] p-8 md:p-12 shadow-2xl overflow-hidden"
+                className="relative bg-gradient-to-br from-indigo-700 via-indigo-600 to-violet-700 dark:from-indigo-900 dark:via-slate-900 dark:to-violet-950 rounded-[2.5rem] p-6 md:p-12 shadow-2xl overflow-hidden"
             >
-                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 dark:bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
                 
                 <div className="relative z-10 space-y-6">
                     <div className="space-y-2">
-                        <p className="text-indigo-200 font-black uppercase tracking-[0.3em] text-[10px]">
+                        <p className="text-indigo-200 dark:text-indigo-300 font-black uppercase tracking-[0.3em] text-[10px]">
                             GariConnect Express
                         </p>
-                        <h1 className="text-4xl md:text-5xl font-black text-white tracking-tighter">
-                            {t('home.where_to_go') || "Où allez-vous ?"}
+                        <h1 className="text-3xl md:text-5xl font-black text-white tracking-tighter">
+                            {t('home.where_to_go', "Où allez-vous ?")}
                         </h1>
                     </div>
 
-                    <div className="bg-white/95 backdrop-blur-md p-3 rounded-[2rem] flex flex-col lg:flex-row items-center gap-2 shadow-2xl">
-                        <div className="flex-1 flex items-center px-4 w-full border-b lg:border-b-0 lg:border-r border-slate-100">
-                            <FaMapMarkerAlt className="text-indigo-400" />
-                            <input 
-                                type="text"
-                                name="depart" 
-                                placeholder={t('home.departure_city') || "Ville de départ"} 
-                                className="w-full p-4 bg-transparent border-none focus:ring-0 font-bold text-slate-700 placeholder:text-slate-400 focus:outline-none"
-                                onChange={(e) => setSearchQuery({...searchQuery, depart: e.target.value})}
-                            />
+                    <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-4 lg:p-3 rounded-[2rem] flex flex-col lg:flex-row items-center gap-4 lg:gap-2 shadow-2xl border border-transparent dark:border-slate-800">
+                        <div className="flex-1 flex items-center px-4 w-full border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800">
+                            <FaMapMarkerAlt className="text-indigo-500 dark:text-indigo-400 shrink-0" />
+                            <input type="text" placeholder={t('home.departure_city', "Ville de départ")} className="w-full p-3 bg-transparent border-none focus:ring-0 font-bold text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none" onChange={(e) => setSearchQuery({...searchQuery, depart: e.target.value})} />
+                        </div>
+                        <div className="flex-1 flex items-center px-4 w-full border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800">
+                            <FaMapMarkerAlt className="text-violet-500 dark:text-violet-400 shrink-0" />
+                            <input type="text" placeholder={t('home.destination_city', "Ville de destination")} className="w-full p-3 bg-transparent border-none focus:ring-0 font-bold text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none" onChange={(e) => setSearchQuery({...searchQuery, destination: e.target.value})} />
                         </div>
                         <div className="flex-1 flex items-center px-4 w-full">
-                            <FaMapMarkerAlt className="text-violet-400" />
-                            <input 
-                                type="text"
-                                name="destination" 
-                                placeholder={t('home.destination_city') || "Ville de destination"} 
-                                className="w-full p-4 bg-transparent border-none focus:ring-0 font-bold text-slate-700 placeholder:text-slate-400 focus:outline-none"
-                                onChange={(e) => setSearchQuery({...searchQuery, destination: e.target.value})}
-                            />
+                            <FaCalendarAlt className="text-emerald-500 dark:text-emerald-400 shrink-0" />
+                            <input type="date" className="w-full p-3 bg-transparent border-none focus:ring-0 font-bold text-slate-700 dark:text-slate-200 focus:outline-none" onChange={(e) => setSearchQuery({...searchQuery, date: e.target.value})} />
                         </div>
-                        <motion.button 
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={handleSearch}
-                            className="w-full lg:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black uppercase flex items-center justify-center gap-2 transition-all shadow-lg shadow-indigo-200"
-                        >
-                            <FaSearch /> {t('home.search') || "Rechercher"}
+                        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleSearch} className="w-full lg:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black uppercase flex items-center justify-center gap-2 transition-all shadow-lg shrink-0">
+                            <FaSearch /> {t('home.search', "Rechercher")}
                         </motion.button>
                     </div>
                 </div>
             </motion.div>
 
             {/* LISTE DES TRAJETS */}
-            <div className="px-2 space-y-6">
+            <div className="px-4 space-y-6">
                 <div className="flex items-center justify-between">
                     <h2 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
-                        <FaBus className="text-indigo-500" /> 
-                        {t('home.available_trips') || "Trajets disponibles"}
+                        <FaBus className="text-indigo-500" /> {t('home.available_trips', "Trajets disponibles")}
                     </h2>
-                    <span className="text-[10px] bg-slate-100 dark:bg-slate-900 px-2 py-1 rounded-md font-bold text-slate-500">
-                        {trajets.length} {t('home.results') || "RÉSULTATS"}
-                    </span>
                 </div>
 
                 {loading ? (
-                    <div className="flex flex-col items-center justify-center py-20 gap-4">
-                        <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-                        <p className="text-xs font-black text-slate-400 tracking-widest uppercase">
-                            {t('common.loading') || "Chargement..."}
-                        </p>
-                    </div>
+                    <div className="text-center py-20 animate-pulse text-indigo-600 font-bold">{t('common.loading', "Chargement...")}</div>
                 ) : (
                     <div className="grid gap-4">
-                        <AnimatePresence>
-                            {trajets.length > 0 ? (
-                                trajets.map((trajet, index) => (
-                                    <motion.div 
-                                        key={trajet.id}
-                                        initial={{ opacity: 0, x: -20 }}
-                                        animate={{ opacity: 1, x: 0 }}
-                                        transition={{ delay: index * 0.1 }}
-                                        className="bg-white dark:bg-slate-900 group p-6 rounded-[2rem] border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row items-center justify-between hover:border-indigo-300 dark:hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/5 transition-all cursor-default"
-                                    >
-                                        <div className="flex items-center gap-6 w-full md:w-auto">
-                                            <div className="w-16 h-16 bg-indigo-50 dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 rounded-[1.5rem] flex flex-col items-center justify-center group-hover:bg-indigo-600 group-hover:text-white transition-colors">
-                                                <FaBus size={20} />
-                                                <span className="text-[8px] font-black mt-1 uppercase">Bus</span>
-                                            </div>
-                                            <div>
-                                                <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-tighter mb-1">
-                                                    {trajet.agence?.nom || "Express"}
-                                                </p>
-                                                <div className="flex items-center gap-2">
-                                                    <FaClock className="text-slate-300 dark:text-slate-600 text-xs" />
-                                                    <h3 className="text-2xl font-black text-slate-800 dark:text-slate-200 tracking-tighter">
-                                                        {trajet.heureDepart}
-                                                    </h3>
-                                                </div>
-                                            </div>
-                                        </div>
+                        {trajets.map((trajet) => (
+                            <motion.div key={trajet.id} className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row items-center justify-between gap-6 hover:shadow-xl transition-all">
+                                
+                                {/* AGENCE & HEURE */}
+                                <div className="flex items-center gap-4 min-w-[200px]">
+                                    <div className="w-14 h-14 bg-indigo-50 dark:bg-slate-800 text-indigo-600 rounded-[1.2rem] flex flex-col items-center justify-center">
+                                        <FaBus size={18} />
+                                    </div>
+                                    <div>
+                                        <p className="text-[10px] font-black text-indigo-600 uppercase">{trajet.agence?.nom || "Express"}</p>
+                                        <h3 className="text-xl font-black text-slate-800 dark:text-slate-200 tracking-tighter">{trajet.heureDepart}</h3>
+                                        {/* AJOUT DU JOUR DE DÉPART */}
+                                        {trajet.jourDepart && (
+                                            <p className="text-[10px] font-bold text-slate-400">{trajet.jourDepart}</p>
+                                        )}
+                                    </div>
+                                </div>
 
-                                        <div className="flex flex-1 items-center justify-center gap-4 my-6 md:my-0">
-                                            <div className="text-center">
-                                                <p className="text-[9px] font-black text-slate-400 uppercase">Départ</p>
-                                                <p className="font-bold text-slate-700 dark:text-slate-300">{trajet.depart}</p>
-                                            </div>
-                                            <div className="flex flex-col items-center gap-1 px-4">
-                                                <div className="h-[2px] w-12 bg-slate-100 dark:bg-slate-800 relative">
-                                                    <div className="absolute -top-1 right-0 w-2 h-2 bg-indigo-500 rounded-full"></div>
-                                                </div>
-                                            </div>
-                                            <div className="text-center">
-                                                <p className="text-[9px] font-black text-slate-400 uppercase">Arrivée</p>
-                                                <p className="font-bold text-slate-700 dark:text-slate-300">{trajet.destination}</p>
-                                            </div>
-                                        </div>
+                                {/* ITINÉRAIRE */}
+                                <div className="flex flex-1 items-center justify-center gap-4">
+                                    <p className="font-bold text-slate-700 dark:text-slate-300">{trajet.depart}</p>
+                                    <div className="h-[2px] w-12 bg-slate-200 dark:bg-slate-800" />
+                                    <p className="font-bold text-slate-700 dark:text-slate-300">{trajet.destination}</p>
+                                </div>
 
-                                        <div className="flex items-center justify-between w-full md:w-auto gap-8">
-                                            <div className="text-right">
-                                                <p className="text-[10px] font-black text-slate-400 uppercase">{t('checkout.total_to_pay') || "Total à payer"}</p>
-                                                <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tighter">
-                                                    {trajet.prix} <span className="text-xs uppercase">Fc</span>
-                                                </p>
-                                            </div>
-                                            <motion.button 
-                                                whileHover={{ x: 5 }}
-                                                onClick={() => handleReservation(trajet.id)}
-                                                className="bg-slate-900 dark:bg-slate-800 text-white p-4 rounded-2xl flex items-center justify-center hover:bg-indigo-600 dark:hover:bg-indigo-600 transition-colors shadow-lg"
-                                            >
-                                                <FaChevronRight />
-                                            </motion.button>
-                                        </div>
-                                    </motion.div>
-                                ))
-                            ) : (
-                                <motion.div 
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    className="text-center py-20 bg-slate-50 dark:bg-slate-900 rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-slate-800"
-                                >
-                                    <p className="font-black text-slate-400 uppercase text-xs tracking-widest">
-                                        {t('home.no_trips_found') || "Aucun trajet disponible pour le moment"}
-                                    </p>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                                {/* PRIX & ACTION */}
+                                <div className="flex items-center gap-6">
+                                    <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400">{trajet.prix} <span className="text-xs">Fc</span></p>
+                                    <button onClick={() => handleReservation(trajet.id)} className="w-12 h-12 bg-slate-900 hover:bg-indigo-600 text-white rounded-2xl flex items-center justify-center transition-colors">
+                                        <FaChevronRight />
+                                    </button>
+                                </div>
+                            </motion.div>
+                        ))}
                     </div>
                 )}
             </div>

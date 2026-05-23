@@ -1,32 +1,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import api from '../../services/api';
+import api from '../../services/api'; 
 import { 
-    FaChevronRight, FaBus, FaPlay, FaStop, 
-    FaStar, FaAward
+    FaChevronRight, FaBus, FaStar, FaAward, FaQrcode, FaSyncAlt 
 } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
+import ScannerTicket from './ScannerTicket'; 
 
 const EspaceChauffeur = () => {
-    const [trajet, setTrajet] = useState(null);
+    // Changement : on utilise un tableau [] au lieu de null
+    const [trajets, setTrajets] = useState([]);
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const [scanOuvert, setScanOuvert] = useState(false);
     
-    // Statistiques
     const [stats, setStats] = useState({
         note: 4.8,
         courses: 124,
         prime: 15,
         statut: "Élite",
         agence: "GariConnect",
-        recettesMobileMoney: 0
     });
 
     const initData = useCallback(async () => {
         setLoading(true);
         try {
-            const [profileRes, trajetRes] = await Promise.allSettled([
+            const [profileRes, trajetsRes] = await Promise.allSettled([
                 api.get('/users/profile'),
-                api.get('/trajets/mon-trajet-actif')
+                api.get('/trajets/mon-historique/aujourdhui') // Endpoint filtré par jour
             ]);
 
             if (profileRes.status === 'fulfilled') {
@@ -36,14 +36,11 @@ const EspaceChauffeur = () => {
                 }
             }
 
-            if (trajetRes.status === 'fulfilled' && trajetRes.value.status === 200) {
-                setTrajet(trajetRes.value.data);
-            } else {
-                setTrajet(null);
+            if (trajetsRes.status === 'fulfilled' && trajetsRes.value.data) {
+                setTrajets(trajetsRes.value.data);
             }
-            
         } catch (err) {
-            console.error("Erreur GariConnect Sync:", err);
+            console.error("Erreur de synchronisation:", err);
         } finally {
             setLoading(false);
         }
@@ -53,51 +50,35 @@ const EspaceChauffeur = () => {
         initData();
     }, [initData]);
 
-    const toggleVoyage = async () => {
-        if (!trajet) return;
-
-        const estAuDepart = trajet.statut === "DISPONIBLE";
-        const action = estAuDepart ? "EN_ROUTE" : "TERMINE";
-        const message = estAuDepart 
-            ? `Voulez-vous démarrer le voyage vers ${trajet.destination} ?`
-            : `Voulez-vous clôturer ce voyage ?`;
-
-        if (!window.confirm(message)) return;
-
+    // Fonction pour changer le statut d'un trajet spécifique
+    const handleUpdateStatus = async (id, nouveauStatut) => {
         try {
-            const response = await api.patch(`/trajets/${trajet.id}/statut`, { statut: action });
-            
-            if (response.status === 200) {
-                alert(`Succès : Voyage ${action === "EN_ROUTE" ? "démarré" : "terminé"}`);
-                initData(); 
-            }
+            await api.patch(`/trajets/${id}/statut`, { statut: nouveauStatut });
+            alert("Statut mis à jour !");
+            initData(); // Rechargement pour rafraîchir l'interface
         } catch (err) {
-            const errorMsg = err.response?.data?.error || "Erreur de communication avec le serveur.";
-            alert("Erreur : " + errorMsg);
+            alert("Erreur lors de la mise à jour : " + (err.response?.data?.error || "Serveur indisponible"));
         }
     };
 
     if (loading && !user) return (
-        <div className="min-h-screen flex items-center justify-center bg-[#f0f2f5] dark:bg-slate-950 transition-colors duration-300">
-            <div className="text-center">
-                <FaBus size={48} className="mx-auto mb-4 text-indigo-600 dark:text-indigo-400 animate-bounce"/>
-                <p className="font-black tracking-widest text-slate-400 dark:text-slate-500 uppercase text-xs">Synchronisation GariConnect...</p>
-            </div>
+        <div className="min-h-screen flex items-center justify-center bg-[#f0f2f5] dark:bg-slate-950">
+            <FaBus className="text-indigo-600 animate-bounce" size={48}/>
         </div>
     );
 
     return (
-        <div className="min-h-screen bg-[#f0f2f5] dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-10 font-sans relative transition-colors duration-300">
+        <div className="min-h-screen bg-[#f0f2f5] dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-10 font-sans transition-colors duration-300">
             
-            {/* Header Harmonisé - Couleurs vibrantes adaptées aux deux modes */}
+            {/* En-tête */}
             <motion.div 
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="p-6 pb-24 rounded-b-[3rem] shadow-2xl bg-gradient-to-br from-[#1e1b4b] via-[#4338ca] to-[#6366f1] text-white relative z-20"
+                className="p-6 pb-24 rounded-b-[3rem] shadow-2xl bg-gradient-to-br from-[#1e1b4b] via-[#4338ca] to-[#6366f1] text-white"
             >
                 <div className="flex justify-between items-center mb-6">
                     <div className="flex items-center gap-3">
-                        <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20 shadow-inner">
+                        <div className="w-14 h-14 rounded-2xl bg-white/10 backdrop-blur-md flex items-center justify-center border border-white/20">
                             <span className="text-2xl font-black">{user?.nom?.charAt(0) || 'C'}</span>
                         </div>
                         <div>
@@ -108,86 +89,69 @@ const EspaceChauffeur = () => {
                 </div>
             </motion.div>
 
-            <div className="px-5 -mt-16 space-y-5 relative z-10">
+            {/* Corps */}
+            <div className="px-5 -mt-16 space-y-5">
+                <h3 className="font-black text-slate-800 dark:text-slate-200 uppercase text-xs tracking-widest mb-3">Trajets du jour ({trajets.length})</h3>
+
                 <AnimatePresence mode="wait">
-                    {!trajet ? (
-                        <motion.div 
-                            key="no-trip"
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            className="p-10 rounded-[2.5rem] text-center shadow-xl border border-white dark:border-slate-800 bg-white/80 dark:bg-slate-900/90 backdrop-blur-sm"
-                        >
-                            <FaBus size={30} className="mx-auto mb-4 text-slate-200 dark:text-slate-700"/>
-                            <h3 className="font-black uppercase text-sm text-slate-800 dark:text-slate-200">Aucune mission</h3>
-                            <p className="text-xs text-slate-400 dark:text-slate-500 mb-6 font-medium">L'agence n'a pas encore validé votre départ.</p>
-                            <motion.button 
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                                onClick={initData} 
-                                className="w-full py-4 bg-indigo-600 dark:bg-indigo-500 hover:bg-indigo-700 dark:hover:bg-indigo-600 text-white rounded-2xl font-black shadow-lg shadow-indigo-100 dark:shadow-none transition-colors"
-                            >
-                                RAFRAÎCHIR
-                            </motion.button>
+                    {trajets.length === 0 ? (
+                        <motion.div className="p-10 rounded-[2.5rem] text-center bg-white/80 dark:bg-slate-900/90 shadow-xl border border-white dark:border-slate-800">
+                            <p className="text-slate-400 font-medium text-xs mb-4">Aucun trajet pour aujourd'hui.</p>
+                            <button onClick={initData} className="px-6 py-2 bg-indigo-600 text-white rounded-xl text-xs font-black">RECHARGER</button>
                         </motion.div>
                     ) : (
-                        <motion.div 
-                            key="active-trip"
-                            initial={{ y: 20, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            className="p-6 rounded-[2.5rem] shadow-2xl border border-white dark:border-slate-800 bg-white dark:bg-slate-900"
-                        >
-                            <div className="flex justify-between items-start mb-6">
-                                <div>
-                                    <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase mb-1 tracking-wider">Trajet Actif</p>
-                                    <h2 className="text-2xl font-black tracking-tighter text-slate-900 dark:text-slate-100">
-                                        {trajet.depart} <FaChevronRight className="inline mx-1 text-slate-300 dark:text-slate-700" size={12}/> {trajet.destination}
-                                    </h2>
-                                </div>
-                                <div className="px-3 py-1 rounded-full text-[9px] font-black uppercase bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-100 dark:border-indigo-900/50">
-                                    {trajet.statut}
-                                </div>
-                            </div>
-
-                            {/* BOUTON DYNAMIQUE */}
-                            <motion.button 
-                                whileHover={{ scale: 1.01 }}
-                                whileTap={{ scale: 0.99 }}
-                                onClick={toggleVoyage} 
-                                className={`w-full py-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-xl transition-all ${
-                                    trajet.statut === "DISPONIBLE" 
-                                    ? "bg-emerald-600 dark:bg-emerald-500 text-white shadow-emerald-100 dark:shadow-none" 
-                                    : "bg-rose-600 dark:bg-rose-500 text-white shadow-rose-100 dark:shadow-none"
-                                }`}
+                        trajets.map((t) => (
+                            <motion.div 
+                                key={t.id}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="p-6 rounded-[2rem] shadow-lg border border-white dark:border-slate-800 bg-white dark:bg-slate-900"
                             >
-                                {trajet.statut === "DISPONIBLE" ? <><FaPlay size={12}/> Démarrer la mission</> : <><FaStop size={12}/> Clôturer la course</>}
-                            </motion.button>
-                        </motion.div>
+                                <div className="flex justify-between items-start mb-4">
+                                    <div>
+                                        <p className="text-[9px] font-black text-indigo-500 uppercase">Trajet</p>
+                                        <h2 className="font-black text-lg">{t.depart} → {t.destination}</h2>
+                                    </div>
+                                    <select 
+                                        value={t.statut}
+                                        onChange={(e) => handleUpdateStatus(t.id, e.target.value)}
+                                        className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-[10px] font-black p-2 rounded-lg border border-slate-200 dark:border-slate-700 outline-none"
+                                    >
+                                        <option value="PROGRAMME">PROGRAMMÉ</option>
+                                        <option value="EN_ROUTE">EN ROUTE</option>
+                                        <option value="TERMINE">TERMINÉ</option>
+                                        <option value="DISPONIBLE">DISPONIBLE</option>
+                                    </select>
+                                </div>
+
+                                <button 
+                                    onClick={() => setScanOuvert(true)} 
+                                    className="w-full py-3 bg-slate-900 dark:bg-slate-800 text-white rounded-2xl text-xs font-black flex items-center justify-center gap-2"
+                                >
+                                    <FaQrcode size={14}/> Scanner passager
+                                </button>
+                            </motion.div>
+                        ))
                     )}
                 </AnimatePresence>
 
-                {/* Section Stats Subtile - Cartes Blanches (Clair) / Gris Foncé (Sombre) */}
-                <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.3 }}
-                    className="grid grid-cols-2 gap-4"
-                >
-                    <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm transition-colors">
-                        <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase mb-1">Évaluation</p>
-                        <div className="flex items-center gap-1">
-                            <FaStar className="text-amber-400 dark:text-amber-500" size={14}/>
-                            <span className="font-black text-slate-700 dark:text-slate-300">{stats.note}</span>
-                        </div>
+                {/* Stats */}
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 shadow-sm">
+                        <p className="text-[9px] text-slate-400 uppercase">Évaluation</p>
+                        <div className="flex items-center gap-1"><FaStar className="text-amber-400" size={14}/> {stats.note}</div>
                     </div>
-                    <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm transition-colors">
-                        <p className="text-[9px] font-black text-slate-400 dark:text-slate-500 uppercase mb-1">Niveau</p>
-                        <div className="flex items-center gap-1">
-                            <FaAward className="text-indigo-600 dark:text-indigo-400" size={14}/>
-                            <span className="font-black text-slate-700 dark:text-slate-300">{stats.statut}</span>
-                        </div>
+                    <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 shadow-sm">
+                        <p className="text-[9px] text-slate-400 uppercase">Niveau</p>
+                        <div className="flex items-center gap-1"><FaAward className="text-indigo-600" size={14}/> {stats.statut}</div>
                     </div>
-                </motion.div>
+                </div>
             </div>
+
+            {/* Scan Modal */}
+            <AnimatePresence>
+                {scanOuvert && <ScannerTicket onFermer={() => setScanOuvert(false)} />}
+            </AnimatePresence>
         </div>
     );
 };

@@ -44,6 +44,8 @@ import ChauffeurDashboard from './pages/chauffeur/ChauffeurDashboard';
 import HistoriqueCourses from './pages/chauffeur/HistoriqueCourses'; 
 import PerformanceHistory from './pages/chauffeur/PerformanceHistory'; 
 import ChauffeurProfil from './pages/chauffeur/ChauffeurProfil'; 
+//import ScannerTicket from './pages/chauffeur/ScannerTicket';
+
 
 // --- Client ---
 import HomeClient from "./pages/client/Home";

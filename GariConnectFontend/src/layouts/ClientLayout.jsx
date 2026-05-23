@@ -28,7 +28,6 @@ const Layout = () => {
     }, [darkMode]);
 
     const verifierStatutEvaluation = async () => {
-        // ✅ CORRECTION : Éviter l'appel si aucun token n'est disponible pour éviter l'erreur 400 / 403
         const token = localStorage.getItem('token');
         if (!token) {
             console.warn("Aucun token trouvé. Attente de l'authentification...");
@@ -36,7 +35,6 @@ const Layout = () => {
         }
 
         try {
-            // Configuration explicite des headers pour garantir que le token passe bien
             const config = {
                 headers: {
                     Authorization: `Bearer ${token}`
@@ -53,66 +51,73 @@ const Layout = () => {
                     setSubmissionCount(countRes.data.count || 0);
                 }
             } else {
-                // Si le serveur répond avec un code 204 (No Content), vider l'état
                 setVoyageEnCours(null);
             }
         } catch (error) {
-            console.error("Erreur lors de la récupération du voyage actif (Erreur 400/403) :", error);
+            console.error("Erreur lors de la récupération du voyage actif :", error);
             setVoyageEnCours(null);
         }
     };
 
     useEffect(() => {
         verifierStatutEvaluation();
-        // Optionnel : Ré-exécuter la vérification si l'utilisateur vient de se connecter
-        // ou si le token change dans le localStorage
     }, []);
 
     const canShowBanner = voyageEnCours && !isDismissed && submissionCount < 3;
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors duration-500">
-            {/* Navbar reçoit les props pour le thème */}
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-500">
             <Navbar darkMode={darkMode} setDarkMode={setDarkMode} />
             
             <main className="container mx-auto px-4 pt-24 pb-10">
                 
                 {canShowBanner && !showFullForm && (
-                    <div className="mb-8 bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-1 rounded-2xl shadow-2xl animate-in slide-in-from-top duration-700">
-                        <div className="bg-white/10 backdrop-blur-md p-4 rounded-[14px] flex flex-col md:flex-row items-center justify-between gap-4 relative">
-                            <button onClick={() => setIsDismissed(true)} className="absolute top-2 right-2 p-2 hover:bg-white/20 rounded-full transition-colors">
-                                <FaTimes size={14} />
-                            </button>
+                    /* ✅ PROTECTION CONTRE LA TRANSPARENCE ICI 
+                       En mode clair : Fond blanc solide (bg-white), bordure fine (border-slate-200), texte sombre.
+                       En mode sombre : Fond ardoise foncé solide (dark:bg-slate-900), pas de transparence. */
+                    <div className="mb-8 bg-white dark:bg-slate-900 text-slate-800 dark:text-white p-5 sm:p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xl flex flex-col md:flex-row items-stretch md:items-center justify-between gap-5 relative animate-in slide-in-from-top duration-700">
+                        
+                        {/* Bouton de fermeture adapté au mode clair/sombre */}
+                        <button 
+                            onClick={() => setIsDismissed(true)} 
+                            className="absolute top-3 right-3 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors z-10"
+                            aria-label="Dismiss banner"
+                        >
+                            <FaTimes size={14} />
+                        </button>
 
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center animate-pulse">
-                                    <FaBus size={20} />
-                                </div>
-                                <div>
-                                    <h4 className="font-black uppercase text-[10px] tracking-widest opacity-80">
-                                        {voyageEnCours?.statut === 'TERMINE' ? t('eval_post_trip') : t('eval_ongoing_trip')}
-                                    </h4>
-                                    <p className="font-bold text-sm">
-                                        {t('eval_prompt', { destination: voyageEnCours?.trajet?.destination || 'votre destination' })} ({submissionCount}/3)
-                                    </p>
-                                </div>
+                        {/* Section Infos */}
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                            {/* Rond de l'icône opaque */}
+                            <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-500/10 rounded-full flex items-center justify-center flex-shrink-0">
+                                <FaBus size={20} className="text-indigo-600 dark:text-indigo-400" />
                             </div>
-
-                            <button 
-                                onClick={() => setShowFullForm(true)}
-                                className="bg-yellow-400 hover:bg-yellow-500 text-blue-900 px-6 py-3 rounded-xl font-black text-sm uppercase flex items-center gap-2 shadow-lg transition-transform active:scale-95"
-                            >
-                                <FaStar /> {t('eval_button')}
-                            </button>
+                            <div className="pr-6">
+                                <h4 className="font-black uppercase text-[10px] tracking-widest text-indigo-600 dark:text-indigo-400">
+                                    {voyageEnCours?.statut === 'TERMINE' ? t('eval_post_trip', "Évaluation après voyage") : t('eval_ongoing_trip', "Voyage en cours")}
+                                </h4>
+                                <p className="font-bold text-sm mt-0.5 text-slate-700 dark:text-slate-200 leading-relaxed">
+                                    {t('eval_prompt', { destination: voyageEnCours?.trajet?.destination || 'votre destination' })} ({submissionCount}/3)
+                                </p>
+                            </div>
                         </div>
+
+                        {/* Bouton Évaluer adapté en couleur pour aller avec le fond blanc solide */}
+                        <button 
+                            onClick={() => setShowFullForm(true)}
+                            className="w-full md:w-auto bg-indigo-600 hover:bg-indigo-700 dark:bg-indigo-500 dark:hover:bg-indigo-600 text-white px-6 py-3.5 md:py-3 rounded-xl font-black text-sm uppercase flex items-center justify-center gap-2 shadow-md shadow-indigo-600/10 transition-all active:scale-[0.98] md:active:scale-95 flex-shrink-0"
+                        >
+                            <FaStar className="text-yellow-400" /> {t('eval_button', "Évaluer")}
+                        </button>
                     </div>
                 )}
 
+                {/* Modal Formulaire d'Évaluation */}
                 {showFullForm && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-300">
                         <div className="w-full max-w-xl relative">
                             <button onClick={() => setShowFullForm(false)} className="absolute -top-12 right-0 text-white flex items-center gap-2 font-bold uppercase text-xs hover:text-red-400 transition-colors">
-                                <FaTimes /> {t('close')}
+                                <FaTimes /> {t('close', "Fermer")}
                             </button>
                             
                             <FormulaireEvaluation 
@@ -131,8 +136,8 @@ const Layout = () => {
                 </div>
             </main>
 
-            <footer className="py-8 border-t border-slate-200 dark:border-slate-900 text-center text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em]">
-                © 2026 GariConnect • {t('intel_title')} • Beni, RDC
+            <footer className="py-8 border-t border-slate-200 dark:border-slate-900 text-center text-slate-400 dark:text-slate-600 text-[10px] font-bold uppercase tracking-[0.2em] transition-colors">
+                © 2026 GariConnect • {t('intel_title', "Tous droits réservés")} • Beni, RDC
             </footer>
         </div>
     );

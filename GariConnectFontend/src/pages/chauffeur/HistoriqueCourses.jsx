@@ -12,9 +12,10 @@ const ChauffeurHistorique = () => {
     const [filter, setFilter] = useState('TOUS'); 
     const [searchTerm, setSearchTerm] = useState('');
 
-    // 🔥 MODIFICATION : On extrait la fonction pour pouvoir la réutiliser
     const fetchTripsHistory = useCallback(async () => {
         try {
+            // Plus besoin de spécifier les headers ici, 
+            // l'intercepteur configuré à l'étape 1 s'en occupe tout seul !
             const response = await api.get('/trajets/mon-historique');
             setTrips(response.data);
         } catch (err) {
@@ -29,7 +30,7 @@ const ChauffeurHistorique = () => {
         // 1. Premier chargement normal à l'ouverture de la page
         fetchTripsHistory();
 
-        // 2. 🔥 ÉCOUTEUR D'ÉVÉNEMENT : Met à jour la liste en temps réel quand la cloche sonne
+        // 2. ÉCOUTEUR D'ÉVÉNEMENT : Met à jour la liste en temps réel quand la cloche sonne
         window.addEventListener('actualiserHistorique', fetchTripsHistory);
 
         // 3. Nettoyage de l'écouteur quand on quitte la page
@@ -38,12 +39,10 @@ const ChauffeurHistorique = () => {
         };
     }, [fetchTripsHistory]);
 
-    // Filtrage basé sur ton entité Trajet
+    // Filtrage basé sur l'entité Trajet
     const filteredTrips = trips.filter(trip => {
-        // On vérifie le statut (TERMINE, EN_ROUTE, DISPONIBLE)
         const matchesFilter = filter === 'TOUS' || trip.statut === filter;
         
-        // On utilise le champ "label" généré par ton backend
         const labelSearch = trip.label ? trip.label.toLowerCase() : "";
         const plaqueSearch = trip.vehicule?.plaque ? trip.vehicule.plaque.toLowerCase() : "";
         
@@ -53,7 +52,6 @@ const ChauffeurHistorique = () => {
         return matchesFilter && matchesSearch;
     });
 
-    // Gestion des couleurs selon tes constantes Backend
     const getStatusStyle = (statut) => {
         switch (statut) {
             case 'TERMINE': return 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20';
@@ -78,7 +76,6 @@ const ChauffeurHistorique = () => {
                         <FaHistory className="text-blue-600" /> Historique GariConnect
                     </h2>
                     <p className="text-slate-500 text-[10px] font-black uppercase tracking-widest mt-1">
-                        {/* Affiche le nom de l'agence si disponible dans le premier trajet */}
                         Suivi des trajets - {trips[0]?.agence?.nom || "Beni, RDC"}
                     </p>
                 </div>
@@ -124,13 +121,10 @@ const ChauffeurHistorique = () => {
                             }}
                         >
                             <div className="flex flex-col lg:flex-row justify-between gap-8">
-                                
-                                {/* Info Principales : Départ -> Destination */}
                                 <div className="flex-1 space-y-5">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2 text-[10px] font-black text-slate-400 uppercase tracking-tighter">
                                             <FaCalendarAlt className="text-blue-500" />
-                                            {/* Formatage de la dateHeureDepart issue du backend */}
                                             {trip.dateHeureDepart ? new Date(trip.dateHeureDepart).toLocaleDateString('fr-FR', { 
                                                 weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' 
                                             }) : "Date non définie"}
@@ -145,7 +139,6 @@ const ChauffeurHistorique = () => {
                                             <FaRoute className="text-blue-600 text-2xl" />
                                         </div>
                                         <div>
-                                            {/* Utilisation du Label dynamique du backend */}
                                             <h4 className="text-lg font-black dark:text-white leading-tight">{trip.label}</h4>
                                             <p className="text-xs font-bold text-slate-500 mt-1 uppercase tracking-tight">
                                                 Identifiant #{trip.id} • {trip.placesDisponibles} places disponibles
@@ -154,7 +147,6 @@ const ChauffeurHistorique = () => {
                                     </div>
                                 </div>
 
-                                {/* Détails Financiers et Véhicule */}
                                 <div className="flex flex-row lg:flex-col justify-between items-center lg:items-end border-t lg:border-t-0 lg:border-l border-slate-100 dark:border-slate-800 pt-6 lg:pt-0 lg:pl-10">
                                     <div className="text-left lg:text-right">
                                         <div className="flex items-center lg:justify-end gap-2 text-slate-600 dark:text-slate-400 font-black text-xs uppercase">

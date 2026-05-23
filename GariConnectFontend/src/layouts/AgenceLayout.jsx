@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FaSun, FaMoon, FaBars, FaTimes, FaSignOutAlt } from 'react-icons/fa';
+import { FaSun, FaMoon, FaBars, FaTimes, FaSignOutAlt, FaBell, FaCheckDouble, FaTrash } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
+import api from '../services/api'; // ✅ N'oubliez pas d'importer votre instance API
 
 const AgenceLayout = () => {
     const { logout } = useAuth();
@@ -10,7 +11,11 @@ const AgenceLayout = () => {
     const location = useLocation();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-    // ✅ Initialisation cohérente du thème (identique aux autres Layouts)
+    // ✅ États pour les notifications
+    const [notifications, setNotifications] = useState([]);
+    const [showNotifications, setShowNotifications] = useState(false);
+
+    // ✅ Initialisation cohérente du thème
     const [isDarkMode, setIsDarkMode] = useState(() => {
         const savedTheme = localStorage.getItem('theme');
         return savedTheme ? savedTheme === 'dark' : true;
@@ -34,6 +39,60 @@ const AgenceLayout = () => {
             navigate('/login');
         }
     };
+
+    // ==========================================
+    // LOGIQUE DES NOTIFICATIONS
+    // ==========================================
+    const fetchNotifications = async () => {
+        try {
+            const res = await api.get('/notifications/mes-notifications');
+            if (res.status === 200) {
+                setNotifications(res.data);
+            }
+        } catch (err) {
+            console.error("Erreur de chargement des notifications", err);
+        }
+    };
+
+    useEffect(() => {
+        fetchNotifications();
+        // Vérification automatique toutes les 30 secondes
+        const intervalId = setInterval(fetchNotifications, 30000);
+        return () => clearInterval(intervalId);
+    }, []);
+
+    const unreadCount = notifications.filter(n => !n.lue).length;
+
+    const marquerCommeLue = async (notifId) => {
+        try {
+            await api.put(`/notifications/${notifId}/lire`);
+            setNotifications(notifications.map(n => n.id === notifId ? { ...n, lue: true } : n));
+        } catch (error) {
+            console.error("Erreur marquage notification:", error);
+        }
+    };
+
+    // ✅ SUPPRIMER UNE NOTIFICATION
+    const supprimerNotification = async (notifId, e) => {
+        e.stopPropagation(); // Empêche de déclencher 'marquerCommeLue' en même temps
+        try {
+            await api.delete(`/notifications/${notifId}`);
+            setNotifications(notifications.filter(n => n.id !== notifId));
+        } catch (error) {
+            console.error("Erreur lors de la suppression:", error);
+        }
+    };
+
+    // ✅ NETTOYER TOUTES LES NOTIFICATIONS LUES
+    const nettoyerNotificationsLues = async () => {
+        try {
+            await api.delete('/notifications/nettoyer-lus');
+            setNotifications(notifications.filter(n => !n.lue));
+        } catch (error) {
+            console.error("Erreur lors du nettoyage:", error);
+        }
+    };
+    // ==========================================
 
     const navLinks = [
         { to: "/agence", label: "Vue d'ensemble", icon: "📊" },
@@ -95,8 +154,77 @@ const AgenceLayout = () => {
     );
 
     return (
-        <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden font-sans transition-colors duration-300">
+        <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-950 overflow-hidden font-sans transition-colors duration-300 relative">
             
+            {/* PANNEAU DES NOTIFICATIONS (OVERLAY GLOBAL) */}
+            <AnimatePresence>
+                {showNotifications && (
+                    <motion.div 
+                        initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
+                        transition={{ duration: 0.2 }}
+                        className="fixed top-20 right-4 lg:right-10 w-80 bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 z-[100] overflow-hidden"
+                    >
+                        <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
+                            <h3 className="font-black text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">Notifications</h3>
+                            <div className="flex items-center gap-3">
+                                {/* ✅ Bouton pour tout nettoyer */}
+                                {notifications.some(n => n.lue) && (
+                                    <button 
+                                        onClick={nettoyerNotificationsLues} 
+                                        className="text-[10px] font-bold text-slate-400 hover:text-rose-500 uppercase transition-colors"
+                                    >
+                                        Nettoyer (lus)
+                                    </button>
+                                )}
+                                <button onClick={() => setShowNotifications(false)} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+                                    <FaTimes />
+                                </button>
+                            </div>
+                        </div>
+                        <div className="max-h-[60vh] overflow-y-auto p-2 no-scrollbar">
+                            {notifications.length === 0 ? (
+                                <p className="text-center text-xs text-slate-400 font-medium py-8">Aucune notification.</p>
+                            ) : (
+                                notifications.map(notif => (
+                                    <div 
+                                        key={notif.id} 
+                                        onClick={() => marquerCommeLue(notif.id)}
+                                        className={`p-3 mb-2 rounded-2xl cursor-pointer transition-all border ${
+                                            notif.lue 
+                                            ? 'bg-transparent border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/50' 
+                                            : 'bg-blue-50/50 dark:bg-blue-500/10 border-blue-100 dark:border-blue-500/20 shadow-sm'
+                                        }`}
+                                    >
+                                        <p className={`text-xs ${notif.lue ? 'text-slate-500 dark:text-slate-400' : 'text-blue-900 dark:text-blue-300 font-bold'}`}>
+                                            {notif.message}
+                                        </p>
+                                        <div className="flex justify-between items-center mt-3">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider">
+                                                    {notif.date ? new Date(notif.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'Récemment'}
+                                                </span>
+                                                {notif.lue && <FaCheckDouble className="text-emerald-500" size={10} />}
+                                            </div>
+                                            
+                                            {/* ✅ Bouton Corbeille individuel */}
+                                            <button 
+                                                onClick={(e) => supprimerNotification(notif.id, e)}
+                                                className="text-slate-300 hover:text-rose-500 transition-colors p-1"
+                                                title="Supprimer la notification"
+                                            >
+                                                <FaTrash size={10} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* SIDEBAR DESKTOP */}
             <aside className="hidden lg:flex lg:w-64 flex-shrink-0 z-20">
                 <SidebarContent />
@@ -150,6 +278,24 @@ const AgenceLayout = () => {
                     </div>
                     
                     <div className="flex items-center gap-3 lg:gap-6">
+                        
+                        {/* ✅ BOUTON CLOCHE NOTIFICATION */}
+                        <motion.button 
+                            onClick={() => setShowNotifications(!showNotifications)}
+                            whileTap={{ scale: 0.9 }}
+                            className={`relative p-2.5 rounded-xl transition-all duration-300 border border-transparent ${
+                                isDarkMode ? 'bg-slate-800 text-slate-300 hover:border-slate-700' : 'bg-slate-100 text-slate-600 hover:border-slate-200'
+                            }`}
+                        >
+                            <FaBell size={18} />
+                            {unreadCount > 0 && (
+                                <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 flex items-center justify-center bg-rose-500 text-white font-bold rounded-full text-[9px] border-2 border-white dark:border-slate-900 shadow-md">
+                                    {unreadCount}
+                                </span>
+                            )}
+                        </motion.button>
+
+                        {/* BOUTON THEME */}
                         <button
                             onClick={toggleTheme}
                             className={`p-2.5 rounded-xl transition-all duration-300 border border-transparent ${

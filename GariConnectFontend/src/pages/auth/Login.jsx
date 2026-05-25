@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
-import { FaEnvelope, FaLock, FaBus, FaChevronRight, FaShieldAlt } from 'react-icons/fa';
+// Remplacement de FaShieldAlt par FaEye et FaEyeSlash pour une meilleure UX de visibilité
+import { FaEnvelope, FaLock, FaBus, FaChevronRight, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { motion } from 'framer-motion'; // Import de Framer Motion
 
 const Login = () => {
   const [credentials, setCredentials] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false); // État pour afficher/masquer le mot de passe
   
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -103,7 +105,7 @@ const Login = () => {
             className="z-10 mt-10 p-4 bg-black/20 backdrop-blur-md rounded-2xl border border-white/10"
           >
             <p className="text-sm font-medium opacity-90 leading-relaxed">
-              "Gérez votre flotte, vos chauffeurs et vos finances sur une seule et même plateforme sécurisée."
+              "Gerez votre flotte, vos chauffeurs et vos finances sur une seule et même plateforme sécurisée."
             </p>
           </motion.div>
         </div>
@@ -114,6 +116,17 @@ const Login = () => {
             <h1 className="text-4xl font-black text-slate-900 mb-2">Connexion</h1>
             <div className="w-12 h-1.5 bg-indigo-600 rounded-full"></div>
           </motion.div>
+
+          {/* Affichage des erreurs si le serveur renvoie un problème */}
+          {error && (
+            <motion.div 
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm font-semibold rounded-r-xl"
+            >
+              {error}
+            </motion.div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <motion.div variants={itemVariants} className="space-y-2">
@@ -135,10 +148,23 @@ const Login = () => {
               <div className="relative group">
                 <FaLock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" />
                 <input 
-                  type="password" name="password" value={credentials.password} onChange={handleChange} required
-                  className="w-full pl-12 pr-6 py-4 bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white rounded-2xl outline-none transition-all font-semibold text-slate-700"
+                  type={showPassword ? "text" : "password"} 
+                  name="password" 
+                  value={credentials.password} 
+                  onChange={handleChange} 
+                  required
+                  className="w-full pl-12 pr-14 py-4 bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white rounded-2xl outline-none transition-all font-semibold text-slate-700"
                   placeholder="••••••••"
                 />
+                
+                {/* Bouton pour basculer la visibilité du mot de passe */}
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-indigo-600 p-1 transition-colors focus:outline-none"
+                >
+                  {showPassword ? <FaEyeSlash size={18} /> : <FaEye size={18} />}
+                </button>
               </div>
             </motion.div>
 

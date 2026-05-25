@@ -1,7 +1,14 @@
 import axios from 'axios';
 
+// 1. Configuration hybride Local / Production
+// Si l'application est sur Render, elle utilise VITE_API_BASE_URL.
+// Si elle est sur ton PC en local, elle bascule automatiquement sur localhost:8080.
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+
 const api = axios.create({
-  baseURL: 'http://localhost:8080/api',
+  // On ajoute '/api' dynamiquement à l'URL choisie ci-dessus
+  baseURL: `${API_URL}/api`,
+  
   // Timeout pour éviter les requêtes infinies en cas de micro-coupure à Beni
   timeout: 10000, 
 });

@@ -30,6 +30,7 @@ public class SecurityConfig {
         return new BCryptPasswordEncoder();
     }
 
+
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
@@ -37,9 +38,11 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // 1. Public
+                        // 1. Routes Publiques (Accessibles sans être connecté)
                         .requestMatchers("/api/auth/**", "/api/public/**").permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/trajets/**").permitAll()
+
+                        // CORRECTION : Ajout de "/api/trajets" (URL racine) en plus de "/api/trajets/**"
+                        .requestMatchers(HttpMethod.GET, "/api/trajets", "/api/trajets/**").permitAll()
 
                         // 2. Route spécifique CHAUFFEUR (doit être AVANT la route générale)
                         .requestMatchers("/api/evaluations/mon-rapport").hasRole("CHAUFFEUR")
@@ -58,7 +61,6 @@ public class SecurityConfig {
         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
-
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
-import { FaUser, FaEnvelope, FaLock, FaChevronRight, FaBus, FaUserTag, FaBuilding, FaShieldAlt } from 'react-icons/fa';
+import { FaUser, FaEnvelope, FaLock, FaChevronRight, FaBus, FaUserTag, FaBuilding, FaShieldAlt, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const Register = () => {
@@ -18,6 +18,7 @@ const Register = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -67,175 +68,190 @@ const Register = () => {
     }
   };
 
-  // Animations variants
   const containerVariants = {
-    hidden: { opacity: 0, scale: 0.95 },
-    visible: { opacity: 1, scale: 1, transition: { duration: 0.5, staggerChildren: 0.1 } }
+    hidden: { opacity: 0, y: 15 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } }
   };
 
   const itemVariants = {
-    hidden: { opacity: 0, x: 20 },
-    visible: { opacity: 1, x: 0 }
+    hidden: { opacity: 0, y: 10 },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.3 } }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f0f2f5] p-4 font-sans selection:bg-indigo-100">
+    <div className="min-h-screen w-full flex items-center justify-center bg-[#f8fafc] p-4 sm:p-6 font-sans relative overflow-hidden selection:bg-indigo-100 selection:text-indigo-900">
+      
+      {/* FLOU ARTISTIQUE EN ARRIÈRE-PLAN (AURAS BLEUES/INDIGO DISCRÈTES) */}
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] sm:w-[600px] sm:h-[600px] rounded-full bg-gradient-to-tr from-blue-200/40 to-indigo-200/40 blur-[80px] sm:blur-[120px] -z-10" />
+      <div className="absolute bottom-10 right-10 w-[300px] h-[300px] rounded-full bg-sky-200/30 blur-[100px] -z-10" />
+
       <motion.div 
         initial="hidden"
         animate="visible"
         variants={containerVariants}
-        className="flex flex-col md:flex-row w-full max-w-5xl bg-white rounded-[2.5rem] shadow-[0_30px_60px_rgba(0,0,0,0.12)] overflow-hidden border border-slate-100"
+        className="w-full max-w-2xl bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-[0_40px_100px_-20px_rgba(15,23,42,0.08)] border border-slate-200/60 p-6 sm:p-10 md:p-14 flex flex-col"
       >
         
-        {/* SECTION VISUELLE (GAUCHE) */}
-        <div className="w-full md:w-5/12 bg-gradient-to-br from-[#4338ca] to-[#6366f1] p-10 md:p-12 flex flex-col justify-between text-white relative">
-          <div className="z-10">
-            <motion.div 
-              animate={{ y: [0, -10, 0] }}
-              transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-              className="flex items-center gap-3 mb-12"
-            >
-              <div className="p-3 bg-white/20 backdrop-blur-md rounded-xl border border-white/30">
-                <FaBus size={28} />
-              </div>
-              <span className="text-2xl font-black tracking-tighter">GariConnect</span>
-            </motion.div>
-            
-            <h2 className="text-3xl md:text-4xl font-black leading-tight mb-6">
-              Rejoignez la <br /> 
-              <span className="text-indigo-200">communauté</span>.
-            </h2>
-            <p className="text-indigo-100 text-sm font-medium opacity-80 leading-relaxed">
-              Créez votre profil en quelques secondes et commencez à optimiser vos déplacements ou votre flotte.
-            </p>
+        {/* LOGO & ENTÊTE ÉPURÉS */}
+        <div className="flex flex-col items-center text-center mb-8">
+          <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl mb-4 shadow-sm border border-indigo-100/50">
+            <FaBus size={26} />
           </div>
-
-          <div className="z-10 mt-10">
-            <div className="inline-flex items-center gap-2 px-4 py-2 bg-black/20 backdrop-blur-md rounded-full border border-white/10 text-[10px] font-bold uppercase tracking-widest">
-              <FaShieldAlt className="text-indigo-300" /> Inscription Sécurisée
-            </div>
-          </div>
+          <span className="text-xs font-bold text-indigo-600 uppercase tracking-widest mb-1">GariConnect</span>
+          <h1 className="text-3xl font-black text-slate-950 tracking-tight mb-2">Créer un compte</h1>
+          <p className="text-slate-500 text-sm font-medium max-w-sm">
+            Rejoignez le réseau pour gérer vos trajets, vos finances ou votre flotte en toute simplicité.
+          </p>
         </div>
 
-        {/* SECTION FORMULAIRE (DROITE) */}
-        <div className="w-full md:w-7/12 p-10 lg:p-16 flex flex-col justify-center bg-white">
-          <motion.div variants={itemVariants} className="mb-8">
-            <h1 className="text-3xl font-black text-slate-900 mb-2">Créer un compte</h1>
-            <div className="w-12 h-1.5 bg-indigo-600 rounded-full"></div>
-          </motion.div>
-          
-          <AnimatePresence mode="wait">
-            {success ? (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="bg-emerald-50 border-2 border-emerald-100 p-8 rounded-[2rem] text-center"
-              >
-                <div className="w-16 h-16 bg-emerald-500 text-white rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-100">
-                  <FaShieldAlt size={30} />
+        <AnimatePresence mode="wait">
+          {success ? (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-emerald-50/50 border border-emerald-100 p-8 rounded-3xl text-center"
+            >
+              <div className="w-14 h-14 bg-emerald-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20">
+                <FaShieldAlt size={22} />
+              </div>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Inscription réussie !</h3>
+              <p className="text-slate-600 text-sm font-medium mb-6 leading-relaxed px-4">{success}</p>
+              <Link to="/login" className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold transition-all active:scale-95 text-sm shadow-md">
+                Aller à l'écran de connexion <FaChevronRight size={10} />
+              </Link>
+            </motion.div>
+          ) : (
+            <form onSubmit={handleRegister} className="space-y-4">
+              {error && (
+                <motion.div initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="p-4 bg-rose-50 border border-rose-100 text-rose-600 text-xs font-semibold rounded-2xl">
+                  {error}
+                </motion.div>
+              )}
+
+              {/* INPUTS SUR DEUX COLONNES SUR ÉCRAN LARGE POUR PLUS DE COMPACITÉ */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* CHAMP NOM COMPLET */}
+                <div className="relative group">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors pointer-events-none">
+                    <FaUser size={15} />
+                  </span>
+                  <input 
+                    type="text" placeholder="Nom complet" required 
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50/50 hover:bg-slate-50/80 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-none font-semibold text-slate-800 text-sm transition-all focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]"
+                    onChange={(e) => setFormData({...formData, nom: e.target.value})} 
+                  />
                 </div>
-                <h3 className="text-xl font-black text-emerald-900 mb-2">Félicitations !</h3>
-                <p className="text-emerald-700 font-medium mb-6 text-sm">{success}</p>
-                <Link to="/login" className="inline-flex items-center gap-2 bg-emerald-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-emerald-700 transition-all shadow-md active:scale-95">
-                  Retour à la connexion <FaChevronRight size={12} />
-                </Link>
-              </motion.div>
-            ) : (
-              <form onSubmit={handleRegister} className="space-y-4">
-                {error && (
-                  <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="p-4 bg-rose-50 border-l-4 border-rose-500 text-rose-700 text-xs font-bold rounded-r-xl">
-                    {error}
+
+                {/* CHAMP EMAIL */}
+                <div className="relative group">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors pointer-events-none">
+                    <FaEnvelope size={15} />
+                  </span>
+                  <input 
+                    type="email" placeholder="Adresse email" required 
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50/50 hover:bg-slate-50/80 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-none font-semibold text-slate-800 text-sm transition-all focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]"
+                    onChange={(e) => setFormData({...formData, email: e.target.value})} 
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* CHAMP RÔLE */}
+                <div className="relative group">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors pointer-events-none z-10">
+                    <FaUserTag size={15} />
+                  </span>
+                  <select 
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50/50 hover:bg-slate-50/80 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-none font-semibold text-slate-700 text-sm appearance-none cursor-pointer relative z-0 transition-all focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]" 
+                    value={formData.role} 
+                    onChange={(e) => setFormData({...formData, role: e.target.value})}
+                  >
+                    <option value="CLIENT">Client</option>
+                    <option value="CHAUFFEUR">Chauffeur</option>
+                    <option value="AGENCE">Agence</option>
+                  </select>
+                </div>
+
+                {/* CHAMP MOT DE PASSE avec option oeil */}
+                <div className="relative group">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors pointer-events-none">
+                    <FaLock size={15} />
+                  </span>
+                  <input 
+                    type={showPassword ? "text" : "password"} 
+                    placeholder="Mot de passe" 
+                    required 
+                    className="w-full pl-11 pr-12 py-3.5 bg-slate-50/50 hover:bg-slate-50/80 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-none font-semibold text-slate-800 text-sm transition-all focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]"
+                    onChange={(e) => setFormData({...formData, password: e.target.value})} 
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1 transition-colors focus:outline-none"
+                  >
+                    {showPassword ? <FaEyeSlash size={15} /> : <FaEye size={15} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* SELECTION DE L'AGENCE (DYNAMIQUE CHAUFFEUR) */}
+              <AnimatePresence>
+                {formData.role === 'CHAUFFEUR' && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0, marginTop: 0 }} 
+                    animate={{ height: 'auto', opacity: 1, marginTop: 12 }} 
+                    exit={{ height: 0, opacity: 0, marginTop: 0 }}
+                    className="relative group overflow-hidden"
+                  >
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-500性能 z-10 pointer-events-none">
+                      <FaBuilding size={15} />
+                    </span>
+                    <select 
+                      required
+                      className="w-full pl-11 pr-4 py-3.5 bg-indigo-50/40 border border-indigo-100 focus:border-indigo-500 rounded-2xl outline-none font-bold text-indigo-900 text-sm appearance-none cursor-pointer focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]" 
+                      value={formData.agenceId}
+                      onChange={(e) => setFormData({...formData, agenceId: e.target.value})}
+                    >
+                      <option value="">Sélectionnez votre agence employeur</option>
+                      {agences.map((agence) => (
+                        <option key={agence.id} value={agence.id}>{agence.nom}</option>
+                      ))}
+                    </select>
                   </motion.div>
                 )}
+              </AnimatePresence>
 
-                <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="relative group">
-                    <FaUser className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" />
-                    <input 
-                      type="text" placeholder="Nom complet" required 
-                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white rounded-2xl outline-none font-semibold text-slate-700 transition-all"
-                      onChange={(e) => setFormData({...formData, nom: e.target.value})} 
-                    />
-                  </div>
-                  <div className="relative group">
-                    <FaEnvelope className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" />
-                    <input 
-                      type="email" placeholder="Email" required 
-                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white rounded-2xl outline-none font-semibold text-slate-700 transition-all"
-                      onChange={(e) => setFormData({...formData, email: e.target.value})} 
-                    />
-                  </div>
-                </motion.div>
+              {/* BOUTON DE SOUMISSION */}
+              <motion.button 
+                whileHover={{ y: -1, boxShadow: "0 12px 25px -5px rgba(79,70,229,0.2)" }}
+                whileTap={{ y: 0 }}
+                type="submit" 
+                disabled={loading} 
+                className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold shadow-md transition-all flex justify-center items-center gap-2 disabled:opacity-70 text-sm mt-6"
+              >
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <>Créer mon compte <FaChevronRight size={10} /></>
+                )}
+              </motion.button>
+            </form>
+          )}
+        </AnimatePresence>
 
-                <motion.div variants={itemVariants} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="relative group">
-                    <FaUserTag className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors z-10" />
-                    <select 
-                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white rounded-2xl outline-none font-semibold text-slate-700 appearance-none cursor-pointer relative z-0" 
-                      value={formData.role} 
-                      onChange={(e) => setFormData({...formData, role: e.target.value})}
-                    >
-                      <option value="CLIENT">Client</option>
-                      <option value="CHAUFFEUR">Chauffeur</option>
-                      <option value="AGENCE">Agence</option>
-                    </select>
-                  </div>
-                  <div className="relative group">
-                    <FaLock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" />
-                    <input 
-                      type="password" placeholder="Mot de passe" required 
-                      className="w-full pl-12 pr-4 py-4 bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white rounded-2xl outline-none font-semibold text-slate-700 transition-all"
-                      onChange={(e) => setFormData({...formData, password: e.target.value})} 
-                    />
-                  </div>
-                </motion.div>
-
-                <AnimatePresence>
-                  {formData.role === 'CHAUFFEUR' && (
-                    <motion.div 
-                      initial={{ height: 0, opacity: 0 }} 
-                      animate={{ height: 'auto', opacity: 1 }} 
-                      exit={{ height: 0, opacity: 0 }}
-                      className="relative group overflow-hidden"
-                    >
-                      <FaBuilding className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors z-10" />
-                      <select 
-                        required
-                        className="w-full pl-12 pr-4 py-4 bg-indigo-50 border-2 border-indigo-100 focus:border-indigo-500 rounded-2xl outline-none font-bold text-indigo-900 appearance-none cursor-pointer" 
-                        value={formData.agenceId}
-                        onChange={(e) => setFormData({...formData, agenceId: e.target.value})}
-                      >
-                        <option value="">Choisir votre agence</option>
-                        {agences.map((agence) => (
-                          <option key={agence.id} value={agence.id}>{agence.nom}</option>
-                        ))}
-                      </select>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <motion.button 
-                  variants={itemVariants}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  type="submit" 
-                  disabled={loading} 
-                  className="w-full py-4 bg-slate-900 hover:bg-indigo-700 text-white rounded-2xl font-black shadow-xl shadow-slate-200 transition-all flex justify-center items-center gap-3 disabled:opacity-70"
-                >
-                  {loading ? (
-                    <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  ) : (
-                    <>CRÉER MON COMPTE <FaChevronRight size={14} /></>
-                  )}
-                </motion.button>
-              </form>
-            )}
-          </AnimatePresence>
-
-          <motion.p variants={itemVariants} className="mt-8 text-center text-slate-400 font-bold text-sm">
-            Déjà inscrit ? <Link to="/login" className="text-indigo-600 hover:underline decoration-2 underline-offset-4">Connectez-vous</Link>
-          </motion.p>
+        {/* PIED DE PAGE DE L'INSCRIPTION */}
+        <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-slate-400 font-medium">
+          <p>
+            Déjà inscrit ? 
+            <Link to="/login" className="text-indigo-600 hover:text-indigo-700 font-bold transition-colors ml-1 underline decoration-1 underline-offset-4">
+              Connectez-vous
+            </Link>
+          </p>
+          <div className="flex items-center gap-1 bg-slate-100/70 px-3 py-1.5 rounded-xl font-semibold text-slate-500">
+            <FaShieldAlt size={12} className="text-indigo-500" /> Données chiffrées
+          </div>
         </div>
+
       </motion.div>
     </div>
   );

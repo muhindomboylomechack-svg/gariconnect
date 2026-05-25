@@ -61,22 +61,29 @@ public class SecurityConfig {
         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
+
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
 
-        // MODIFICATION ICI : On autorise ton frontend local ET ton frontend en production
-        config.setAllowedOrigins(Arrays.asList(
-                "http://localhost:5173",             // Pour tes tests sur ton PC
-                "https://gariconnect.onrender.com"   // Pour la production (⚠️ Vérifie que c'est bien l'URL de ton FRONTEND, pas du backend)
+        // Accepte ton PC local ainsi que TOUS les sous-domaines provenant de *.onrender.com
+        config.setAllowedOriginPatterns(Arrays.asList(
+                "http://localhost:5173",
+                "https://*.onrender.com"
         ));
 
+        // Autorise toutes les méthodes HTTP nécessaires pour ton application SaaS
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "Accept"));
-        config.setAllowCredentials(true); // Indispensable pour que le token soit bien transmis
+
+        // Autorise les headers essentiels (y compris l'Authorization contenant ton Token JWT)
+        config.setAllowedHeaders(Arrays.asList("Authorization", "Cache-Control", "Content-Type", "Accept"));
+
+        // Indispensable pour que le token JWT et les cookies transitent correctement
+        config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
     }
+    
 }

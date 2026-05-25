@@ -1,31 +1,36 @@
 import axios from 'axios';
 
-// 1. Configuration hybride Local / Production
-// Si l'application est sur Render, elle utilise VITE_API_BASE_URL.
-// Si elle est sur ton PC en local, elle bascule automatiquement sur localhost:8080.
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+// 1. Détermination de l'environnement (Mode Production ou Local)
+// 'import.meta.env.PROD' est un booléen automatiquement fourni par Vite (vrai sur Render)
+const isProd = import.meta.env.PROD;
 
+// 2. Configuration des URLs de base selon l'environnement (Contenu de ton Image 2)
+const API_URL = isProd 
+  ? 'https://gariconnectbackend.onrender.com'  // URL de ton backend en production sur Render
+  : 'http://localhost:8080';                   // URL de ton backend en local sur ton PC
+
+// 3. Création de l'instance Axios
 const api = axios.create({
-  // On ajoute '/api' dynamiquement à l'URL choisie ci-dessus
   baseURL: `${API_URL}/api`,
-  
-  // Timeout pour éviter les requêtes infinies en cas de micro-coupure à Beni
-  timeout: 10000, 
+  timeout: 10000, // Timeout de sécurité pour les micro-coupures de connexion
 });
 
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  
-  // Sécurité : On vérifie que le token existe et est bien une chaîne de caractères
-  if (token && typeof token === 'string') {
-    // Nettoyage au cas où le token stocké contient déjà "Bearer "
-    const cleanToken = token.startsWith('Bearer ') ? token.split(' ')[1] : token;
-    config.headers.Authorization = `Bearer ${cleanToken}`;
+// 4. Intercepteur pour injecter automatiquement le Token JWT dans chaque requête
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    
+    if (token && typeof token === 'string') {
+      // Nettoyage au cas où le token stocké contiendrait par mégarde le préfixe "Bearer "
+      const cleanToken = token.startsWith('Bearer ') ? token.split(' ')[1] : token;
+      config.headers.Authorization = `Bearer ${cleanToken}`;
+    }
+    
+    return config;
+  }, 
+  (error) => {
+    return Promise.reject(error);
   }
-  
-  return config;
-}, (error) => {
-  return Promise.reject(error);
-});
+);
 
 export default api;

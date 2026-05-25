@@ -27,6 +27,7 @@ const Register = () => {
     const fetchAgences = async () => {
       try {
         const response = await axios.get('http://localhost:8080/api/auth/agences-liste');
+        
         setAgences(response.data);
       } catch (err) {
         console.error("Erreur lors de la récupération des agences:", err);

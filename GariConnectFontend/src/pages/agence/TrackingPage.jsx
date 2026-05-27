@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FaSearch, FaBox, FaTruckLoading, FaCheckCircle, FaMapMarkerAlt } from 'react-icons/fa';
-import axios from 'axios';
+// Import de l'instance API centralisée
+import api from '../../services/api'; 
 
 const TrackingPage = () => {
     const [code, setCode] = useState('');
@@ -16,8 +17,8 @@ const TrackingPage = () => {
         setResult(null);
 
         try {
-            // Note: On utilise un endpoint public ici
-            const res = await axios.get(`http://localhost:8080/api/public/track/${code}`);
+            // Remplacement d'axios par api. Le point d'entrée public est géré avec l'URL de base dynamique.
+            const res = await api.get(`/public/track/${code}`);
             setResult(res.data);
         } catch (err) {
             setError("Code de suivi invalide ou colis introuvable.");

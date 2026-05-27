@@ -7,7 +7,10 @@ import {
   FaUsers, FaHandshake, FaMoneyBillWave, FaTicketAlt, 
   FaSync, FaExclamationTriangle 
 } from 'react-icons/fa';
-import axios from 'axios';
+
+// 1. On importe notre instance personnalisée au lieu de l'axios standard
+// (Ajuste les '../' selon où se trouve ce fichier par rapport au dossier services)
+import api from '../../services/api'; 
 
 const DashboardAdmin = () => {
   const [data, setData] = useState({
@@ -26,11 +29,9 @@ const DashboardAdmin = () => {
     setLoading(true);
     setError(false);
     try {
-      const token = localStorage.getItem('token');
-      
-      const response = await axios.get('http://localhost:8080/api/admin/finances/stats-globales', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // 2. Plus besoin de récupérer le token manuellement ici, api.js s'en charge !
+      // 3. Plus besoin de l'URL complète, api.js ajoute automatiquement l'URL du serveur et '/api'
+      const response = await api.get('/admin/finances/stats-globales');
       
       const serverData = response.data;
 

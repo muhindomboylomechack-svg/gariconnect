@@ -4,7 +4,8 @@ import {
     FaEnvelopeOpenText, FaWeightHanging,
     FaCalendarAlt, FaCheckCircle, FaSpinner
 } from 'react-icons/fa';
-import axios from 'axios';
+// 1. Import de l'instance API centralisée
+import api from '../../services/api'; 
 // ✅ Importation du nouveau composant d'action
 import StatutActions from '../../component/StatutActions';
 
@@ -23,21 +24,19 @@ const CourriersPage = () => {
         type: 'COLIS' 
     });
 
-    const API_BASE = "http://localhost:8080/api";
+    // L'URL en dur API_BASE a été supprimée
 
     useEffect(() => {
         fetchTrajets();
         fetchCourriers();
     }, []);
 
-    const getAuthHeader = () => {
-        const token = localStorage.getItem('token');
-        return { headers: { Authorization: `Bearer ${token}` } };
-    };
+    // getAuthHeader n'est plus nécessaire car l'instance "api" ajoute le token automatiquement
 
     const fetchTrajets = async () => {
         try {
-            const res = await axios.get(`${API_BASE}/trajets/mes-trajets`, getAuthHeader());
+            // 2. Utilisation de l'instance "api"
+            const res = await api.get('/trajets/mes-trajets');
             setTrajets(res.data);
         } catch (err) { console.error("Erreur trajets:", err); }
     };
@@ -45,7 +44,7 @@ const CourriersPage = () => {
     const fetchCourriers = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_BASE}/agences/courriers`, getAuthHeader());
+            const res = await api.get('/agences/courriers');
             setCourriers(Array.isArray(res.data) ? res.data : []);
         } catch (err) { 
             console.error("Erreur courriers:", err);
@@ -71,7 +70,7 @@ const CourriersPage = () => {
     const handleDelete = async (id) => {
         if(window.confirm("Supprimer définitivement cet enregistrement ?")) {
             try {
-                await axios.delete(`${API_BASE}/agences/courriers/${id}`, getAuthHeader());
+                await api.delete(`/agences/courriers/${id}`);
                 fetchCourriers();
             } catch (err) { alert("Erreur lors de la suppression"); }
         }
@@ -90,9 +89,9 @@ const CourriersPage = () => {
             };
             
             if (selectedColis) {
-                await axios.put(`${API_BASE}/agences/courriers/${selectedColis.id}`, payload, getAuthHeader());
+                await api.put(`/agences/courriers/${selectedColis.id}`, payload);
             } else {
-                await axios.post(`${API_BASE}/agences/courriers/envoyer`, payload, getAuthHeader());
+                await api.post('/agences/courriers/envoyer', payload);
             }
             
             setShowModal(false);
@@ -203,7 +202,6 @@ const CourriersPage = () => {
                                             </div>
                                         </td>
                                         
-                                        {/* ✅ COLONNE 4 : STATUT MODIFIÉ POUR UTILISER LES NOUVEAUX BOUTONS */}
                                         <td className="px-8 py-6">
                                             <StatutActions 
                                                 courrierId={c.id} 
@@ -225,7 +223,7 @@ const CourriersPage = () => {
                     </div>
                 </div>
 
-                {/* MODAL FORMULAIRE (Inchangé mais conservé pour le code complet) */}
+                {/* MODAL FORMULAIRE */}
                 {showModal && (
                     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
                         <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[2.5rem] p-8 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">

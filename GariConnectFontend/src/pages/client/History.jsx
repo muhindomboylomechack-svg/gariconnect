@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { 
     FaHistory, FaBus, FaBox, FaSearch, 
     FaChevronRight, FaCalendarAlt, FaArrowLeft, FaStar
 } from 'react-icons/fa';
 import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+// Import de l'instance API centralisée
+import api from '../../services/api'; 
 
 const History = () => {
     const { t } = useTranslation();
@@ -14,28 +15,16 @@ const History = () => {
     const [historyData, setHistoryData] = useState({ tickets: [], colis: [] });
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState("");
-    
-    const API_BASE_URL = "http://localhost:8080/api";
 
     useEffect(() => {
         const fetchHistory = async () => {
             setLoading(true);
-            const token = localStorage.getItem('token');
-            
-            if (!token) {
-                navigate('/login');
-                return;
-            }
-
-            const config = { 
-                headers: { 'Authorization': `Bearer ${token.trim()}` } 
-            };
-            
             try {
-                // Appels simultanés au backend pour les réservations et les colis
+                // Utilisation de l'instance api : le token est géré par l'intercepteur
+                // et l'URL de base est configurée dans api.js
                 const [ticketsRes, colisRes] = await Promise.all([
-                    axios.get(`${API_BASE_URL}/reservations/mes-reservations`, config),
-                    axios.get(`${API_BASE_URL}/agences/courriers/mes-envois`, config)
+                    api.get('/reservations/mes-reservations'),
+                    api.get('/agences/courriers/mes-envois')
                 ]);
 
                 setHistoryData({
@@ -44,6 +33,10 @@ const History = () => {
                 });
             } catch (error) {
                 console.error("Erreur historique :", error);
+                // Si l'erreur est 401, on redirige vers le login
+                if (error.response?.status === 401) {
+                    navigate('/login');
+                }
             } finally {
                 setLoading(false);
             }
@@ -65,7 +58,7 @@ const History = () => {
           );
 
     const formatDate = (dateString) => {
-        if (!dateString) return t('back'); // Fallback si date absente
+        if (!dateString) return t('back');
         const date = new Date(dateString);
         return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
     };
@@ -90,7 +83,6 @@ const History = () => {
                         </div>
                     </div>
 
-                    {/* Quick Stats Cards */}
                     <div className="flex gap-3">
                         <div className="bg-white dark:bg-slate-800 p-4 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm flex-1 md:flex-none min-w-[120px]">
                             <p className="text-slate-400 text-[9px] font-black uppercase tracking-widest mb-1">{activeTab === 'voyages' ? 'Tickets' : 'Colis'}</p>
@@ -117,7 +109,7 @@ const History = () => {
                     </button>
                 </div>
 
-                {/* Barre de Recherche Dynamique */}
+                {/* Barre de Recherche */}
                 <div className="relative group mb-12">
                     <FaSearch className="absolute left-7 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
                     <input 
@@ -134,7 +126,7 @@ const History = () => {
                     {loading ? (
                         <div className="text-center py-24 bg-white dark:bg-slate-900 rounded-[3.5rem] shadow-sm border-2 border-dashed border-slate-100 dark:border-slate-800">
                              <div className="w-14 h-14 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-                             <p className="font-black text-[11px] uppercase tracking-[0.4em] text-blue-600 animate-pulse">Intelligence Sync...</p>
+                             <p className="font-black text-[11px] uppercase tracking-[0.4em] text-blue-600 animate-pulse">Sync...</p>
                         </div>
                     ) : filteredData.length === 0 ? (
                         <div className="text-center py-24 bg-white dark:bg-slate-900 rounded-[3.5rem] shadow-inner">
@@ -193,7 +185,6 @@ const History = () => {
                                             </p>
                                         </div>
 
-                                        {/* Bouton Action : Si voyage terminé, proposer l'évaluation */}
                                         <button 
                                             onClick={() => activeTab === 'voyages' && navigate(`/client/evaluate/${item.id}`)}
                                             className="group/btn bg-slate-50 dark:bg-slate-800 p-5 rounded-[1.5rem] text-slate-400 hover:bg-blue-600 hover:text-white transition-all shadow-sm hover:shadow-xl hover:shadow-blue-500/20 active:scale-95"

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Star, Send, CheckCircle2, MessageSquare } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import axios from 'axios';
+// Import de l'instance API centralisée
+import api from '../../services/api'; 
 
 const FormulaireEvaluation = ({ reservationId, onSubmited }) => {
     const { t } = useTranslation();
@@ -31,10 +32,9 @@ const FormulaireEvaluation = ({ reservationId, onSubmited }) => {
 
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
-            await axios.post('http://localhost:8080/api/evaluations/soumettre', formData, {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            // Utilisation de l'instance api (le token est envoyé automatiquement)
+            await api.post('/evaluations/soumettre', formData);
+            
             setSubmitted(true);
             if (onSubmited) onSubmited();
         } catch (error) {

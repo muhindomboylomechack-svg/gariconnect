@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+// Import de l'instance API centralisée
+import api from '../../services/api';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next'; // Hook de traduction
 import { 
-    FaUser, FaEnvelope, FaPhone, FaLock, 
+    FaUser, FaPhone, FaLock, 
     FaMoon, FaSun, FaArrowLeft, FaEdit, 
     FaSave, FaBell, FaShieldAlt, FaGlobe 
 } from 'react-icons/fa';
@@ -38,21 +39,12 @@ const Profil = () => {
         localStorage.getItem('theme') === 'dark'
     );
 
-    const API_BASE_URL = "http://localhost:8080/api/users";
-
     // Récupération des données au chargement
     useEffect(() => {
         const fetchProfil = async () => {
             try {
-                const token = localStorage.getItem('token');
-                if (!token) {
-                    window.location.href = '/login';
-                    return;
-                }
-
-                const response = await axios.get(`${API_BASE_URL}/profile`, {
-                    headers: { 'Authorization': `Bearer ${token.trim()}` }
-                });
+                // Utilisation de l'instance api centralisée
+                const response = await api.get('/users/profile');
 
                 setUserData({
                     nom: response.data.nom || '',
@@ -96,10 +88,7 @@ const Profil = () => {
     const handleSave = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
-            await axios.patch(`${API_BASE_URL}/profile`, userData, {
-                headers: { 'Authorization': `Bearer ${token.trim()}` }
-            });
+            await api.patch('/users/profile', userData);
             
             setMessage({ text: t('success_msg'), type: 'success' });
             setIsEditing(false);
@@ -120,14 +109,10 @@ const Profil = () => {
 
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
-            await axios.patch(`${API_BASE_URL}/change-password`, 
-                { 
-                    oldPassword: passwords.oldPassword, 
-                    newPassword: passwords.newPassword 
-                },
-                { headers: { 'Authorization': `Bearer ${token.trim()}` } }
-            );
+            await api.patch('/users/change-password', { 
+                oldPassword: passwords.oldPassword, 
+                newPassword: passwords.newPassword 
+            });
             
             setMessage({ text: t('success_msg'), type: 'success' });
             setIsChangingPassword(false);
@@ -312,18 +297,12 @@ const Profil = () => {
                     </div>
 
                     {/* Carte 4 : Préférences */}
-                    
-                    {/* Carte 4 : Préférences */}
-<div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/20 dark:shadow-none">
-    <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-6 flex items-center gap-3">
-        {/* CHANGEMENT ICI : On utilise t('preferences') */}
-        <FaBell className="text-blue-500" /> {t('preferences')}
-    </h3>
+                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/20 dark:shadow-none">
+                        <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tight mb-6 flex items-center gap-3">
+                            <FaBell className="text-blue-500" /> {t('preferences')}
+                        </h3>
 
-    <div className="space-y-4">
-        {/* ... reste du code */}
-
-                        
+                        <div className="space-y-4">
                             <div className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl">
                                 <div className="flex items-center gap-4">
                                     <div className={`p-3 rounded-xl ${isDarkMode ? 'bg-slate-700 text-yellow-400' : 'bg-slate-200 text-slate-600'}`}>

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+// 1. Import de l'instance API personnalisée au lieu d'axios standard
+// (Ajuste les '../' en fonction de l'emplacement de ce fichier)
+import api from '../../services/api';
 import { FaHandshake, FaPercentage, FaCheckCircle, FaUserTie, FaSync } from 'react-icons/fa';
 
 const GestionCommissions = () => {
@@ -7,7 +9,7 @@ const GestionCommissions = () => {
     const [loading, setLoading] = useState(true);
     const [updatingId, setUpdatingId] = useState(null);
 
-    const API_URL = "http://localhost:8080/api/users";
+    // L'URL en dur a été supprimée, l'instance "api" gère l'URL de base !
 
     useEffect(() => {
         chargerAgences();
@@ -15,9 +17,8 @@ const GestionCommissions = () => {
 
     const chargerAgences = async () => {
         try {
-            const response = await axios.get(API_URL, {
-                headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-            });
+            // 2. Appel direct via "api.get" : l'URL de base et le Token sont injectés automatiquement
+            const response = await api.get('/users');
             const uniquementAgences = response.data.filter(u => u.role === 'AGENCE');
             setAgences(uniquementAgences);
         } catch (error) {
@@ -35,10 +36,9 @@ const GestionCommissions = () => {
 
         setUpdatingId(id);
         try {
-            await axios.patch(`${API_URL}/${id}/commission`, 
-                { taux: parseFloat(nouveauTaux) },
-                { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } }
-            );
+            // 3. Appel direct via "api.patch" : plus besoin de gérer le localStorage ici non plus
+            await api.patch(`/users/${id}/commission`, { taux: parseFloat(nouveauTaux) });
+            
             // Notification stylisée (on peut imaginer un toast ici)
             chargerAgences(); 
         } catch (error) {

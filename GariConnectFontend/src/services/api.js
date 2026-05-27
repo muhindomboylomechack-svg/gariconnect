@@ -12,7 +12,7 @@ const isProduction = import.meta.env.PROD || window.location.hostname.includes('
  * - Si isProduction est vrai : On utilise l'URL Render.
  * - Sinon : On utilise localhost pour ton développement local.
  */
-const API_URL = isProduction 
+export const API_URL = isProduction 
   ? 'https://gariconnectbackend.onrender.com' 
   : 'http://localhost:8080';
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+// Import de l'instance API centralisée
+import api from '../../services/api';
 import { useTranslation } from 'react-i18next'; // Hook pour les langues
 import { useAuth } from '../../context/AuthContext';
 import { 
@@ -27,15 +28,11 @@ const ReservationPage = () => {
 
     const [darkMode, setDarkMode] = useState(localStorage.getItem('client-theme') === 'dark');
 
-    const API_BASE_URL = "http://localhost:8080/api";
-
     useEffect(() => {
         const fetchTrajet = async () => {
-            const token = localStorage.getItem('token');
             try {
-                const res = await axios.get(`${API_BASE_URL}/trajets/tous`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                // Utilisation de l'instance api centralisée
+                const res = await api.get('/trajets/tous');
                 const found = res.data.find(t => t.id === parseInt(id));
                 setTrajet(found);
                 
@@ -53,7 +50,6 @@ const ReservationPage = () => {
     }, [id]);
 
     const handleFinalSubmit = async (isCash = false) => {
-        const token = localStorage.getItem('token');
         
         if (!user?.id) return alert(t('auth_error') || "Reconnectez-vous.");
         if (!selectedSeat) return alert(t('select_seat_error') || "Choisissez un siège.");
@@ -70,17 +66,15 @@ const ReservationPage = () => {
                 statut: "ATTENTE_PAIEMENT"
             };
 
-            const resReservation = await axios.post(`${API_BASE_URL}/reservations`, reservationPayload, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            // Utilisation de l'instance api centralisée
+            const resReservation = await api.post('/reservations', reservationPayload);
 
             const reservationId = resReservation.data.id;
             const mode = isCash ? "CASH" : paymentData.modePaiement;
             const ref = isCash ? "CAISSE" : paymentData.referenceTransaction;
 
-            await axios.post(`${API_BASE_URL}/paiements/payer/${reservationId}?mode=${mode}&reference=${ref}`, {}, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            // Utilisation de l'instance api centralisée
+            await api.post(`/paiements/payer/${reservationId}?mode=${mode}&reference=${ref}`, {});
             
             alert(isCash ? t('success_cash') : t('success_mobile'));
             navigate('/client/dashboard');
@@ -141,7 +135,6 @@ const ReservationPage = () => {
                             </div>
                         ) : (
                             <>
-                                {/* Le select et ses options possèdent des couleurs forcées pour le Dark Mode */}
                                 <select 
                                     className={`w-full p-5 rounded-[1.5rem] outline-none font-black text-xl text-center border-2 appearance-none transition-all cursor-pointer ${
                                         darkMode 

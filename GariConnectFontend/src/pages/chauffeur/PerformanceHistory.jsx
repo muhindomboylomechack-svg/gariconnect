@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { FaStar, FaShieldAlt, FaClock } from 'react-icons/fa';
-import axios from 'axios';
+// Importation de l'instance API centralisée
+import api from '../../services/api'; 
 
 const PerformanceHistory = () => {
     const [data, setData] = useState(null);
@@ -10,6 +11,7 @@ const PerformanceHistory = () => {
     useEffect(() => {
         const fetchPerformance = async () => {
             try {
+                // On garde la vérification pour éviter un appel inutile si pas de token
                 const token = localStorage.getItem('token'); 
                 if (!token) {
                     setErrorMsg("Session expirée. Veuillez vous reconnecter.");
@@ -17,9 +19,8 @@ const PerformanceHistory = () => {
                     return;
                 }
 
-                const response = await axios.get('http://localhost:8080/api/evaluations/mon-rapport', {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                // Utilisation de l'instance api : URL dynamique et Token automatique
+                const response = await api.get('/evaluations/mon-rapport');
                 setData(response.data);
             } catch (error) {
                 console.error("Erreur API:", error);

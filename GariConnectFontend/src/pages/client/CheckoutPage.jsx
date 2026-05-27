@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+// Import de l'instance API centralisée
+import api from '../../services/api'; 
 import { useTranslation } from 'react-i18next';
 import { FaChair, FaMobileAlt, FaMoneyBillWave, FaUniversity, FaCheckCircle } from 'react-icons/fa';
 
@@ -15,11 +16,9 @@ const CheckoutPage = () => {
 
     useEffect(() => {
         const fetchDetails = async () => {
-            const token = localStorage.getItem('token');
             try {
-                const res = await axios.get(`http://localhost:8080/api/reservations/${id}`, {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                // Utilisation de api.get (le token est injecté automatiquement)
+                const res = await api.get(`/reservations/${id}`);
                 setReservation(res.data);
             } catch (error) {
                 console.error("Erreur lors de la récupération :", error);
@@ -30,15 +29,12 @@ const CheckoutPage = () => {
     }, [id, t]);
 
     const handleFinaliser = async () => {
-        const token = localStorage.getItem('token');
         try {
-            await axios.patch(`http://localhost:8080/api/reservations/${id}/finaliser`, 
-                { 
-                    siege: selectedSiege, 
-                    modePaiement: modePaiement 
-                },
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
+            // Utilisation de api.patch (le token est injecté automatiquement)
+            await api.patch(`/reservations/${id}/finaliser`, { 
+                siege: selectedSiege, 
+                modePaiement: modePaiement 
+            });
             
             if (modePaiement === "CASH") {
                 alert(t('checkout.success_cash'));

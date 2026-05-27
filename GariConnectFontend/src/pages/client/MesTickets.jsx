@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import axios from 'axios';
+// Import de l'instance API centralisée
+import api from '../../services/api'; 
 import TicketCard from './TicketCard';
 import { FaBus, FaArrowLeft, FaTicketAlt } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
@@ -14,16 +15,9 @@ const MesTickets = () => {
     useEffect(() => {
         const fetchMyTickets = async () => {
             try {
-                const token = localStorage.getItem('token');
-                if (!token) {
-                    setError("auth_error"); // Clé de traduction générique ou message
-                    setLoading(false);
-                    return;
-                }
-
-                const response = await axios.get('http://localhost:8080/api/reservations/mes-reservations', {
-                    headers: { Authorization: `Bearer ${token}` }
-                });
+                // Utilisation de l'instance api : le token est injecté via l'intercepteur
+                // et l'URL est préfixée par la base configurée dans api.js
+                const response = await api.get('/reservations/mes-reservations');
                 
                 setMesReservations(response.data);
             } catch (err) {
@@ -45,7 +39,7 @@ const MesTickets = () => {
                     <FaBus className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-blue-600 animate-pulse" />
                 </div>
                 <p className="mt-6 text-slate-400 font-black uppercase tracking-widest text-xs italic">
-                    {t('eval.sending').replace('...', '')} {/* Réutilisation de la clé "Envoi/Chargement" */}
+                    {t('eval.sending').replace('...', '')} 
                     ...
                 </p>
             </div>

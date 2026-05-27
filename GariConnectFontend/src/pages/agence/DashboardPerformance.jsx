@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../../services/api'; // Importation de l'instance centralisée
 import { 
     BarChart3, TrendingUp, AlertTriangle, Users, 
     Star, ArrowRight, RefreshCw, 
@@ -18,10 +18,10 @@ const DashboardPerformance = () => {
     const fetchPerformanceData = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
-            const response = await axios.get('http://localhost:8080/api/evaluations/rapport-performance', {
-                headers: { 'Authorization': `Bearer ${token}` }
-            });
+            // Remplacement d'axios par api. 
+            // L'URL de base et le token d'autorisation sont gérés automatiquement.
+            const response = await api.get('/evaluations/rapport-performance');
+            
             setStats(response.data);
             setError(null);
         } catch (error) {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+// Import de l'instance API centralisée
+import api from '../../services/api'; 
 import { useAuth } from '../../context/AuthContext';
 import { FaUser, FaEnvelope, FaLock, FaChevronRight, FaBus, FaUserTag, FaBuilding, FaShieldAlt, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -26,7 +27,8 @@ const Register = () => {
   useEffect(() => {
     const fetchAgences = async () => {
       try {
-        const response = await axios.get('http://localhost:8080/api/auth/agences-liste');
+        // Utilisation de l'instance api
+        const response = await api.get('/auth/agences-liste');
         
         setAgences(response.data);
       } catch (err) {
@@ -51,7 +53,8 @@ const Register = () => {
     };
 
     try {
-      const response = await axios.post('http://localhost:8080/api/auth/register', dataToSubmit);
+      // Utilisation de l'instance api
+      const response = await api.post('/auth/register', dataToSubmit);
       const userData = response.data;
 
       if (formData.role === 'CLIENT') {
@@ -204,7 +207,7 @@ const Register = () => {
                     exit={{ height: 0, opacity: 0, marginTop: 0 }}
                     className="relative group overflow-hidden"
                   >
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-500性能 z-10 pointer-events-none">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-500 z-10 pointer-events-none">
                       <FaBuilding size={15} />
                     </span>
                     <select 

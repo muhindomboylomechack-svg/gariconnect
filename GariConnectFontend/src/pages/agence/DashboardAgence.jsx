@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
     FaBus, FaRoute, FaTicketAlt, FaWallet, FaUserTie, 
     FaChartLine, FaPhone, FaEnvelope, FaTimes, FaWhatsapp, 
-    FaSearch, FaSync, FaCheckCircle, FaBoxOpen, FaPlus 
+    FaSearch, FaSync, FaCheckCircle, FaBoxOpen,
+    FaUserCheck, FaClock, FaFlagCheckered, FaBoxes, FaMailBulk
 } from 'react-icons/fa';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
@@ -25,7 +26,14 @@ const DashboardAgence = () => {
         trajetCount: 0,
         chauffeurCount: 0,
         reservationCount: 0,
-        revenuTotal: 0
+        revenuTotal: 0,
+        // Compteurs pour les chauffeurs
+        chauffeursDisponibles: 0, 
+        chauffeursEnCourse: 0,
+        chauffeursTermines: 0,
+        // Compteurs pour les colis / courriers
+        colisCount: 0,
+        courrierCount: 0
     });
     
     const [graphData, setGraphData] = useState([]);
@@ -35,17 +43,21 @@ const DashboardAgence = () => {
     const [trajetsEnRoute, setTrajetsEnRoute] = useState([]);
     const [listeChauffeurs, setListeChauffeurs] = useState([]);
     const [searchTerm, setSearchTerm] = useState("");
-    
-    // Nouveaux états pour les actions rapides
-    const [ticketInput, setTicketInput] = useState("");
-    const [validationMsg, setValidationMsg] = useState({ type: '', text: '' });
 
     // --- CHARGEMENT DES DONNÉES ---
     const fetchDashboardData = async () => {
         setLoading(true);
         try {
             const resStats = await api.get('/agences/stats');
-            setStats(resStats.data);
+            setStats(prev => ({
+                ...prev,
+                ...resStats.data,
+                chauffeursDisponibles: resStats.data.chauffeursDisponibles || 0,
+                chauffeursEnCourse: resStats.data.chauffeursEnCourse || 0,
+                chauffeursTermines: resStats.data.chauffeursTermines || 0,
+                colisCount: resStats.data.colisCount || 0,
+                courrierCount: resStats.data.courrierCount || 0
+            }));
 
             try {
                 const resGraph = await api.get('/agences/stats-paiements-semaine');
@@ -64,23 +76,6 @@ const DashboardAgence = () => {
     useEffect(() => {
         fetchDashboardData();
     }, []);
-
-    // --- LOGIQUE DE VALIDATION TICKET ---
-    const handleValidateTicket = async (e) => {
-        e.preventDefault();
-        if(!ticketInput) return;
-        
-        try {
-            // Simulation ou appel API réel
-            // await api.post(`/reservations/valider/${ticketInput}`);
-            setValidationMsg({ type: 'success', text: `Billet ${ticketInput} validé !` });
-            setTicketInput("");
-            fetchDashboardData();
-        } catch (err) {
-            setValidationMsg({ type: 'error', text: "Numéro de billet invalide" });
-        }
-        setTimeout(() => setValidationMsg({ type: '', text: '' }), 4000);
-    };
 
     // --- SUIVI GPS ---
     useEffect(() => {
@@ -157,31 +152,35 @@ const DashboardAgence = () => {
             {/* --- SECTION ACTIONS & OPS --- */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 
-                {/* 1. Validation de Ticket Rapide */}
-                <div className="lg:col-span-1 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm">
-                    <h3 className="font-black text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2 uppercase text-xs tracking-widest">
-                        <FaCheckCircle className="text-blue-500" /> Validation Express
-                    </h3>
-                    <form onSubmit={handleValidateTicket} className="space-y-4">
-                        <input 
-                            type="text" 
-                            placeholder="ID du ticket..." 
-                            value={ticketInput}
-                            onChange={(e) => setTicketInput(e.target.value)}
-                            className="w-full p-5 bg-slate-50 dark:bg-slate-800/50 border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none font-black text-center transition-all"
-                        />
-                        <button className="w-full py-5 bg-slate-900 dark:bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest hover:scale-[1.02] transition-all">
-                            Valider la présence
-                        </button>
-                    </form>
-                    {validationMsg.text && (
-                        <p className={`mt-4 text-center font-black text-[10px] uppercase animate-pulse ${validationMsg.type === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
-                            {validationMsg.text}
-                        </p>
-                    )}
+                {/* 1. Validation Express & Suivi Chauffeurs */}
+                <div className="lg:col-span-1 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between">
+                    <div>
+                        <h3 className="font-black text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2 uppercase text-xs tracking-widest">
+                            <FaCheckCircle className="text-blue-500" /> Mes Chauffeurs
+                        </h3>
+                        
+                        {/* États temps réel des chauffeurs */}
+                        <div className="grid grid-cols-3 gap-2">
+                            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl text-center">
+                                <FaUserCheck className="text-emerald-500 mx-auto mb-1" size={14} />
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Dispo / Livré</p>
+                                <span className="font-black text-emerald-600 dark:text-emerald-400 text-sm">{stats.chauffeursDisponibles}</span>
+                            </div>
+                            <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/30 rounded-2xl text-center">
+                                <FaClock className="text-blue-500 mx-auto mb-1" size={14} />
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">En Course</p>
+                                <span className="font-black text-blue-600 dark:text-blue-400 text-sm">{stats.chauffeursEnCourse}</span>
+                            </div>
+                            <div className="p-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl text-center">
+                                <FaFlagCheckered className="text-slate-500 mx-auto mb-1" size={14} />
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Terminé</p>
+                                <span className="font-black text-slate-700 dark:text-slate-300 text-sm">{stats.chauffeursTermines}</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
-                {/* 2. Gestion Colis (Nouveau) */}
+                {/* 2. Flux Colis */}
                 <div className="lg:col-span-1 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between">
                     <div>
                         <h3 className="font-black text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2 uppercase text-xs tracking-widest">
@@ -189,17 +188,29 @@ const DashboardAgence = () => {
                         </h3>
                         <div className="space-y-3">
                             <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex justify-between items-center border border-slate-100 dark:border-slate-800">
-                                <span className="text-[10px] font-black text-slate-400 uppercase">En attente d'envoi</span>
-                                <span className="font-black text-orange-500">12</span>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-orange-500/10 rounded-xl text-orange-500">
+                                        <FaBoxes size={14} />
+                                    </div>
+                                    <span className="text-[10px] font-black text-slate-400 uppercase">Nombre de colis</span>
+                                </div>
+                                <span className="font-black text-orange-500 text-lg">{stats.colisCount}</span>
+                            </div>
+
+                            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex justify-between items-center border border-slate-100 dark:border-slate-800">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-cyan-500/10 rounded-xl text-cyan-500">
+                                        <FaMailBulk size={14} />
+                                    </div>
+                                    <span className="text-[10px] font-black text-slate-400 uppercase">Nombre de courriers</span>
+                                </div>
+                                <span className="font-black text-cyan-500 text-lg">{stats.courrierCount}</span>
                             </div>
                         </div>
                     </div>
-                    <button className="mt-6 p-5 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl text-slate-400 hover:text-blue-500 hover:border-blue-500 transition-all flex items-center justify-center gap-2 font-black text-[10px] uppercase">
-                        <FaPlus /> Enregistrer un colis
-                    </button>
                 </div>
 
-                {/* 3. Personnel & GPS (Ton code original condensé) */}
+                {/* 3. Personnel & GPS */}
                 <div className="lg:col-span-1 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between">
                     <h3 className="font-black text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2 uppercase text-xs tracking-widest">
                         <FaUserTie className="text-indigo-500" /> Mon Personnel
@@ -249,9 +260,102 @@ const DashboardAgence = () => {
                 </div>
             </div>
 
-            {/* --- MODALS (GPS & CHAUFFEURS) --- */}
-            {/* Garde ici ton code actuel pour le modal Leaflet et le modal Chauffeurs (identique à ton fichier original) */}
-            {/* ... */}
+            {/* --- MODAL CHAUFFEURS DIRECTEMENT INTÉGRÉ --- */}
+            {showSupport && (
+                <div className="fixed inset-0 z-[50] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                            <div>
+                                <h3 className="font-black text-slate-800 dark:text-slate-100 uppercase text-xs tracking-widest">Annuaire du Personnel</h3>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">Équipe opérationnelle</p>
+                            </div>
+                            <button onClick={() => setShowSupport(false)} className="p-3 bg-white dark:bg-slate-800 hover:text-red-500 rounded-full border border-slate-100 dark:border-slate-700 shadow-sm transition-all">
+                                <FaTimes size={14} />
+                            </button>
+                        </div>
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900/30 border-b border-slate-100 dark:border-slate-800">
+                            <div className="relative">
+                                <FaSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={12} />
+                                <input 
+                                    type="text" 
+                                    placeholder="Rechercher un membre de l'équipe..." 
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-3 bg-white dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl outline-none font-medium text-xs text-slate-700 dark:text-slate-200 focus:border-blue-500 shadow-sm transition-all"
+                                />
+                            </div>
+                        </div>
+                        <div className="p-6 overflow-y-auto space-y-3 flex-1 bg-white dark:bg-slate-900">
+                            {listeChauffeurs.filter(c => (c.nom || '').toLowerCase().includes(searchTerm.toLowerCase())).map((chauffeur) => {
+                                const status = getStatusDetails(chauffeur.statut);
+                                return (
+                                    <div key={chauffeur.id} className="p-4 border border-slate-100 dark:border-slate-800/80 rounded-2xl flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-all group">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-slate-200 to-slate-100 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center font-black text-slate-600 dark:text-slate-300 text-xs italic border border-slate-200 dark:border-slate-600">
+                                                {chauffeur.nom ? chauffeur.nom.substring(0, 2).toUpperCase() : 'CH'}
+                                            </div>
+                                            <div>
+                                                <h4 className="font-black text-slate-800 dark:text-slate-200 text-xs uppercase tracking-tight">{chauffeur.nom || 'Chauffeur anonyme'}</h4>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full uppercase ${status.bg} ${status.color}`}>
+                                                        {status.label}
+                                                    </span>
+                                                    <span className="text-[10px] text-slate-400 font-medium">{chauffeur.email}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            {chauffeur.telephone && (
+                                                <>
+                                                    <a href={`tel:${chauffeur.telephone}`} className="p-3 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-blue-500 hover:text-white transition-all border border-slate-100 dark:border-slate-700">
+                                                        <FaPhone size={12} />
+                                                    </a>
+                                                    <a href={`https://wa.me/${chauffeur.telephone.replace(/[^0-9]/g, '')}`} target="_blank" rel="noopener noreferrer" className="p-3 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-emerald-500 rounded-xl hover:bg-emerald-500 hover:text-white transition-all border border-slate-100 dark:border-slate-700">
+                                                        <FaWhatsapp size={12} />
+                                                    </a>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* --- MODAL CARTES GPS --- */}
+            {showMap && (
+                <div className="fixed inset-0 z-[50] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-200">
+                    <div className="bg-white dark:bg-slate-900 w-full max-w-4xl h-[75vh] rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col">
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                            <div>
+                                <h3 className="font-black text-slate-800 dark:text-slate-100 uppercase text-xs tracking-widest">Suivi Cartographique</h3>
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-0.5">Position en direct de la flotte en route</p>
+                            </div>
+                            <button onClick={() => setShowMap(false)} className="p-3 bg-white dark:bg-slate-800 hover:text-red-500 rounded-full border border-slate-100 dark:border-slate-700 shadow-sm transition-all">
+                                <FaTimes size={14} />
+                            </button>
+                        </div>
+                        <div className="flex-1 relative z-10">
+                            <MapContainer center={[-2.5, 28.8]} zoom={6} style={{ height: '100%', width: '100%' }}>
+                                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                                {trajetsEnRoute.filter(t => t.latitude && t.longitude).map((trajet) => (
+                                    <Marker key={trajet.id} position={[trajet.latitude, trajet.longitude]} icon={busIcon}>
+                                        <Popup>
+                                            <div className="p-2 font-sans">
+                                                <h4 className="font-black text-slate-800 uppercase text-xs tracking-tight">{trajet.depart} → {trajet.destination}</h4>
+                                                <p className="text-[10px] font-bold text-blue-600 uppercase mt-1">Chauffeur: {trajet.chauffeurNom || 'Assigné'}</p>
+                                                <p className="text-[9px] text-slate-400 font-medium mt-0.5">Vitesse: {trajet.vitesse || 0} km/h</p>
+                                            </div>
+                                        </Popup>
+                                    </Marker>
+                                ))}
+                            </MapContainer>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

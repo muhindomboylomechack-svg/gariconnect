@@ -87,6 +87,7 @@ package com.example.gariconnectbackend.controller;
 
 import com.example.gariconnectbackend.model.Notification;
 import com.example.gariconnectbackend.model.Role;
+import com.example.gariconnectbackend.model.Trajet;
 import com.example.gariconnectbackend.model.User;
 import com.example.gariconnectbackend.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -112,7 +113,7 @@ public class AgenceController {
     @Autowired private PaiementRepository paiementRepository; // Ajouté
     @Autowired private NotificationRepository notificationRepository;
     @Autowired private CommissionDetteRepository commissionRepo;
-
+    @Autowired private CourrierRepository courrierRepository;
 
 
     private User getAuthenticatedAgence() {
@@ -120,7 +121,60 @@ public class AgenceController {
         return userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Agence non trouvée"));
     }
+    @GetMapping("/stats")
+    public ResponseEntity<?> getStats() {
+        try {
+            User agence = getAuthenticatedAgence();
+            Map<String, Object> stats = new HashMap<>();
 
+            // 1. Calcul du Revenu Total propre à l'agence (Paiements SUCCES)
+            Double revenu = paiementRepository.sumMontantByStatutAndTrajet_Agence("SUCCES", agence);
+            stats.put("revenuTotal", revenu != null ? revenu : 0.0);
+
+            // 2. Compteurs classiques
+            stats.put("busCount", vehiculeRepository.countByAgence(agence));
+            stats.put("trajetCount", trajetRepository.countByAgenceAndStatut(agence, "EN_ROUTE"));
+            stats.put("reservationCount", reservationRepository.countByTrajet_Agence(agence));
+
+            long totalChauffeurs = userRepository.countByAgenceAndRole(agence, Role.CHAUFFEUR);
+            stats.put("chauffeurCount", totalChauffeurs);
+
+            // 3. STATISTIQUES RÉELLES DES CHAUFFEURS (Basées sur les Trajets)
+            List<Trajet> trajetsAgence = trajetRepository.findByAgence(agence);
+
+            long chauffeursEnCourse = trajetsAgence.stream()
+                    .filter(t -> "EN_ROUTE".equalsIgnoreCase(t.getStatut()) && t.getChauffeur() != null)
+                    .map(t -> t.getChauffeur().getId())
+                    .distinct()
+                    .count();
+
+            long chauffeursTermines = trajetsAgence.stream()
+                    .filter(t -> "TERMINE".equalsIgnoreCase(t.getStatut()) && t.getChauffeur() != null)
+                    .map(t -> t.getChauffeur().getId())
+                    .distinct()
+                    .count();
+
+            long chauffeursDisponibles = Math.max(0, totalChauffeurs - chauffeursEnCourse);
+
+            stats.put("chauffeursDisponibles", chauffeursDisponibles);
+            stats.put("chauffeursEnCourse", chauffeursEnCourse);
+            stats.put("chauffeursTermines", chauffeursTermines);
+
+            // 4. STATISTIQUES RÉELLES DU FLUX DE COLIS ET COURRIERS
+            // On compte la taille de la liste retournée par ton filtre personnalisé
+            long colisCount = courrierRepository.findByAgenceAndType(agence, "COLIS").size();
+            long courrierCount = courrierRepository.findByAgenceAndType(agence, "COURRIER").size();
+
+            stats.put("colisCount", colisCount);
+            stats.put("courrierCount", courrierCount);
+
+            return ResponseEntity.ok(stats);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Erreur lors de la récupération des stats agence : " + e.getMessage());
+        }
+    }
 
     @GetMapping("/chauffeurs")
    // @GetMapping("/mes-chauffeurs")
@@ -141,27 +195,7 @@ public class AgenceController {
         // Assurez-vous que cette méthode existe dans votre trajetRepository
         return ResponseEntity.ok(trajetRepository.findByAgenceAndStatut(agence, "EN_ROUTE"));
     }
-    @GetMapping("/stats")
-    public ResponseEntity<?> getStats() {
-        try {
-            User agence = getAuthenticatedAgence();
-            Map<String, Object> stats = new HashMap<>();
 
-            // 1. Calcul du Revenu Total propre à l'agence (Paiements SUCCES)
-            Double revenu = paiementRepository.sumMontantByStatutAndTrajet_Agence("SUCCES", agence);
-            stats.put("revenuTotal", revenu != null ? revenu : 0.0);
-
-            // 2. Autres compteurs
-            stats.put("busCount", vehiculeRepository.countByAgence(agence));
-            stats.put("trajetCount", trajetRepository.countByAgenceAndStatut(agence, "EN_ROUTE"));
-            stats.put("chauffeurCount", userRepository.countByAgenceAndRole(agence, Role.CHAUFFEUR));
-            stats.put("reservationCount", reservationRepository.countByTrajet_Agence(agence));
-
-            return ResponseEntity.ok(stats);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erreur lors de la récupération des stats agence");
-        }
-    }
 
        @GetMapping("/mes-trajets")
     public ResponseEntity<?> getMesTrajets() {

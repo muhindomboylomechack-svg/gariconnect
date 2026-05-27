@@ -1,5 +1,5 @@
 // Import de l'instance API centralisée
-import api from '../../services/api';
+import api from './api';
 
 export const notificationService = {
     

@@ -7,7 +7,7 @@ import {
 } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const AdminLayout = () => {
+const SuperAdminLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -175,4 +175,4 @@ const AdminLayout = () => {
   );
 };
 
-export default AdminLayout;
+export default SuperAdminLayout;

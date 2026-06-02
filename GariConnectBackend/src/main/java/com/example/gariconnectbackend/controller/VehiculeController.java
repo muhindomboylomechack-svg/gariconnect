@@ -104,7 +104,7 @@ public class VehiculeController {
 
     // NOUVEL ENDPOINT : Récupérer les véhicules par trajet
     @GetMapping("/par-trajet")
-    @PreAuthorize("hasAnyRole('AGENCE', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('AGENCY_MANAGER', 'SUPER_ADMIN')")
     public ResponseEntity<?> getVehiculesParTrajet(@RequestParam Long trajetId) {
         try {
             String emailAgence = SecurityContextHolder.getContext().getAuthentication().getName();

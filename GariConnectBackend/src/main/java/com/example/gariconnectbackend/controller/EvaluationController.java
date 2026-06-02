@@ -27,7 +27,7 @@ public class EvaluationController {
 
     // --- DASHBOARD AGENCE ---
     @GetMapping("/rapport-performance")
-    @PreAuthorize("hasAnyRole('AGENCE', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('AGENCY_ADMIN','AGENCY_MANAGER','SUPER_ADMIN')")
     public ResponseEntity<Map<String, Object>> getRapportPerformance() {
         return ResponseEntity.ok(evaluationService.genererRapportPerformance());
     }
@@ -35,7 +35,7 @@ public class EvaluationController {
     // --- SOUMISSION DU FORMULAIRE ---
     // Ajout du rôle 'AGENCE' pour permettre vos tests actuels sans erreur 403[cite: 17]
     @PostMapping("/soumettre")
-    @PreAuthorize("hasAnyRole('CLIENT', 'USER', 'AGENCE', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('CLIENT', 'USER', 'AGENC','SUPER_ADMIN')")
     public ResponseEntity<?> soumettre(@Valid @RequestBody EvaluationRequestDTO dto) {
         try {
             String email = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
@@ -54,7 +54,7 @@ public class EvaluationController {
 
     // --- VÉRIFICATION DE LA LIMITE ---
     @GetMapping("/count/{reservationId}")
-    @PreAuthorize("hasAnyRole('CLIENT', 'USER', 'AGENCE', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('CLIENT', 'USER', 'AGENCE','SUPER_ADMIN')")
     public ResponseEntity<?> getCount(@PathVariable Long reservationId) {
         String email = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication().getName();
         User client = userRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));

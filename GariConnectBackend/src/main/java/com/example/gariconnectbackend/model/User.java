@@ -19,8 +19,7 @@ public class User {
 
     @Column(unique = true, nullable = false)
     private String email;
-
-    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
+    @JsonProperty(value = "password", access = JsonProperty.Access.WRITE_ONLY)
     @Column(name = "mot_de_passe", nullable = false)
     private String password;
 
@@ -67,17 +66,30 @@ public class User {
     @OneToMany(mappedBy = "destinataire")
     @JsonIgnore
     private List<Notification> notifications;
-
     @PrePersist
     protected void onCreate() {
         this.dateInscription = LocalDateTime.now();
+
+        // Sécurité : si la valeur est toujours null juste avant l'insertion, on la force
+        if (this.mustChangePassword == null) {
+            this.mustChangePassword = false; // Par défaut false, sauf si on a dit true explicitement comme ci-dessus
+        }
     }
-    // --- GETTERS ET SETTERS MANUELS (Sécurité si Lombok ne compile pas) ---
+
     public String getNom() { return nom; }
     public void setNom(String nom) { this.nom = nom; }
 
     public String getPrenom() { return prenom; }
     public void setPrenom(String prenom) { this.prenom = prenom; }
+    // Ajoutez ceci dans votre classe User.java (juste après vos champs)
+
+    public LocalDateTime getDateInscription() {
+        return dateInscription;
+    }
+
+    public void setDateInscription(LocalDateTime dateInscription) {
+        this.dateInscription = dateInscription;
+    }
 
     public Double getTauxCommission() { return tauxCommission; }
     public void setTauxCommission(Double tauxCommission) { this.tauxCommission = tauxCommission; }

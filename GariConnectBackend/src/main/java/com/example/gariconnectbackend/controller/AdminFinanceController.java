@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/admin/finances")
-@PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasRole('SUPER_ADMIN')")
 @CrossOrigin("*")
 public class AdminFinanceController {
 
@@ -38,10 +38,10 @@ public class AdminFinanceController {
 
         // 3. Statistiques utilisateurs
         long totalUsers = userRepository.count();
-        long activeAgences = userRepository.countByRole(Role.AGENCE);
+        long activeAgences = userRepository.countByRole(Role.AGENCY_MANAGER);
 
         // 4. Construction de la liste par agence
-        List<User> agences = userRepository.findByRole(Role.AGENCE);
+        List<User> agences = userRepository.findByRole(Role.AGENCY_MANAGER);
         List<Map<String, Object>> detailParAgence = agences.stream().map(agence -> {
             Map<String, Object> map = new HashMap<>();
             map.put("id", agence.getId());
@@ -70,7 +70,7 @@ public class AdminFinanceController {
 
     @GetMapping("/resume-commissions")
     public ResponseEntity<?> getResumeCommissions() {
-        List<User> agences = userRepository.findByRole(Role.AGENCE);
+        List<User> agences = userRepository.findByRole(Role.AGENCY_MANAGER);
         List<Map<String, Object>> resume = new ArrayList<>();
 
         for (User agence : agences) {
@@ -102,7 +102,7 @@ public class AdminFinanceController {
 
 
     @PostMapping("/regler")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<?> effectuerReglement(@RequestBody Map<String, Object> request) {
         try {
             String nomAgence = (String) request.get("agence");

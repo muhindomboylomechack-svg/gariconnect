@@ -3,7 +3,6 @@ package com.example.gariconnectbackend.security;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -22,14 +21,10 @@ public class SecurityConfig {
     @Autowired
     private JwtFilter jwtFilter;
 
-    /**
-     * Bean PasswordEncoder pour le hachage des mots de passe.
-     */
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
-
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -38,23 +33,19 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // 1. Routes Publiques (Accessibles sans être connecté)
-                        .requestMatchers("/api/auth/**", "/api/public/**").permitAll()
+                        // Routes publiques
+                        .requestMatchers("/api/auth/**").permitAll()
 
-                        // CORRECTION : Ajout de "/api/trajets" (URL racine) en plus de "/api/trajets/**"
-                        .requestMatchers(HttpMethod.GET, "/api/trajets", "/api/trajets/**").permitAll()
+                        // CORRECTION : Autoriser SUPER_ADMIN et AGENCY_ADMIN (le filtrage granulaire se fait via @PreAuthorize dans le contrôleur)
+                        .requestMatchers("/api/admin/**").hasAnyRole("SUPER_ADMIN", "AGENCY_ADMIN")
 
-                        // 2. Route spécifique CHAUFFEUR (doit être AVANT la route générale)
-                        .requestMatchers("/api/evaluations/mon-rapport").hasRole("CHAUFFEUR")
+                        // CORRECTION : Remplacement de "ADMIN" par "AGENCY_ADMIN"
+                        .requestMatchers("/api/users/**").hasAnyRole("SUPER_ADMIN", "AGENCY_ADMIN", "AGENCY_MANAGER")
 
-                        // 3. Autres évaluations
-                        .requestMatchers("/api/evaluations/**").hasAnyRole("CLIENT", "AGENCE", "ADMIN")
-
-                        // 4. Autres services
-                        .requestMatchers("/api/reservations/**").hasAnyRole("CLIENT", "AGENCE", "CHAUFFEUR", "ADMIN")
-                        .requestMatchers("/api/paiements/**", "/api/finance/**").hasAnyRole("AGENCE", "ADMIN")
-                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
-
+                        // CORRECTION : Remplacement de "AGENCE" par "AGENCY_ADMIN", "AGENCY_MANAGER"
+                        .requestMatchers("/api/paiements/**", "/api/finance/**").hasAnyRole("SUPER_ADMIN", "AGENCY_ADMIN", "AGENCY_MANAGER")
+                      //  .requestMatchers("/api/users/**").hasAnyRole("SUPER_ADMIN", "AGENCY_ADMIN", "AGENCY_MANAGER")
+                        // Le reste nécessite simplement d'être authentifié (Notifications, Trajets, etc.)
                         .anyRequest().authenticated()
                 );
 
@@ -65,25 +56,16 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-
-        // Accepte ton PC local ainsi que TOUS les sous-domaines provenant de *.onrender.com
         config.setAllowedOriginPatterns(Arrays.asList(
                 "http://localhost:5173",
                 "https://*.onrender.com"
         ));
-
-        // Autorise toutes les méthodes HTTP nécessaires pour ton application SaaS
         config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-
-        // Autorise les headers essentiels (y compris l'Authorization contenant ton Token JWT)
         config.setAllowedHeaders(Arrays.asList("Authorization", "Cache-Control", "Content-Type", "Accept"));
-
-        // Indispensable pour que le token JWT et les cookies transitent correctement
         config.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", config);
         return source;
     }
-    
 }

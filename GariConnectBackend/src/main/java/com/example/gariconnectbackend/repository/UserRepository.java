@@ -27,7 +27,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     List<User> findByRoleAndStatut(Role role, String statut);
     Optional<User> findByEmail(String email);
-    List<User> findByAgenceEmployeur(User agenceEmployeur);
+
     List<User> findByAgenceEmployeurAndStatut(User agence, String statut);
     Optional<User> findByNom(String nom);
 
@@ -41,4 +41,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findByAgenceEmployeurAndRoleAndTrajet_Id(User agence, Role role, Long trajetId);
 
     Optional<User> findByTelephone(String telephone);
+    // Permet à un Admin d'agence de lister TOUS les utilisateurs de son agence
+    List<User> findByAgenceEmployeur(User agenceEmployeur);
+
+    // Permet également de filtrer les utilisateurs d'une agence par un rôle spécifique si nécessaire
+    List<User> findByAgenceEmployeurAndRole(User agenceEmployeur, Role role);
 }

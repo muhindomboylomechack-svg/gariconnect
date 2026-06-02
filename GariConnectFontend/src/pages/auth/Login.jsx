@@ -2,15 +2,14 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
-// Remplacement de FaShieldAlt par FaEye et FaEyeSlash pour une meilleure UX de visibilité
 import { FaEnvelope, FaLock, FaBus, FaChevronRight, FaEye, FaEyeSlash } from 'react-icons/fa';
-import { motion } from 'framer-motion'; // Import de Framer Motion
+import { motion } from 'framer-motion';
 
 const Login = () => {
   const [credentials, setCredentials] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false); // État pour afficher/masquer le mot de passe
+  const [showPassword, setShowPassword] = useState(false);
   
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -42,11 +41,22 @@ const Login = () => {
           return;
         }
 
+        // Nettoyage du préfixe éventuel ajouté par Spring Security
+        const cleanRole = userData.role.replace('ROLE_', '');
+
+        // MISE À JOUR MAJEURE : Alignement strict avec la nouvelle architecture des rôles
         const roleRoutes = {
-          ADMIN: '/admin', AGENCE: '/agence', CHAUFFEUR: '/chauffeur', CLIENT: '/client'
+          SUPER_ADMIN: '/admin',             // Le propriétaire de la plateforme
+          AGENCY_ADMIN: '/admin-agence',     // Le propriétaire/directeur d'une agence
+          AGENCY_MANAGER: '/agence',         // L'agent de guichet/manager
+          CHAUFFEUR: '/chauffeur',           // Le conducteur
+          CLIENT: '/client',                 // Le passager
+          USER: '/client'                    // Fallback passager
         };
         
-        navigate(roleRoutes[userData.role] || '/');
+        // Redirection vers le tableau de bord approprié
+        const targetRoute = roleRoutes[cleanRole] || '/';
+        navigate(targetRoute);
       }
     } catch (err) {
       const serverMessage = err.response?.data?.message || err.response?.data?.error;
@@ -56,7 +66,7 @@ const Login = () => {
     }
   };
 
-  // Variantes pour les animations de liste
+  // Variantes pour les animations
   const containerVariants = {
     hidden: { opacity: 0, y: 20 },
     visible: { 
@@ -105,7 +115,7 @@ const Login = () => {
             className="z-10 mt-10 p-4 bg-black/20 backdrop-blur-md rounded-2xl border border-white/10"
           >
             <p className="text-sm font-medium opacity-90 leading-relaxed">
-              "Gerez votre flotte, vos chauffeurs et vos finances sur une seule et même plateforme sécurisée."
+              "Gérez votre flotte, vos chauffeurs et vos finances sur une seule et même plateforme sécurisée."
             </p>
           </motion.div>
         </div>
@@ -130,13 +140,13 @@ const Login = () => {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <motion.div variants={itemVariants} className="space-y-2">
-              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Email Professionnel</label>
+              <label className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] ml-1">Adresse Email</label>
               <div className="relative group">
                 <FaEnvelope className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-indigo-600 transition-colors" />
                 <input 
                   type="email" name="email" value={credentials.email} onChange={handleChange} required
                   className="w-full pl-12 pr-6 py-4 bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 focus:bg-white rounded-2xl outline-none transition-all font-semibold text-slate-700"
-                  placeholder="votre@agence.com"
+                  placeholder="votre@email.com"
                 />
               </div>
             </motion.div>
@@ -184,7 +194,7 @@ const Login = () => {
 
             <motion.div variants={itemVariants} className="pt-6 text-center border-t border-slate-50">
               <Link to="/register" className="text-slate-400 font-bold text-sm hover:text-indigo-600 transition-colors">
-                Besoin d'un compte ? <span className="text-indigo-600 underline underline-offset-4">Inscrivez votre agence</span>
+                Nouveau sur GariConnect ? <span className="text-indigo-600 underline underline-offset-4">Créer un compte</span>
               </Link>
             </motion.div>
           </form>

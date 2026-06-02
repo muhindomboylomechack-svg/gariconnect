@@ -51,7 +51,8 @@ public class PaiementController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('AGENCE', 'ADMIN')")
+
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCE')")
     public List<Paiement> getTousLesPaiements() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User agence = userRepository.findByEmail(email)
@@ -60,7 +61,7 @@ public class PaiementController {
     }
 
     @PatchMapping("/{id}/valider")
-    @PreAuthorize("hasAnyAuthority('AGENCE', 'ROLE_AGENCE', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCE')")
     public ResponseEntity<?> validerPaiement(@PathVariable Long id) {
         return paiementRepository.findById(id).map(paiement -> {
             paiement.setStatut("SUCCES");
@@ -107,7 +108,7 @@ public class PaiementController {
     }
 
     @PostMapping("/{id}/encaisser")
-    @PreAuthorize("hasAnyRole('AGENCE', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('AGENCY_MANAGER', 'SUPER_ADMIN'")
     public ResponseEntity<?> encaisserPaiement(
             @PathVariable Long id,
             @RequestBody(required = false) Map<String, Object> payload) {

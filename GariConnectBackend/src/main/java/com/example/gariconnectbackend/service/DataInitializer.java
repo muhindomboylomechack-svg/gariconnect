@@ -19,21 +19,36 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
-        // On vérifie si un utilisateur avec cet email existe déjà
-        if (userRepository.findByEmail("admin@gariconnect.com").isEmpty()) {
-            User admin = new User();
-            admin.setNom("Super Admin");
-            admin.setEmail("admin@gariconnect.com");
-            admin.setTelephone("00000000");
-            admin.setRole(Role.ADMIN);
-            admin.setStatut("ACTIF");
+        String adminEmail = "admin@gariconnect.com";
+        String adminPassword = "AdminGari2026!";
 
-            // On met un mot de passe temporaire
-            admin.setPassword(passwordEncoder.encode("admin123"));
-            admin.setMustChangePassword(true); // On le force à changer au 1er login
+        // Initialisation automatique et unique du SUPER_ADMIN par le système
+        if (userRepository.findByEmail(adminEmail).isEmpty()) {
+            User superAdmin = new User();
+            superAdmin.setNom("Super Admin");
+            superAdmin.setEmail(adminEmail);
+            superAdmin.setTelephone("000000000");
 
-            userRepository.save(admin);
-            System.out.println(">>> Compte Admin créé par défaut : admin@gariconnect.com / admin123");
+            // Rôle global de contrôle de la plateforme
+            superAdmin.setRole(Role.SUPER_ADMIN);
+            superAdmin.setStatut("ACTIF"); // Actif d'office
+
+            // Mot de passe sécurisé et haché
+            superAdmin.setPassword(passwordEncoder.encode(adminPassword));
+
+            // Le Super Admin n'est lié à aucune agence car il supervise toutes les agences
+            superAdmin.setAgenceEmployeur(null);
+            superAdmin.setMustChangePassword(false);
+
+            userRepository.save(superAdmin);
+
+            // Affichage des messages système et des identifiants dans la console
+            System.out.println(">>> [SYSTEM] Compte SUPER_ADMIN unique initialisé automatiquement avec succès.");
+            System.out.println("=======================================================================");
+            System.out.println("   🚀 IDENTIFIANTS DE CONNEXION DU SUPER ADMIN : ");
+            System.out.println("   📧 Email    : " + adminEmail);
+            System.out.println("   🔑 Password : " + adminPassword);
+            System.out.println("=======================================================================");
         }
     }
 }

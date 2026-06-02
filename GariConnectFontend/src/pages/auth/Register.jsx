@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-// Import de l'instance API centralisée
 import api from '../../services/api'; 
 import { useAuth } from '../../context/AuthContext';
 import { FaUser, FaEnvelope, FaLock, FaChevronRight, FaBus, FaUserTag, FaBuilding, FaShieldAlt, FaEye, FaEyeSlash } from 'react-icons/fa';
@@ -11,7 +10,7 @@ const Register = () => {
     nom: '', 
     email: '', 
     password: '',
-    role: 'CLIENT',
+    role: 'CLIENT', // Valeur par défaut alignée avec le backend
     agenceId: '' 
   });
   
@@ -24,12 +23,11 @@ const Register = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
 
+  // Chargement des agences actives pour le select des chauffeurs et manageurs
   useEffect(() => {
     const fetchAgences = async () => {
       try {
-        // Utilisation de l'instance api
         const response = await api.get('/auth/agences-liste');
-        
         setAgences(response.data);
       } catch (err) {
         console.error("Erreur lors de la récupération des agences:", err);
@@ -44,29 +42,33 @@ const Register = () => {
     setError('');
     setSuccess('');
 
+    // Vérifie si le rôle nécessite d'être rattaché à une agence parente
+    const requiresAgency = formData.role === 'CHAUFFEUR' || formData.role === 'AGENCY_MANAGER';
+
     const dataToSubmit = {
       nom: formData.nom,
       email: formData.email,
       password: formData.password,
       role: formData.role,
-      agenceEmployeur: formData.role === 'CHAUFFEUR' ? { id: formData.agenceId } : null
+      agenceEmployeur: requiresAgency ? { id: formData.agenceId } : null
     };
 
     try {
-      // Utilisation de l'instance api
       const response = await api.post('/auth/register', dataToSubmit);
       const userData = response.data;
 
+      // Logique post-inscription en fonction du rôle
       if (formData.role === 'CLIENT') {
         login(userData); 
         navigate('/client');
+      } else if (formData.role === 'AGENCY_ADMIN') {
+        setSuccess("Inscription réussie ! Votre compte Entreprise/Agence de transport a été créé et est en attente de validation par le Super Administrateur de la plateforme.");
       } else {
-        setSuccess(formData.role === 'AGENCE' 
-          ? "Inscription réussie ! Votre agence est en attente de validation par l'administrateur."
-          : "Inscription réussie ! Votre compte est en attente de validation par votre agence.");
+        // Cas du Chauffeur ou du Manageur
+        setSuccess(`Inscription réussie ! Votre compte ${formData.role === 'CHAUFFEUR' ? 'chauffeur' : 'manageur'} est en attente de validation par l'Administrateur de votre agence.`);
       }
     } catch (err) {
-      setError(err.response?.data?.message || "Erreur lors de l'inscription.");
+      setError(err.response?.data?.message || "Erreur lors de l'inscription. Vérifiez vos informations.");
     } finally {
       setLoading(false);
     }
@@ -77,15 +79,10 @@ const Register = () => {
     visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } }
   };
 
-  const itemVariants = {
-    hidden: { opacity: 0, y: 10 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.3 } }
-  };
-
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-[#f8fafc] p-4 sm:p-6 font-sans relative overflow-hidden selection:bg-indigo-100 selection:text-indigo-900">
       
-      {/* FLOU ARTISTIQUE EN ARRIÈRE-PLAN (AURAS BLEUES/INDIGO DISCRÈTES) */}
+      {/* FLOU ARTISTIQUE EN ARRIÈRE-PLAN */}
       <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] sm:w-[600px] sm:h-[600px] rounded-full bg-gradient-to-tr from-blue-200/40 to-indigo-200/40 blur-[80px] sm:blur-[120px] -z-10" />
       <div className="absolute bottom-10 right-10 w-[300px] h-[300px] rounded-full bg-sky-200/30 blur-[100px] -z-10" />
 
@@ -118,7 +115,7 @@ const Register = () => {
               <div className="w-14 h-14 bg-emerald-500 text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20">
                 <FaShieldAlt size={22} />
               </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-2">Inscription réussie !</h3>
+              <h3 className="text-xl font-bold text-slate-900 mb-2">Inscription enregistrée !</h3>
               <p className="text-slate-600 text-sm font-medium mb-6 leading-relaxed px-4">{success}</p>
               <Link to="/login" className="inline-flex items-center gap-2 bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold transition-all active:scale-95 text-sm shadow-md">
                 Aller à l'écran de connexion <FaChevronRight size={10} />
@@ -132,7 +129,7 @@ const Register = () => {
                 </motion.div>
               )}
 
-              {/* INPUTS SUR DEUX COLONNES SUR ÉCRAN LARGE POUR PLUS DE COMPACITÉ */}
+              {/* INPUTS SUR DEUX COLONNES */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* CHAMP NOM COMPLET */}
                 <div className="relative group">
@@ -140,7 +137,7 @@ const Register = () => {
                     <FaUser size={15} />
                   </span>
                   <input 
-                    type="text" placeholder="Nom complet" required 
+                    type="text" placeholder="Nom complet / Nom de l'agence" required 
                     className="w-full pl-11 pr-4 py-3.5 bg-slate-50/50 hover:bg-slate-50/80 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-none font-semibold text-slate-800 text-sm transition-all focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]"
                     onChange={(e) => setFormData({...formData, nom: e.target.value})} 
                   />
@@ -160,7 +157,7 @@ const Register = () => {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* CHAMP RÔLE */}
+                {/* CHAMP RÔLE PUBLIQUEMENT AUTORISÉ */}
                 <div className="relative group">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors pointer-events-none z-10">
                     <FaUserTag size={15} />
@@ -168,15 +165,18 @@ const Register = () => {
                   <select 
                     className="w-full pl-11 pr-4 py-3.5 bg-slate-50/50 hover:bg-slate-50/80 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-none font-semibold text-slate-700 text-sm appearance-none cursor-pointer relative z-0 transition-all focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]" 
                     value={formData.role} 
-                    onChange={(e) => setFormData({...formData, role: e.target.value})}
+                    onChange={(e) => {
+                      setFormData({...formData, role: e.target.value, agenceId: ''});
+                    }}
                   >
-                    <option value="CLIENT">Client</option>
+                    <option value="CLIENT">Client / Passager</option>
                     <option value="CHAUFFEUR">Chauffeur</option>
-                    <option value="AGENCE">Agence</option>
+                    <option value="AGENCY_MANAGER">Manageur de l'agence</option>
+                    <option value="AGENCY_ADMIN">Agence de Transport (Créer une entreprise)</option>
                   </select>
                 </div>
 
-                {/* CHAMP MOT DE PASSE avec option oeil */}
+                {/* CHAMP MOT DE PASSE */}
                 <div className="relative group">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors pointer-events-none">
                     <FaLock size={15} />
@@ -198,9 +198,28 @@ const Register = () => {
                 </div>
               </div>
 
-              {/* SELECTION DE L'AGENCE (DYNAMIQUE CHAUFFEUR) */}
+              {/* MESSAGE INFORMATIF LIÉ AU RÔLE DE L'AGENCE */}
               <AnimatePresence>
-                {formData.role === 'CHAUFFEUR' && (
+                {formData.role === 'AGENCY_ADMIN' && (
+                  <motion.div 
+                    initial={{ height: 0, opacity: 0 }} 
+                    animate={{ height: 'auto', opacity: 1, marginTop: 12 }} 
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-xs font-medium text-blue-800 flex items-start gap-3">
+                      <div className="mt-0.5"><FaShieldAlt size={14} className="text-blue-600" /></div>
+                      <p className="leading-relaxed">
+                        Vous êtes sur le point d'inscrire une entreprise de transport sur GariConnect. Après soumission, le Super Administrateur de la plateforme devra examiner vos informations et activer manuellement votre espace de gestion.
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* SELECTION DE L'AGENCE (POUR CHAUFFEURS ET MANAGEURS) */}
+              <AnimatePresence>
+                {(formData.role === 'CHAUFFEUR' || formData.role === 'AGENCY_MANAGER') && (
                   <motion.div 
                     initial={{ height: 0, opacity: 0, marginTop: 0 }} 
                     animate={{ height: 'auto', opacity: 1, marginTop: 12 }} 
@@ -236,7 +255,7 @@ const Register = () => {
                 {loading ? (
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 ) : (
-                  <>Créer mon compte <FaChevronRight size={10} /></>
+                  <>Créer le compte <FaChevronRight size={10} /></>
                 )}
               </motion.button>
             </form>

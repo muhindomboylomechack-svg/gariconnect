@@ -1,34 +1,29 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
-// ==========================================
-// 1. CONTEXTE ET SÉCURITÉ
-// ==========================================
+// 1. CONTEXTE & PROTECTION
 import ProtectedRoute from './component/ProtectedRoute'; 
 import { useAuth } from './context/AuthContext';
 
-// ==========================================
-// 2. LAYOUTS (Mises en page)
-// ==========================================
-import AdminLayout from './layouts/AdminLayout';
+// 2. LAYOUTS
+import SuperAdminLayout from './layouts/SuperAdminLayout';
+import AgencyAdminLayout from './layouts/AgencyAdminLayout'; 
 import AgenceLayout from './layouts/AgenceLayout';
-import ClientLayout from './layouts/ClientLayout'; 
 import ChauffeurLayout from './layouts/ChauffeurLayout';
+import ClientLayout from './layouts/ClientLayout'; 
 
-// ==========================================
-// 3. PAGES
-// ==========================================
-// --- Authentification ---
+// 3. PAGES (Authentification)
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
 
-// --- Admin ---
-import DashboardAdmin from './pages/admin/DashboardAdmin';
-import GestionUtilisateurs from './pages/admin/GestionUtilisateurs';
-import GestionCommissions from './pages/admin/GestionCommissions';
-import DashboardFinancierAdmin from './pages/admin/DashboardFinancierAdmin';
+// 4. PAGES (Super Admin)
+import DashboardAdmin from './pages/superadmin/DashboardAdmin';
+import GestionUtilisateurs from './pages/superadmin/GestionUtilisateurs';
+import GestionCommissions from './pages/superadmin/GestionCommissions';
+import DashboardFinancierAdmin from './pages/superadmin/DashboardFinancierAdmin';
 
-// --- Agence ---
+// 5. PAGES (Admin d'Agence & Opérations)
+import AgencyAdminDashboard from './pages/admin/AgencyAdminDashboard'; 
 import DashboardAgence from './pages/agence/DashboardAgence';
 import GestionFlotte from './pages/agence/GestionFlotte';
 import Trajets from './pages/agence/Trajets';
@@ -39,15 +34,11 @@ import CourriersPage from './pages/agence/CourriersPage';
 import GestionFinance from './pages/agence/GestionFinance';
 import DashboardPerformance from './pages/agence/DashboardPerformance';
 
-// --- Chauffeur ---
+// 6. PAGES (Chauffeur & Client)
 import ChauffeurDashboard from './pages/chauffeur/ChauffeurDashboard'; 
 import HistoriqueCourses from './pages/chauffeur/HistoriqueCourses'; 
 import PerformanceHistory from './pages/chauffeur/PerformanceHistory'; 
 import ChauffeurProfil from './pages/chauffeur/ChauffeurProfil'; 
-//import ScannerTicket from './pages/chauffeur/ScannerTicket';
-
-
-// --- Client ---
 import HomeClient from "./pages/client/Home";
 import MesTickets from "./pages/client/MesTickets"; 
 import History from "./pages/client/History";
@@ -56,60 +47,69 @@ import Profil from "./pages/client/Profil";
 import CheckoutPage from "./pages/client/CheckoutPage"; 
 import FormulaireEvaluation from "./pages/client/FormulaireEvaluation";
 
-// ==========================================
-// 4. COMPOSANTS UTILITAIRES
-// ==========================================
-// Note : Toujours déclarer ce composant AVANT de l'utiliser dans App()
+/**
+ * COMPOSANT DE REDIRECTION INTELLIGENT
+ * Analyse le rôle de l'utilisateur et le dirige vers le bon espace.
+ */
 const HomeRedirect = () => {
   const { user, loading } = useAuth();
   
   if (loading) {
     return (
-      <div className="h-screen bg-[#0F172A] text-white flex items-center justify-center">
-        Chargement...
+      <div className="h-screen flex items-center justify-center bg-slate-900 text-white">
+        <div className="animate-pulse">Chargement de votre session...</div>
       </div>
     );
   }
   
   if (!user) return <Navigate to="/login" replace />;
   
-  const routes = { 
-    ADMIN: '/admin', 
-    AGENCE: '/agence', 
-    CHAUFFEUR: '/chauffeur', 
-    CLIENT: '/client/dashboard', 
-    USER: '/client/dashboard' 
+  // Sécurité : on nettoie le préfixe "ROLE_" si le backend l'ajoute automatiquement
+  const cleanRole = user.role.replace('ROLE_', '');
+
+  // MAPPING DES NOUVEAUX RÔLES
+  const routesParRole = { 
+    SUPER_ADMIN: '/admin',
+    AGENCY_ADMIN: '/admin-agence',    // Remplacé ADMIN par AGENCY_ADMIN
+    AGENCY_MANAGER: '/agence',        // Remplacé AGENCE par AGENCY_MANAGER
+    CHAUFFEUR: '/chauffeur',
+    CLIENT: '/client',
+    USER: '/client' 
   };
   
-  return <Navigate to={routes[user.role] || '/login'} replace />;
+  const path = routesParRole[cleanRole] || '/';
+  console.log(`Utilisateur avec le rôle [${cleanRole}] redirigé vers : ${path}`);
+  
+  return <Navigate to={path} replace />;
 };
 
-
-// ==========================================
-// 5. APPLICATION PRINCIPALE ET ROUTES
-// ==========================================
 function App() {
   return (
     <Router>
       <Routes>
-        {/* --- ROUTES PUBLIQUES --- */}
+        {/* --- AUTHENTIFICATION --- */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
-        
-        {/* Route par défaut (Redirige selon le rôle) */}
         <Route path="/" element={<HomeRedirect />} />
 
-        {/* --- ESPACE ADMIN --- */}
-        <Route path="/admin" element={<ProtectedRoute allowedRoles={['ADMIN']}><AdminLayout /></ProtectedRoute>}>
+        {/* --- ESPACE 1 : SUPER ADMIN --- */}
+        <Route path="/admin" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><SuperAdminLayout /></ProtectedRoute>}>
           <Route index element={<DashboardAdmin />} />
-          <Route path="dashboard" element={<DashboardAdmin />} />
           <Route path="utilisateurs" element={<GestionUtilisateurs />} />
           <Route path="commissions" element={<GestionCommissions />} />
           <Route path="finances" element={<DashboardFinancierAdmin />} />
         </Route>
 
-        {/* --- ESPACE AGENCE --- */}
-        <Route path="/agence" element={<ProtectedRoute allowedRoles={['AGENCE']}><AgenceLayout /></ProtectedRoute>}>
+        {/* --- ESPACE 2 : AGENCY ADMIN (Propriétaire de l'agence) --- */}
+        {/* MISE À JOUR DU ROLE ICI ! */}
+        <Route path="/admin-agence" element={<ProtectedRoute allowedRoles={['AGENCY_ADMIN']}><AgencyAdminLayout /></ProtectedRoute>}>
+          <Route index element={<AgencyAdminDashboard />} />
+          <Route path="dashboard" element={<AgencyAdminDashboard />} />
+        </Route>
+
+        {/* --- ESPACE 3 : AGENCY MANAGER (Opérations de l'agence) --- */}
+        {/* MISE À JOUR DU ROLE ICI ! On peut aussi autoriser l'Admin à voir les opérations s'il le souhaite */}
+        <Route path="/agence" element={<ProtectedRoute allowedRoles={['AGENCY_MANAGER', 'AGENCY_ADMIN']}><AgenceLayout /></ProtectedRoute>}>
           <Route index element={<DashboardAgence />} />
           <Route path="flotte" element={<GestionFlotte />} />
           <Route path="trajets" element={<Trajets />} />
@@ -121,7 +121,7 @@ function App() {
           <Route path="performance" element={<DashboardPerformance />} />
         </Route>
 
-        {/* --- ESPACE CHAUFFEUR --- */}
+        {/* --- ESPACE 4 : CHAUFFEUR --- */}
         <Route path="/chauffeur" element={<ProtectedRoute allowedRoles={['CHAUFFEUR']}><ChauffeurLayout /></ProtectedRoute>}>
           <Route index element={<ChauffeurDashboard />} />
           <Route path="historique" element={<HistoriqueCourses />} />
@@ -129,12 +129,10 @@ function App() {
           <Route path="profil" element={<ChauffeurProfil />} />
         </Route>
 
-        {/* --- ESPACE CLIENT --- */}
+        {/* --- ESPACE 5 : CLIENT --- */}
         <Route path="/client" element={<ProtectedRoute allowedRoles={['CLIENT', 'USER']}><ClientLayout /></ProtectedRoute>}>
           <Route index element={<HomeClient />} />
-          <Route path="dashboard" element={<HomeClient />} />
           <Route path="tickets" element={<MesTickets />} />
-          <Route path="colis" element={<History />} /> 
           <Route path="historique" element={<History />} />
           <Route path="reservation/:id" element={<ReservationPage />} />
           <Route path="finaliser-reservation/:id" element={<CheckoutPage />} />
@@ -142,8 +140,7 @@ function App() {
           <Route path="evaluer/:id" element={<FormulaireEvaluation />} />
         </Route>
 
-        {/* --- SÉCURITÉ --- */}
-        {/* Si l'utilisateur tape une URL qui n'existe pas, il est renvoyé à la racine */}
+        {/* --- ROUTE FALLBACK (404) --- */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>

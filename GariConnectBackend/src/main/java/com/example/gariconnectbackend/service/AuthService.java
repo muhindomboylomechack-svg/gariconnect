@@ -20,37 +20,49 @@ public class AuthService {
 
     @Autowired
     private JwtUtil jwtUtil;
-     // Dans AuthService.java
-    public User inscrire(User user, Long agenceId) {
-        user.setPassword(passwordEncoder.encode(user.getPassword()));
-        user.setMustChangePassword(true); // Le chauffeur devra changer son mot de passe à la 1ère connexion
 
-        if (user.getRole() == Role.CHAUFFEUR) {
-            if (agenceId == null) throw new RuntimeException("Une agence est obligatoire pour un chauffeur.");
+    public User inscrire(User user, Long agenceId) {
+        // Sécurité : Interdire la création d'un Super Admin via inscription
+        if (user.getRole() == Role.SUPER_ADMIN) {
+            throw new RuntimeException("Action interdite : Le compte Super Admin ne peut pas être créé via une inscription.");
+        }
+
+        user.setPassword(passwordEncoder.encode(user.getPassword()));
+        user.setMustChangePassword(false);
+
+        // a. AGENCY_ADMIN : Racine de son agence, en attente de validation du SUPER_ADMIN
+        if (user.getRole() == Role.AGENCY_ADMIN) {
+            user.setStatut("EN_ATTENTE");
+            user.setAgenceEmployeur(null);
+        }
+        // b. EMPLOYÉS (Manager & Chauffeur) : Doivent avoir une agence, en attente de l'AGENCY_ADMIN
+        else if (user.getRole() == Role.CHAUFFEUR || user.getRole() == Role.AGENCY_MANAGER) {
+            if (agenceId == null) throw new RuntimeException("Une agence est obligatoire pour inscrire un employé.");
 
             User agence = userRepository.findById(agenceId)
-                    .orElseThrow(() -> new RuntimeException("Agence introuvable"));
+                    .orElseThrow(() -> new RuntimeException("Agence employeuse introuvable."));
 
             user.setAgenceEmployeur(agence);
-            user.setStatut("EN_ATTENTE"); // Validation par l'agence requise
-        } else if (user.getRole() == Role.AGENCE) {
-            user.setStatut("EN_ATTENTE"); // Validation par l'ADMIN requise
-        } else {
+            user.setStatut("EN_ATTENTE");
+        }
+        // c. CLIENT : Accès direct
+        else {
             user.setStatut("ACTIF");
         }
 
         return userRepository.save(user);
     }
+
     public AuthResponse seConnecter(String email, String rawPassword) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+                .orElseThrow(() -> new RuntimeException("Identifiants ou utilisateur non trouvé"));
 
-        // 4. VERIFICATION DU STATUT : Empêche la connexion si non validé
+        // Vérification du statut de validation
         if ("EN_ATTENTE".equals(user.getStatut())) {
-            if (user.getRole() == Role.AGENCE) {
-                throw new RuntimeException("Votre compte agence est en attente de validation par l'administrateur.");
-            } else if (user.getRole() == Role.CHAUFFEUR) {
-                throw new RuntimeException("Votre compte chauffeur doit être validé par votre agence.");
+            if (user.getRole() == Role.AGENCY_ADMIN) {
+                throw new RuntimeException("Votre compte Administrateur d'Agence est en attente de validation par GariConnect.");
+            } else if (user.getRole() == Role.CHAUFFEUR || user.getRole() == Role.AGENCY_MANAGER) {
+                throw new RuntimeException("Votre compte est en attente de validation par l'Administrateur de votre agence.");
             }
         }
 
@@ -58,7 +70,7 @@ public class AuthService {
             throw new RuntimeException("Mot de passe incorrect");
         }
 
-        // 5. Génération du Token JWT
+        // Génération du Token JWT
         String token = jwtUtil.generateToken(user.getEmail(), user.getRole().name());
 
         return new AuthResponse(

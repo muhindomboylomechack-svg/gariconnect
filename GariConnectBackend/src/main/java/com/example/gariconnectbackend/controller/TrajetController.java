@@ -373,7 +373,7 @@ public class TrajetController {
 
 
     @PostMapping
-    @PreAuthorize("hasRole('AGENCE')")
+    @PreAuthorize("hasRole('AGENCY_MANAGER')")
     public ResponseEntity<?> creerTrajet(@RequestBody Trajet trajet) {
         try {
             String emailAgence = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -390,7 +390,7 @@ public class TrajetController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('AGENCE')")
+    @PreAuthorize("hasRole('AGENCY_MANAGER')")
     public ResponseEntity<?> modifierTrajet(@PathVariable Long id, @RequestBody Trajet trajetDetails) {
         try {
             String emailAgence = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -409,7 +409,7 @@ public class TrajetController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('AGENCE')")
+    @PreAuthorize("hasRole('AGENCY_MANAGER')")
     public ResponseEntity<?> supprimerTrajet(@PathVariable Long id) {
         try {
             String emailAgence = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -445,20 +445,7 @@ public class TrajetController {
         List<Trajet> trajets = trajetRepository.findByAgenceAndStatut(agence, "EN_ROUTE");
         return ResponseEntity.ok(trajets);
     }
-/*
-    @GetMapping("/chauffeur")
-    public ResponseEntity<?> getTrajetsChauffeur() {
-        try {
-            String email = SecurityContextHolder.getContext().getAuthentication().getName();
-            User chauffeur = userRepository.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("Chauffeur non trouvé"));
 
-            List<Trajet> trajets = trajetRepository.findByChauffeurId(chauffeur.getId());
-            return ResponseEntity.ok(trajets);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Erreur : " + e.getMessage());
-        }
-    }*/
 @GetMapping("/mon-historique/aujourdhui")
 @PreAuthorize("hasAuthority('ROLE_CHAUFFEUR')")
 public ResponseEntity<?> getTrajetsAujourdhui() {

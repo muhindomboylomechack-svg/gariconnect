@@ -46,4 +46,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     // Permet également de filtrer les utilisateurs d'une agence par un rôle spécifique si nécessaire
     List<User> findByAgenceEmployeurAndRole(User agenceEmployeur, Role role);
+
+    List<User> findAllByAgenceEmployeurIdOrId(Long id, Long id1);
+
+
+
+    // 🔥 NOUVEAU : Recherche stricte par l'ID de l'agence pour éviter les bugs de mapping
+    List<User> findByRoleAndAgenceEmployeurId(Role role, Long agenceId);
+
+    // 🔥 NOUVEAU : Trouver les employés de l'agence ET l'admin lui-même (grâce à son ID)
+    List<User> findByAgenceEmployeurIdOrId(Long agenceEmployeurId, Long id);
 }

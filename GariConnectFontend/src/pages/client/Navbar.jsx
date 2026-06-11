@@ -24,6 +24,9 @@ const Navbar = () => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   
+  // 🔥 État pour stocker l'URL de l'avatar
+  const [avatarUrl, setAvatarUrl] = useState(localStorage.getItem('userAvatar'));
+  
   const profileMenuRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -38,6 +41,16 @@ const Navbar = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Écouteur d'événement pour mettre à jour l'avatar instantanément
+  useEffect(() => {
+    const handleAvatarUpdate = () => {
+      setAvatarUrl(localStorage.getItem('userAvatar'));
+    };
+
+    window.addEventListener('avatarUpdated', handleAvatarUpdate);
+    return () => window.removeEventListener('avatarUpdated', handleAvatarUpdate);
+  }, []);
+
   useEffect(() => {
     setIsMobileMenuOpen(false);
     setIsProfileMenuOpen(false);
@@ -45,6 +58,7 @@ const Navbar = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('userAvatar'); // Nettoyage de l'avatar à la déconnexion
     navigate('/login');
   };
 
@@ -52,18 +66,30 @@ const Navbar = () => {
     { to: "/client/dashboard", icon: <FaHome />, label: t('back', "Tableau de bord") },
     { to: "/client/tickets", icon: <FaTicketAlt />, label: t('checkout.your_seat', "Mes Billets") },
     { to: "/client/colis", icon: <FaBox />, label: t('nav.parcels', "Colis") },
-    { to: "/client/historique", icon: <FaHistory />, label: t('eval_post_trip', "Historique") }
+    { to: "/client/historique", icon: <FaHistory />, label: t('eval_trip', "Mes Reservations") }
   ];
 
   return (
     <nav className="fixed top-0 w-full bg-white dark:bg-slate-900 z-50 border-b border-slate-100 dark:border-slate-800 transition-colors duration-300 overflow-visible shadow-sm">
       <div className="container mx-auto px-4 lg:px-6 h-20 flex justify-between items-center overflow-visible">
         
-        {/* LOGO */}
-        <Link to="/client/dashboard" className="flex flex-col z-50 select-none">
-          <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tighter">GariConnect</span>
-          <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-widest">{t('nav.passenger_space', "Espace Voyageur")}</span>
-        </Link>
+        {/* BLOC LOGO & BURGER MOBILE */}
+        <div className="flex items-center gap-3 z-50">
+          {/* Bouton Menu Mobile (Burger) - Affiché uniquement sur mobile à gauche de GariConnect */}
+          <button 
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full lg:hidden hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+            aria-label="Toggle menu"
+          >
+            {isMobileMenuOpen ? <FaTimes size={16} /> : <FaBars size={16} />}
+          </button>
+
+          {/* LOGO */}
+          <Link to="/client/dashboard" className="flex flex-col select-none">
+            <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400 tracking-tighter">GariConnect</span>
+            <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500 tracking-widest">{t('nav.passenger_space', "Espace Voyageur")}</span>
+          </Link>
+        </div>
 
         {/* Liens de navigation principaux (Desktop) */}
         <div className="hidden lg:flex items-center bg-slate-100 dark:bg-slate-800 p-1.5 rounded-2xl transition-colors">
@@ -78,7 +104,7 @@ const Navbar = () => {
           ))}
         </div>
 
-        {/* Bloc d'actions à droite (Cloche, Profil, Menu burger) */}
+        {/* Bloc d'actions à droite (Cloche, Profil Desktop / Avatar Mobile) */}
         <div className="flex items-center gap-2 sm:gap-4 z-50 relative overflow-visible">
           
           {/* Cloche autonome */}
@@ -90,8 +116,12 @@ const Navbar = () => {
               onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
               className="flex items-center gap-3 bg-indigo-50 dark:bg-slate-800 p-1 pr-5 rounded-full border border-indigo-100 dark:border-slate-700 transition-all hover:shadow-md"
             >
-              <div className="w-10 h-10 bg-indigo-600 dark:bg-indigo-500 rounded-full flex items-center justify-center text-white font-bold shadow-lg">
-                <FaUser size={14} />
+              <div className="w-10 h-10 bg-indigo-600 dark:bg-indigo-500 rounded-full flex items-center justify-center text-white font-bold shadow-lg overflow-hidden border-2 border-indigo-100 dark:border-slate-700">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Profil" className="w-full h-full object-cover" />
+                ) : (
+                  <FaUser size={14} />
+                )}
               </div>
               <div className="text-left">
                 <p className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 leading-none">{t('profile', "Profil")}</p>
@@ -117,22 +147,26 @@ const Navbar = () => {
             )}
           </div>
 
-          {/* Bouton Menu Mobile (Burger) */}
-          <button 
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-3 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-full lg:hidden hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
-            aria-label="Toggle menu"
+          {/* 🔥 NOUVEAU : Avatar cliquable en mode Mobile (à la place de l'ancien burger) */}
+          <Link 
+            to="/client/profil" 
+            className="w-10 h-10 bg-indigo-600 dark:bg-indigo-500 rounded-full flex items-center justify-center text-white font-bold shadow-md overflow-hidden border-2 border-indigo-100 dark:border-slate-700 lg:hidden hover:scale-105 transition-transform"
           >
-            {isMobileMenuOpen ? <FaTimes size={16} /> : <FaBars size={16} />}
-          </button>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt="Profil Mobile" className="w-full h-full object-cover" />
+            ) : (
+              <FaUser size={14} />
+            )}
+          </Link>
+
         </div>
       </div>
 
-      {/* ✅ MENU MOBILE : POUSSE DYNAMIQUEMENT LES BOUTONS VERS LE BAS SANS ERREUR */}
+      {/* MENU MOBILE EXPANSION */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden fixed inset-x-0 top-20 bottom-0 bg-white dark:bg-slate-950 z-40 p-4 sm:p-6 flex flex-col border-t border-slate-100 dark:border-slate-800 shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200">
+        <div className="lg:hidden fixed inset-x-0 top-20 bottom-0 bg-white dark:bg-slate-950 z-40 p-4 sm:p-6 flex flex-col border-t border-slate-100 dark:border-slate-800 shadow-2xl overflow-y-auto animate-in slide-in-from-left duration-200">
           
-          {/* Conteneur des liens du haut : 'flex-grow' prend l'espace disponible pour pousser le bas */}
+          {/* Conteneur des liens du haut */}
           <div className="flex flex-col gap-3 mt-2 flex-grow justify-start">
             {navLinks.map(link => (
               <Link 
@@ -152,13 +186,17 @@ const Navbar = () => {
             ))}
           </div>
 
-          {/* Section Inférieure : Boutons ancrés solidement au bas de l'écran mobile */}
+          {/* Section Inférieure : Boutons de déconnexion & accès profil rapide */}
           <div className="border-t border-slate-100 dark:border-slate-800 pt-4 mt-6 mb-2 flex flex-col gap-2">
             <Link 
               to="/client/profil"
               className="flex items-center gap-4 px-5 py-4 rounded-2xl font-black text-sm uppercase tracking-wider text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors"
             >
-              <FaUser className="text-indigo-500 dark:text-indigo-400" />
+              {avatarUrl ? (
+                <img src={avatarUrl} alt="Profil" className="w-6 h-6 rounded-full object-cover" />
+              ) : (
+                <FaUser className="text-indigo-500 dark:text-indigo-400" />
+              )}
               {t('profile', "Mon Profil")}
             </Link>
             <button 

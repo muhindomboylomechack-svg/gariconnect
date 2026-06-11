@@ -3,7 +3,7 @@ import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { FaSun, FaMoon, FaBars, FaTimes, FaSignOutAlt, FaBell, FaCheckDouble, FaTrash } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
-import api from '../services/api'; // ✅ N'oubliez pas d'importer votre instance API
+import api from '../services/api'; // ✅ Instance API
 
 const AgenceLayout = () => {
     const { logout } = useAuth();
@@ -97,6 +97,7 @@ const AgenceLayout = () => {
     const navLinks = [
         { to: "/agence", label: "Vue d'ensemble", icon: "📊" },
         { to: "/agence/performance", label: "Intelligence", icon: "🧠" },
+        { to: "/agence/ramassages-vip", label: "Ramassages VIP", icon: "📍" }, // 🆕 Bouton ajouté pour l'Interface Cotation Agent
         { to: "/agence/flotte", label: "Ma Flotte", icon: "🚌" },
         { to: "/agence/trajets", label: "Gestion Trajets", icon: "🛣️" },
         { to: "/agence/reservations", label: "Réservations", icon: "🎟️" },
@@ -169,7 +170,6 @@ const AgenceLayout = () => {
                         <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center">
                             <h3 className="font-black text-slate-800 dark:text-slate-200 text-xs uppercase tracking-wider">Notifications</h3>
                             <div className="flex items-center gap-3">
-                                {/* ✅ Bouton pour tout nettoyer */}
                                 {notifications.some(n => n.lue) && (
                                     <button 
                                         onClick={nettoyerNotificationsLues} 
@@ -208,7 +208,6 @@ const AgenceLayout = () => {
                                                 {notif.lue && <FaCheckDouble className="text-emerald-500" size={10} />}
                                             </div>
                                             
-                                            {/* ✅ Bouton Corbeille individuel */}
                                             <button 
                                                 onClick={(e) => supprimerNotification(notif.id, e)}
                                                 className="text-slate-300 hover:text-rose-500 transition-colors p-1"
@@ -279,7 +278,7 @@ const AgenceLayout = () => {
                     
                     <div className="flex items-center gap-3 lg:gap-6">
                         
-                        {/* ✅ BOUTON CLOCHE NOTIFICATION */}
+                        {/* BOUTON CLOCHE NOTIFICATION */}
                         <motion.button 
                             onClick={() => setShowNotifications(!showNotifications)}
                             whileTap={{ scale: 0.9 }}

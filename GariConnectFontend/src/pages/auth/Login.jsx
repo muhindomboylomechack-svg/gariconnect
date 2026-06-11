@@ -29,8 +29,16 @@ const Login = () => {
       const userData = response.data;
 
       if (userData.token) {
+        // Nettoyage de l'ancien état d'agence et d'avatar avant reconnexion
         localStorage.removeItem('nomAgence');
+        localStorage.removeItem('userAvatar'); // 🔥 Nettoyage initial sécurité
+        
         login(userData);
+
+        // 🔥 NOUVELLE MODIFICATION : Stockage persistant de l'URL de l'avatar en local
+        if (userData.photoUrl) {
+          localStorage.setItem('userAvatar', userData.photoUrl);
+        }
 
         if (userData.nomAgence || userData.agenceNom) {
             localStorage.setItem('nomAgence', userData.nomAgence || userData.agenceNom);

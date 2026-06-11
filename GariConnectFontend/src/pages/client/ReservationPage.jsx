@@ -9,6 +9,9 @@ import {
     FaCheck, FaMoneyBillWave, FaExclamationTriangle
 } from 'react-icons/fa';
 
+// Importation du composant de récupération à domicile créé à l'étape 2
+import FormulaireRecuperation from './FormulaireRecuperation';
+
 const ReservationPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
@@ -25,6 +28,9 @@ const ReservationPage = () => {
         modePaiement: 'M-PESA', 
         referenceTransaction: '' 
     });
+
+    // État local pour stocker les données du formulaire de récupération à domicile
+    const [recuperationData, setRecuperationData] = useState({ voulaitRecuperation: false });
 
     const [darkMode, setDarkMode] = useState(localStorage.getItem('client-theme') === 'dark');
 
@@ -66,14 +72,24 @@ const ReservationPage = () => {
                 statut: "ATTENTE_PAIEMENT"
             };
 
-            // Utilisation de l'instance api centralisée
+            // 1. Enregistrement de la réservation initiale du billet
             const resReservation = await api.post('/reservations', reservationPayload);
-
             const reservationId = resReservation.data.id;
+
+            // 2. AJOUT : Si le voyageur a coché l'option de récupération, on envoie la demande au backend
+            if (recuperationData.voulaitRecuperation) {
+                await api.post('/recuperations/demande', {
+                    reservationId: reservationId,
+                    latitudeClient: recuperationData.latitudeClient,
+                    longitudeClient: recuperationData.longitudeClient,
+                    adresseTextuelle: recuperationData.adresseTextuelle
+                });
+            }
+
             const mode = isCash ? "CASH" : paymentData.modePaiement;
             const ref = isCash ? "CAISSE" : paymentData.referenceTransaction;
 
-            // Utilisation de l'instance api centralisée
+            // 3. Enregistrement du paiement lié
             await api.post(`/paiements/payer/${reservationId}?mode=${mode}&reference=${ref}`, {});
             
             alert(isCash ? t('success_cash') : t('success_mobile'));
@@ -162,11 +178,19 @@ const ReservationPage = () => {
                     </div>
 
                     {/* Affichage Prix */}
-                    <div className={`p-8 rounded-[2rem] border-2 mb-10 text-center ${darkMode ? 'bg-indigo-900/20 border-indigo-900/40' : 'bg-indigo-50 border-indigo-100'}`}>
+                    <div className={`p-8 rounded-[2rem] border-2 mb-6 text-center ${darkMode ? 'bg-indigo-900/20 border-indigo-900/40' : 'bg-indigo-50 border-indigo-100'}`}>
                         <p className="text-[10px] font-black uppercase mb-1 text-indigo-400 tracking-widest">{t('amount_to_pay')}</p>
                         <p className="text-4xl font-black text-indigo-500 dark:text-indigo-400">
                             {trajet?.prix?.toLocaleString()} <span className="text-sm font-bold">FC</span>
                         </p>
+                    </div>
+
+                    {/* INTEGRATION DE L'ETAPE 2 : Insertion du module de géolocalisation à domicile */}
+                    <div className="mb-8">
+                        <FormulaireRecuperation 
+                            reservationId={parseInt(id)} 
+                            onDataChange={(data) => setRecuperationData(data)} 
+                        />
                     </div>
 
                     <button 

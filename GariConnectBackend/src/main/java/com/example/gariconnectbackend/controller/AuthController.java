@@ -26,16 +26,6 @@ public class AuthController {
     @Autowired private UserRepository userRepository;
     @Autowired private PasswordEncoder passwordEncoder;
 
-    @PostMapping("/login")
-    public ResponseEntity<?> login(@RequestBody AuthRequest authRequest) {
-        try {
-            AuthResponse response = authService.seConnecter(authRequest.getEmail(), authRequest.getPassword());
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            return ResponseEntity.status(401).body(Map.of("message", e.getMessage()));
-        }
-    }
-
 
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody Map<String, Object> request) {
@@ -74,6 +64,17 @@ public class AuthController {
     }
 
 
+
+    @PostMapping("/login")
+    public ResponseEntity<?> login(@RequestBody AuthRequest authRequest) {
+        try {
+            AuthResponse response = authService.seConnecter(authRequest.getEmail(), authRequest.getPassword());
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(401).body(Map.of("message", e.getMessage()));
+        }
+    }
+
     @PostMapping("/update-password")
     public ResponseEntity<?> updatePassword(@RequestBody Map<String, String> request) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -90,7 +91,6 @@ public class AuthController {
     @GetMapping("/agences-liste")
     public ResponseEntity<?> getAgencesActives() {
         try {
-            // NOUVELLE LOGIQUE : L'agence est représentée par son AGENCY_ADMIN actif
             List<User> agences = userRepository.findByRoleAndStatut(Role.AGENCY_ADMIN, "ACTIF");
             return ResponseEntity.ok(agences);
         } catch (Exception e) {
@@ -101,6 +101,9 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<?> getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        return userRepository.findByEmail(email).map(ResponseEntity::ok).orElse(ResponseEntity.status(401).build());
+        // Retourne l'utilisateur complet (incluant le champ photoUrl qui sera relu par React)
+        return userRepository.findByEmail(email)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.status(401).build());
     }
 }

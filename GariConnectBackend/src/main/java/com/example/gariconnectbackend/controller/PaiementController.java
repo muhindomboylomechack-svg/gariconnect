@@ -2,7 +2,8 @@ package com.example.gariconnectbackend.controller;
 
 import com.example.gariconnectbackend.model.*;
         import com.example.gariconnectbackend.repository.*;
-        import com.example.gariconnectbackend.service.PaiementService;
+import com.example.gariconnectbackend.service.DemandeRecuperationService;
+import com.example.gariconnectbackend.service.PaiementService;
 import com.example.gariconnectbackend.service.ReservationService;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,7 +30,8 @@ public class PaiementController {
     @Autowired private CommissionDetteRepository commissionRepo;
     @Autowired private NotificationRepository notificationRepository;
     @Autowired private FinanceRepository financeRepository;
-
+    @Autowired private DemandeRecuperationRepository demandeRecuperationRepository;
+    @Autowired private DemandeRecuperationService demandeRecuperationService;
     // NOUVEAU : Injection du service de réservation pour déclencher les notifications
     @Autowired private ReservationService reservationService;
 
@@ -193,7 +195,86 @@ public class PaiementController {
             return ResponseEntity.badRequest().body(Map.of("message", "Erreur : " + e.getMessage()));
         }
     }
+    @PostMapping("/encaisser/{reservationId}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> encaisserPaiementCash(@PathVariable Long reservationId, @RequestBody Map<String, Double> payload) {
+        try {
+            Double montantSaisi = payload.get("montant");
+            Reservation res = reservationRepository.findById(reservationId)
+                    .orElseThrow(() -> new RuntimeException("Réservation introuvable"));
 
+            User agence = res.getTrajet().getAgence();
+
+            // Création et validation du paiement en base de données
+            Paiement paiement = new Paiement();
+            paiement.setReservation(res);
+            paiement.setMontant(montantSaisi);
+            paiement.setModePaiement("CASH");
+            paiement.setStatut("VALIDE");
+            paiement.setReferenceTransaction("CASH-" + UUID.randomUUID().toString().substring(0,6).toUpperCase());
+            paiement.setDatePaiement(LocalDateTime.now());
+            paiementRepository.save(paiement);
+
+            // Mise à jour de la réservation
+            res.setStatut("VALIDE");
+            res.setModePaiement("CASH");
+            res.setReferencePaiement(paiement.getReferenceTransaction());
+            reservationRepository.save(res);
+
+            // Notification de succès de paiement de la réservation au client
+            String msg = "Votre paiement cash de " + montantSaisi + " CDF a été validé à l'agence. Billet valide !";
+            reservationService.notifierLeClient(res.getClient(), msg);
+
+            // Gestion des commissions d'agence
+            Double taux = (agence.getTauxCommission() != null) ? agence.getTauxCommission() : 10.0;
+            Double montantComm = (montantSaisi * taux) / 100;
+
+            CommissionDette cd = new CommissionDette();
+            cd.setAgence(agence);
+            cd.setReservation(res);
+            cd.setPaiement(paiement);
+            cd.setMontant(montantComm);
+            cd.setMontantDu(montantComm);
+            commissionRepo.save(cd);
+
+            // Enregistrement de la transaction financière dans le Livre de caisse
+            FinanceTransaction transaction = new FinanceTransaction();
+            transaction.setDate(LocalDate.now());
+            transaction.setTypeTransaction("ENTREE");
+            transaction.setDescription("Encaissement Cash - Ticket : " + res.getCodeTicket());
+            transaction.setMontant(montantSaisi);
+            transaction.setDevise("CDF");
+            transaction.setAgence(agence);
+
+            String nomClient = "Client";
+            if (res.getClient() != null) {
+                nomClient = res.getClient().getNom() + (res.getClient().getPrenom() != null ? " " + res.getClient().getPrenom() : "");
+            }
+            transaction.setEntite(nomClient);
+            financeRepository.save(transaction);
+
+            // =========================================================================
+            // 🔥 NOUVELLE LOGIQUE D'INTÉGRATION : Validation automatique du ramassage
+            // =========================================================================
+            demandeRecuperationRepository.findByReservationId(res.getId()).ifPresent(demande -> {
+                // Appel du traitement métier qui passe le statut à VALIDE,
+                // alerte l'agence et envoie la mission de ramassage directement sur l'application du Chauffeur.
+                demandeRecuperationService.validerPaiementRecuperation(demande.getId());
+                System.out.println("🚐 [INTEGRATION PAIEMENT] Demande de ramassage N°" + demande.getId() + " validée automatiquement suite au paiement.");
+            });
+            // =========================================================================
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Paiement encaissé avec succès et services rattachés activés",
+                    "ticketCode", res.getCodeTicket(),
+                    "montant", montantSaisi
+            ));
+
+        } catch (Exception e) {
+            System.err.println("Erreur encaissement : " + e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of("message", "Erreur : " + e.getMessage()));
+        }
+    }
 
 }
 

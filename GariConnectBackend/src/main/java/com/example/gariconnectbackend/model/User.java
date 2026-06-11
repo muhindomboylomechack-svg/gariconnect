@@ -23,8 +23,9 @@ public class User {
     @Column(name = "mot_de_passe", nullable = false)
     private String password;
 
+    // ... vos autres propriétés comme le téléphone, rôle, etc.
+    private String telephone;
 
-// ... (reste de ta classe User)
 
 
    //  private String password;
@@ -34,7 +35,7 @@ public class User {
     private String statut;
     private String nom;
     private String prenom;
-    private String telephone;
+
 
     private String numeroAirtel;
     private String nomAirtel;
@@ -75,13 +76,29 @@ public class User {
             this.mustChangePassword = false; // Par défaut false, sauf si on a dit true explicitement comme ci-dessus
         }
     }
+    // À AJOUTER :
+    @Column(name = "photo_url")
+    private String photoUrl;
+
+    // Ajoutez son getter/setter si vous n'utilisez pas Lombok @Getter @Setter sur toute la classe :
+    public String getPhotoUrl() { return photoUrl; }
+    public void setPhotoUrl(String photoUrl) { this.photoUrl = photoUrl; }
+// ... (reste de ta classe User)
+
+    // ... (reste de votre classe User.java au-dessus)
 
     public String getNom() { return nom; }
     public void setNom(String nom) { this.nom = nom; }
 
     public String getPrenom() { return prenom; }
     public void setPrenom(String prenom) { this.prenom = prenom; }
-    // Ajoutez ceci dans votre classe User.java (juste après vos champs)
+
+    // ====================================================================
+    // 🔥 AJOUTEZ CES DEUX MÉTHODES POUR FIXER LE NUMÉRO DE TÉLÉPHONE
+    // ====================================================================
+    public String getTelephone() { return telephone; }
+    public void setTelephone(String telephone) { this.telephone = telephone; }
+    // ====================================================================
 
     public LocalDateTime getDateInscription() {
         return dateInscription;
@@ -93,5 +110,4 @@ public class User {
 
     public Double getTauxCommission() { return tauxCommission; }
     public void setTauxCommission(Double tauxCommission) { this.tauxCommission = tauxCommission; }
-
 }

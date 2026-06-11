@@ -2,10 +2,7 @@ package com.example.gariconnectbackend.controller;
 
 import com.example.gariconnectbackend.model.Reservation;
 import com.example.gariconnectbackend.model.User;
-import com.example.gariconnectbackend.repository.CommissionDetteRepository;
-import com.example.gariconnectbackend.repository.ReservationRepository;
-import com.example.gariconnectbackend.repository.TrajetRepository;
-import com.example.gariconnectbackend.repository.UserRepository;
+import com.example.gariconnectbackend.repository.*;
 import com.example.gariconnectbackend.service.ReservationService;
 import com.example.gariconnectbackend.dto.PassagerDTO;
 
@@ -19,6 +16,17 @@ import org.springframework.web.bind.annotation.*;
         import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+
+import com.example.gariconnectbackend.model.DemandeRecuperation;
+import com.example.gariconnectbackend.repository.*;
+
+import com.example.gariconnectbackend.dto.HistoriqueVoyageDTO;
+
+
+import org.springframework.web.bind.annotation.*;
+
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/reservations")
@@ -39,20 +47,26 @@ public class ReservationController {
 
     @Autowired
     private TrajetRepository trajetRepository;
+    @Autowired
+    private DemandeRecuperationRepository demandeRecuperationRepository;
 
     /**
      * ➕ Créer une réservation simple
      * Résout l'erreur 403 en s'alignant sur l'URL appelée par le Frontend (/creer-simple)
      */
-    @PostMapping("/creer-simple")
+
+    @PostMapping("/creer")
     public ResponseEntity<?> creerReservation(@RequestBody Reservation reservation) {
         try {
             Reservation nouvelleReservation = reservationService.creerReservation(reservation);
-            return ResponseEntity.ok(nouvelleReservation);
+            return ResponseEntity.status(HttpStatus.CREATED).body(nouvelleReservation);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            System.err.println("❌ ERREUR CRÉATION RÉSERVATION : " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<?> annulerReservation(@PathVariable Long id) {
         try {
@@ -63,10 +77,12 @@ public class ReservationController {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
     }
+
     @GetMapping("/trajet/{trajetId}/passagers")
     public ResponseEntity<List<PassagerDTO>> obtenirPassagersParTrajet(@PathVariable Long trajetId) {
         return ResponseEntity.ok(reservationService.obtenirPassagersParTrajet(trajetId));
     }
+
     @GetMapping("/mes-reservations")
     public ResponseEntity<?> getMesReservations() {
         try {
@@ -98,6 +114,7 @@ public class ReservationController {
             return ResponseEntity.status(404).body(Map.of("error", e.getMessage()));
         }
     }
+
     /**
      * 🚗 Récupérer le voyage actif/éligible du client connecté
      * Résout l'erreur 400 en s'alignant sur l'URL appelée par le Frontend (/mon-voyage-actif)
@@ -146,6 +163,7 @@ public class ReservationController {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
     }
+
     @PutMapping("/{id}/statut")
     public ResponseEntity<?> mettreAJourStatut(@PathVariable Long id, @RequestBody Map<String, String> payload) {
         try {
@@ -207,48 +225,30 @@ public class ReservationController {
                 "siege", res.getNumeroSiege()
         ));
     }
+
     @PostMapping("/scanner-ticket")
     @PreAuthorize("hasRole('CHAUFFEUR')")
-    public ResponseEntity<?> scannerTicket(@RequestParam String codeTicket) {
+    public ResponseEntity<?> scanTicket(@PathVariable String codeTicket) {
         try {
-            // 1. Récupérer l'email du chauffeur connecté
-            String emailChauffeur = SecurityContextHolder.getContext().getAuthentication().getName();
-
-            // 2. Récupérer la réservation via le code de ticket
             Reservation res = reservationRepository.findByCodeTicket(codeTicket)
-                    .orElseThrow(() -> new RuntimeException("Ticket invalide ou inexistant."));
+                    .orElseThrow(() -> new RuntimeException("Ticket introuvable"));
 
-            // 3. Vérifier si le chauffeur est bien celui associé au trajet
-            if (res.getTrajet() == null || res.getTrajet().getChauffeur() == null ||
-                    !res.getTrajet().getChauffeur().getEmail().equals(emailChauffeur)) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                        .body("Ce ticket n'est pas destiné à votre véhicule/trajet.");
-            }
-
-            // 4. VÉRIFICATION DU PAIEMENT
-            if ("ATTENTE_PAIEMENT".equals(res.getStatut())) {
-                return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
-                        .body("Le paiement n'a pas été confirmé. Le passager doit d'abord payer à l'agence.");
-            }
-
-            // 5. Vérifier si le passager est déjà enregistré comme étant à bord
             if ("EMBARQUE".equals(res.getStatut())) {
-                return ResponseEntity.badRequest()
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                         .body("Ce ticket a déjà été scanné et le passager est déjà en voiture.");
             }
 
-            // 6. TOUT EST OK : Changer le statut en "EN_VOITURE"
+            // Changer le statut en "EMBARQUE"
             res.setStatut("EMBARQUE");
             reservationRepository.save(res);
 
-            // 7. AJOUT DE LA NOTIFICATION : Alerte Appli + Envoi WhatsApp automatique
+            // Alerte Appli + Envoi WhatsApp automatique via le service
             String messageNotification = "Bonjour " + res.getClient().getNom() +
                     ", votre ticket " + res.getCodeTicket() + " a été scanné avec succès. Bon voyage à bord ! 🚀";
 
-            // Appel de ta méthode de notification existante dans ReservationService
             reservationService.notifierLeClient(res.getClient(), messageNotification);
 
-            System.out.println("🎉 [SCAN TICKET] Statut mis à jour à EN_VOITURE et notification envoyée pour le client ID : " + res.getClient().getId());
+            System.out.println("🎉 [SCAN TICKET] Statut mis à jour à EMBARQUE et notification envoyée pour le client ID : " + res.getClient().getId());
 
             return ResponseEntity.ok(Map.of(
                     "message", "Embarquement validé avec succès ! Le passager est maintenant enregistré 'En voiture'.",
@@ -261,6 +261,98 @@ public class ReservationController {
             System.err.println("❌ ERREUR SCANNER TICKET : " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", e.getMessage()));
+        }
+    }
+    /**
+     * 🏁 FINALISER UNE RÉSERVATION (Paiement Normal)
+     * Gère les requêtes PATCH envoyées par React depuis CheckoutPage
+     */
+    @RequestMapping(value = "/{id}/finaliser", method = {RequestMethod.PATCH, RequestMethod.PUT})
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CLIENT', 'USER')")
+    public ResponseEntity<?> finaliserReservation(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> payload) {
+        try {
+            // Mise à jour du statut de la réservation via le service
+            // Le statut passe à "PAYE" ou "VALIDEE" selon votre logique métier
+            Reservation reservationMiseAJour = reservationService.mettreAJourStatut(id, "PAYE");
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Réservation finalisée et payée avec succès.",
+                    "reservation", reservationMiseAJour
+            ));
+        } catch (Exception e) {
+            System.err.println("❌ Erreur lors de la finalisation : " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Erreur lors de la finalisation : " + e.getMessage()));
+        }
+    }
+    @GetMapping("/mon-historique")
+    public ResponseEntity<?> getMonHistorique() {
+        try {
+            // 1. Récupération de l'objet d'authentification
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+
+            // 2. Blocage définitif d'anonymousUser (Token manquant ou expiré)
+            if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body("Accès refusé : Token JWT manquant, expiré ou invalide.");
+            }
+
+            String emailConnecte = auth.getName();
+
+            // 3. Recherche du client en base de données
+            User client = userRepository.findByEmail(emailConnecte)
+                    .orElseThrow(() -> new RuntimeException("Client non trouvé avec l'email : " + emailConnecte));
+
+            // 4. Récupération des réservations liées au client
+            List<Reservation> reservations = reservationRepository.findByClientId(client.getId());
+
+            // 5. Transformation des réservations en HistoriqueVoyageDTO
+            List<HistoriqueVoyageDTO> historique = reservations.stream().map(res -> {
+                HistoriqueVoyageDTO dto = new HistoriqueVoyageDTO();
+                dto.setId(res.getId());
+                dto.setDateReservation(res.getDateReservation());
+                dto.setMontantTotal(res.getMontantPaye());
+                dto.setStatutPaiement(res.getStatut());
+
+                // Sécurité anti-NullPointerException si un trajet est mal configuré
+                if (res.getTrajet() != null) {
+                    dto.setVilleDepart(res.getTrajet().getDepart());
+                    dto.setVilleArrivee(res.getTrajet().getDestination());
+                    dto.setHeureDepart(res.getTrajet().getDateHeureDepart() != null ? res.getTrajet().getDateHeureDepart().toString() : "N/A");
+                } else {
+                    dto.setVilleDepart("N/A");
+                    dto.setVilleArrivee("N/A");
+                    dto.setHeureDepart("N/A");
+                }
+
+
+                // On change findByReservationId par findFirstByReservationId
+                Optional<DemandeRecuperation> demandeOpt = demandeRecuperationRepository.findFirstByReservationId(res.getId());
+                if (demandeOpt.isPresent()) {
+                    DemandeRecuperation dm = demandeOpt.get();
+                    dto.setTypeReservation("VIP");
+                    dto.setAdresseRamassage(dm.getAdresseTextuelle());
+                    dto.setPrixSupplementaire(dm.getPrixSupplementaire() != null ? dm.getPrixSupplementaire() : 0.0);
+                } else {
+                    dto.setTypeReservation("NORMAL");
+                    dto.setAdresseRamassage(null);
+                    dto.setPrixSupplementaire(0.0);
+                }
+
+                return dto;
+            }).collect(Collectors.toList());
+
+            // 6. Retourner la liste au Frontend React avec un code 200 OK
+            return ResponseEntity.ok(historique);
+
+        } catch (Exception e) {
+            // Log précis dans la console d'IntelliJ pour ton débogage personnel
+            System.err.println("❌ Erreur dans getMonHistorique : " + e.getMessage());
+            e.printStackTrace();
+
+            // Réponse propre au frontend pour éviter de figer l'interface en cas d'autre problème
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Erreur interne du serveur lors du chargement de l'historique : " + e.getMessage());
         }
     }
 }

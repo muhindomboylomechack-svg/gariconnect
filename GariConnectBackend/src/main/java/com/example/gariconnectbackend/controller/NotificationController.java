@@ -6,10 +6,12 @@ import com.example.gariconnectbackend.repository.NotificationRepository;
 import com.example.gariconnectbackend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/notifications")
@@ -55,15 +57,34 @@ public class NotificationController {
             return ResponseEntity.status(500).body("Erreur serveur : " + e.getMessage());
         }
     }
-
-    @PutMapping("/{id}/lire")
+    // ==========================================
+    // MARQUER UNE NOTIFICATION SPÉCIFIQUE COMME LUE
+    // ==========================================
+    @PutMapping("/marquer-lue/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CHAUFFEUR', 'CLIENT', 'USER')")
     public ResponseEntity<?> marquerCommeLue(@PathVariable Long id) {
-        Notification n = notificationRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Notification introuvable"));
-        n.setLue(true);
-        notificationRepository.save(n);
-        return ResponseEntity.ok().build();
+        try {
+            // 1. Vérifier si la notification existe
+            Notification notification = notificationRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Notification introuvable avec l'ID : " + id));
+
+            // 2. Modifier le statut de lecture
+            notification.setLue(true);
+            notificationRepository.save(notification);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Notification marquée comme lue avec succès !",
+                    "id", id,
+                    "lue", true
+            ));
+        } catch (Exception e) {
+            System.err.println("❌ Erreur lors du marquage de la notification : " + e.getMessage());
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Erreur lors du traitement : " + e.getMessage()
+            ));
+        }
     }
+
     // ==========================================
     // NOUVEAUTÉ 1 : SUPPRIMER UNE NOTIFICATION UNIQUE
     // ==========================================

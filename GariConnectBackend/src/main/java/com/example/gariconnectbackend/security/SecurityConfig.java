@@ -3,6 +3,7 @@ package com.example.gariconnectbackend.security;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -16,14 +17,15 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 
 @Configuration
+@EnableMethodSecurity // Assure que @PreAuthorize fonctionne parfaitement sur vos contrôleurs
 public class SecurityConfig {
 
     @Autowired
-    private JwtFilter jwtFilter;
+    private JwtFilter jwtFilter; //
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
+        return new BCryptPasswordEncoder(); //
     }
 
     @Bean
@@ -33,39 +35,42 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // Routes publiques
-                        .requestMatchers("/api/auth/**").permitAll()
+                        // 1. Routes publiques (AJOUT DE /uploads/** ET /error)
+                        .requestMatchers("/api/auth/**", "/uploads/**", "/error").permitAll()
 
-                        // CORRECTION : Autoriser SUPER_ADMIN et AGENCY_ADMIN (le filtrage granulaire se fait via @PreAuthorize dans le contrôleur)
-                        .requestMatchers("/api/admin/**").hasAnyRole("SUPER_ADMIN", "AGENCY_ADMIN")
+                        // 2. Gestion des demandes de récupération (Accessibles aux clients et gestionnaires)
+                        .requestMatchers("/api/recuperations/**", "/api/recuperation/**").hasAnyRole("SUPER_ADMIN", "AGENCY_ADMIN", "AGENCY_MANAGER", "CLIENT")
 
-                        // CORRECTION : Remplacement de "ADMIN" par "AGENCY_ADMIN"
-                        .requestMatchers("/api/users/**").hasAnyRole("SUPER_ADMIN", "AGENCY_ADMIN", "AGENCY_MANAGER")
+                        // 3. Gestion des véhicules et chauffeurs (Agences uniquement)
+                        .requestMatchers("/api/vehicules/**", "/api/chauffeurs/**").hasAnyRole("SUPER_ADMIN", "AGENCY_ADMIN", "AGENCY_MANAGER")
 
-                        // CORRECTION : Remplacement de "AGENCE" par "AGENCY_ADMIN", "AGENCY_MANAGER"
-                        .requestMatchers("/api/paiements/**", "/api/finance/**").hasAnyRole("SUPER_ADMIN", "AGENCY_ADMIN", "AGENCY_MANAGER")
-                      //  .requestMatchers("/api/users/**").hasAnyRole("SUPER_ADMIN", "AGENCY_ADMIN", "AGENCY_MANAGER")
-                        // Le reste nécessite simplement d'être authentifié (Notifications, Trajets, etc.)
+                        // 4. Statistiques et Finances (Administrateurs uniquement)
+                        .requestMatchers("/api/statistiques/**", "/api/finance/**").hasAnyRole("SUPER_ADMIN", "AGENCY_ADMIN", "AGENCY_MANAGER")
+
+                        // 5. Autoriser explicitement toutes les requêtes (GET, POST, PUT, PATCH, DELETE)
+                        // sur les trajets et réservations pour le rôle CLIENT
+                        .requestMatchers("/api/trajets/**", "/api/reservations/**").hasAnyRole("SUPER_ADMIN", "AGENCY_ADMIN", "AGENCY_MANAGER", "CHAUFFEUR", "CLIENT", "USER")
+
+                        // Le reste nécessite d'être authentifié
                         .anyRequest().authenticated()
                 );
 
         http.addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
-
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOriginPatterns(Arrays.asList(
-                "http://localhost:5173",
-                "https://*.onrender.com"
-        ));
-        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(Arrays.asList("Authorization", "Cache-Control", "Content-Type", "Accept"));
-        config.setAllowCredentials(true);
+        CorsConfiguration config = new CorsConfiguration(); //
+        config.setAllowedOriginPatterns(Arrays.asList( //
+                "http://localhost:5173", //
+                "https://*.onrender.com" //
+        )); //
+        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")); //
+        config.setAllowedHeaders(Arrays.asList("Authorization", "Cache-Control", "Content-Type", "Accept")); //
+        config.setAllowCredentials(true); //
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", config);
-        return source;
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource(); //
+        source.registerCorsConfiguration("/**", config); //
+        return source; //
     }
 }

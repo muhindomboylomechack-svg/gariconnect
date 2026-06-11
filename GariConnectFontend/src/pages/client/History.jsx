@@ -1,205 +1,306 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
-    FaHistory, FaBus, FaBox, FaSearch, 
-    FaChevronRight, FaCalendarAlt, FaArrowLeft, FaStar
+    FaCalendarAlt, 
+    FaMapMarkerAlt, 
+    FaCreditCard, 
+    FaCheckCircle, 
+    FaClock, 
+    FaCar, 
+    FaArrowRight, 
+    FaSearch, 
+    FaExclamationCircle 
 } from 'react-icons/fa';
-import { Link, useNavigate } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
-// Import de l'instance API centralisée
-import api from '../../services/api'; 
 
-const History = () => {
-    const { t } = useTranslation();
+const HistoriqueReservations = () => {
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState('voyages'); 
-    const [historyData, setHistoryData] = useState({ tickets: [], colis: [] });
-    const [loading, setLoading] = useState(true);
-    const [searchTerm, setSearchTerm] = useState("");
+    const [reservations, setReservations] = useState([]);
+    const [filter, setFilter] = useState('TOUTES'); // TOUTES, ATTENTE_PAIEMENT, RAMASSAGE
+    const [isLoading, setIsLoading] = useState(true);
+    const [errorMsg, setErrorMsg] = useState(null);
+
+    // 🌐 Configuration de l'URL de votre API Backend
+    const API_BASE_URL = 'http://localhost:8080/api/reservations'; 
 
     useEffect(() => {
-        const fetchHistory = async () => {
-            setLoading(true);
+        const chargerHistorique = async () => {
+            setIsLoading(true);
+            setErrorMsg(null);
             try {
-                // Utilisation de l'instance api : le token est géré par l'intercepteur
-                // et l'URL de base est configurée dans api.js
-                const [ticketsRes, colisRes] = await Promise.all([
-                    api.get('/reservations/mes-reservations'),
-                    api.get('/agences/courriers/mes-envois')
-                ]);
+                // 🔐 Récupération du jeton d'authentification utilisateur
+                const token = localStorage.getItem('token'); 
+                
+                if (!token) {
+                    setErrorMsg("Vous devez être connecté pour voir votre historique.");
+                    setIsLoading(false);
+                    return;
+                }
 
-                setHistoryData({
-                    tickets: Array.isArray(ticketsRes.data) ? ticketsRes.data : [],
-                    colis: Array.isArray(colisRes.data) ? colisRes.data : []
+                // 🚀 Appel API réel vers l'endpoint lié à obtenirHistoriqueClient
+                const response = await fetch(`${API_BASE_URL}/mon-historique`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}` // Transmission sécurisée du token JWT
+                    }
                 });
+
+                // 🆕 GESTION SPÉCIFIQUE DE L'ERREUR 401 (Session expirée ou invalide)
+                if (response.status === 401) {
+                    localStorage.removeItem('token'); // On nettoie le faux token
+                    setErrorMsg("Votre session a expiré ou est invalide. Redirection vers la page de connexion...");
+                    
+                    // Redirection automatique vers le login après 3 secondes
+                    setTimeout(() => {
+                        navigate('/login');
+                    }, 3000);
+                    
+                    throw new Error("Erreur 401 : Non autorisé");
+                }
+
+                if (!response.ok) {
+                    throw new Error(`Erreur serveur: ${response.status}`);
+                }
+
+                const data = await response.json(); // Récupère la liste des HistoriqueVoyageDTO
+                setReservations(data);
+
             } catch (error) {
-                console.error("Erreur historique :", error);
-                // Si l'erreur est 401, on redirige vers le login
-                if (error.response?.status === 401) {
-                    navigate('/login');
+                console.error("Erreur lors du chargement de l'historique :", error);
+                // On n'écrase le message d'erreur que si ce n'est pas déjà un 401 géré plus haut
+                if (error.message !== "Erreur 401 : Non autorisé") {
+                    setErrorMsg("Impossible de charger votre historique de voyages. Veuillez réessayer plus tard.");
                 }
             } finally {
-                setLoading(false);
+                setIsLoading(false);
             }
         };
 
-        fetchHistory();
+        chargerHistorique();
     }, [navigate]);
 
-    // Filtrage des données selon l'onglet actif et le terme de recherche
-    const filteredData = activeTab === 'voyages' 
-        ? historyData.tickets.filter(t => 
-            t.trajet?.destination?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            t.trajet?.depart?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            t.agenceNom?.toLowerCase().includes(searchTerm.toLowerCase())
-          )
-        : historyData.colis.filter(c => 
-            c.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            c.nomDestinataire?.toLowerCase().includes(searchTerm.toLowerCase())
-          );
+    // Redirection intelligente vers la bonne page de paiement selon le cas
+    const gererPaiement = (res, event) => {
+        event.stopPropagation();
+        
+        if (res.statutPaiement === "ATTENTE_PAIEMENT_SURPLUS") {
+            // Redirection vers le formulaire spécifique du surplus de récupération à domicile
+            navigate(`/client/reservation-recuperation/${res.id}`);
+        } else if (res.statutPaiement === "ATTENTE_PAIEMENT" || res.statutPaiement === "EN_ATTENTE") {
+            // Redirection vers le formulaire de paiement standard du billet complet
+            navigate(`/client/paiement-reservation/${res.id}`);
+        }
+    };
 
-    const formatDate = (dateString) => {
-        if (!dateString) return t('back');
-        const date = new Date(dateString);
-        return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
+    // Filtrage des données de la liste
+    const reservationsFiltrees = reservations.filter(res => {
+        if (filter === 'ATTENTE_PAIEMENT') {
+            return res.statutPaiement === 'ATTENTE_PAIEMENT' || res.statutPaiement === 'EN_ATTENTE' || res.statutPaiement === 'ATTENTE_PAIEMENT_SURPLUS';
+        }
+        if (filter === 'RAMASSAGE') {
+            return res.typeReservation === 'VID' || res.typeReservation === 'VIP';
+        }
+        return true;
+    });
+
+    // Rendu du Badge de Statut de Paiement
+    const renderBadgeStatut = (statut) => {
+        switch (statut) {
+            case 'PAYE':
+            case 'VALIDEE':
+                return (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                        <FaCheckCircle size={12} /> Payé
+                    </span>
+                );
+            case 'ATTENTE_PAIEMENT_SURPLUS':
+                return (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 animate-pulse">
+                        <FaClock size={12} /> Surplus à payer (VID)
+                    </span>
+                );
+            case 'ATTENTE_PAIEMENT':
+            case 'EN_ATTENTE':
+                return (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
+                        <FaExclamationCircle size={12} /> Billet non payé
+                    </span>
+                );
+            default:
+                return (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-50 text-slate-700 dark:bg-slate-950/40 dark:text-slate-400">
+                        {statut}
+                    </span>
+                );
+        }
     };
 
     return (
-        <div className="min-h-screen pb-20 animate-in fade-in duration-700 bg-slate-50/30 dark:bg-transparent">
-            <div className="max-w-4xl mx-auto px-4">
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-6 md:p-8 text-slate-800 dark:text-slate-100">
+            <div className="max-w-5xl mx-auto">
                 
-                {/* Header Profilé */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10 mt-8">
-                    <div className="flex items-center gap-5">
-                        <div className="p-5 bg-blue-600 rounded-[1.8rem] text-white shadow-2xl shadow-blue-500/30 ring-4 ring-white dark:ring-slate-900">
-                            <FaHistory size={28} />
-                        </div>
-                        <div>
-                            <Link to="/client/dashboard" className="text-blue-600 font-black uppercase text-[10px] tracking-[0.2em] flex items-center gap-2 mb-2 hover:translate-x-[-5px] transition-transform">
-                                <FaArrowLeft /> {t('back')}
-                            </Link>
-                            <h1 className="text-4xl font-black tracking-tighter text-slate-900 dark:text-white uppercase italic leading-none">
-                                {t('settings')}<span className="text-blue-600">.</span>
-                            </h1>
-                        </div>
+                {/* --- HEADER --- */}
+                <div className="mb-8">
+                    <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+                        Mon Historique de Voyages
+                    </h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                        Consultez vos réservations, vérifiez vos statuts de ramassage à domicile et finalisez vos paiements en toute sécurité.
+                    </p>
+                </div>
+
+                {/* --- MESSAGE D'ERREUR DYNAMIQUE --- */}
+                {errorMsg && (
+                    <div className="mb-6 p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-400 rounded-2xl text-sm font-semibold flex items-center gap-2 shadow-sm">
+                        <FaExclamationCircle className="flex-shrink-0" />
+                        <span>{errorMsg}</span>
                     </div>
+                )}
 
-                    <div className="flex gap-3">
-                        <div className="bg-white dark:bg-slate-800 p-4 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm flex-1 md:flex-none min-w-[120px]">
-                            <p className="text-slate-400 text-[9px] font-black uppercase tracking-widest mb-1">{activeTab === 'voyages' ? 'Tickets' : 'Colis'}</p>
-                            <p className="text-2xl font-black text-slate-800 dark:text-white leading-none">
-                                {activeTab === 'voyages' ? historyData.tickets.length : historyData.colis.length}
-                            </p>
-                        </div>
+                {/* --- BARRE DE FILTRES --- */}
+                <div className="flex flex-wrap items-center justify-between gap-4 bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800/60 mb-6">
+                    <div className="flex flex-wrap gap-2">
+                        <button
+                            onClick={() => setFilter('TOUTES')}
+                            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer ${
+                                filter === 'TOUTES'
+                                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200 dark:shadow-none'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            }`}
+                        >
+                            Toutes ({reservations.length})
+                        </button>
+                        <button
+                            onClick={() => setFilter('ATTENTE_PAIEMENT')}
+                            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer ${
+                                filter === 'ATTENTE_PAIEMENT'
+                                ? 'bg-amber-500 text-white shadow-md shadow-amber-100 dark:shadow-none'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            }`}
+                        >
+                            Attente Paiement ({reservations.filter(r => r.statutPaiement !== 'PAYE' && r.statutPaiement !== 'VALIDEE').length})
+                        </button>
+                        <button
+                            onClick={() => setFilter('RAMASSAGE')}
+                            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer ${
+                                filter === 'RAMASSAGE'
+                                ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            }`}
+                        >
+                            <span className="inline-flex items-center gap-1">
+                                <FaCar size={11} /> Options VID / À domicile
+                            </span>
+                        </button>
                     </div>
                 </div>
 
-                {/* Navigation par Onglets */}
-                <div className="bg-slate-200/50 dark:bg-slate-800/50 p-2 rounded-[2.5rem] flex mb-10 backdrop-blur-sm">
-                    <button 
-                        onClick={() => { setActiveTab('voyages'); setSearchTerm(""); }}
-                        className={`flex-1 flex items-center justify-center gap-3 py-5 rounded-[2rem] font-black text-xs uppercase transition-all duration-500 ${activeTab === 'voyages' ? 'bg-white dark:bg-slate-700 text-blue-600 shadow-xl scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <FaBus size={16} /> {t('checkout.your_seat')}
-                    </button>
-                    <button 
-                        onClick={() => { setActiveTab('colis'); setSearchTerm(""); }}
-                        className={`flex-1 flex items-center justify-center gap-3 py-5 rounded-[2rem] font-black text-xs uppercase transition-all duration-500 ${activeTab === 'colis' ? 'bg-white dark:bg-slate-700 text-emerald-600 shadow-xl scale-[1.02]' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <FaBox size={16} /> {t('preferences')}
-                    </button>
-                </div>
-
-                {/* Barre de Recherche */}
-                <div className="relative group mb-12">
-                    <FaSearch className="absolute left-7 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
-                    <input 
-                        type="text" 
-                        placeholder={activeTab === 'voyages' ? t('checkout.select_seat_placeholder') : "Rechercher une expédition..."}
-                        className="w-full bg-white dark:bg-slate-900 border-2 border-transparent rounded-[2rem] py-6 pl-16 pr-8 outline-none focus:border-blue-500/20 shadow-xl shadow-slate-200/40 dark:shadow-none font-bold text-slate-700 dark:text-white placeholder:text-slate-300 transition-all"
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                    />
-                </div>
-
-                {/* Liste des Résultats */}
-                <div className="space-y-6">
-                    {loading ? (
-                        <div className="text-center py-24 bg-white dark:bg-slate-900 rounded-[3.5rem] shadow-sm border-2 border-dashed border-slate-100 dark:border-slate-800">
-                             <div className="w-14 h-14 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-6"></div>
-                             <p className="font-black text-[11px] uppercase tracking-[0.4em] text-blue-600 animate-pulse">Sync...</p>
+                {/* --- ZONE PRINCIPALE DE LISTING --- */}
+                {isLoading ? (
+                    <div className="py-20 text-center text-sm text-slate-400 font-semibold animate-pulse">
+                        Chargement de votre historique...
+                    </div>
+                ) : reservationsFiltrees.length === 0 ? (
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl p-12 text-center border border-slate-100 dark:border-slate-800/60 shadow-sm">
+                        <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto text-slate-400 mb-3">
+                            <FaSearch size={20} />
                         </div>
-                    ) : filteredData.length === 0 ? (
-                        <div className="text-center py-24 bg-white dark:bg-slate-900 rounded-[3.5rem] shadow-inner">
-                            <div className="w-24 h-24 bg-slate-50 dark:bg-slate-800/50 rounded-full flex items-center justify-center mx-auto mb-8 text-slate-200">
-                                <FaHistory size={40} />
-                            </div>
-                            <p className="font-black uppercase text-xs text-slate-400 tracking-[0.2em]">{t('checkout.error_load')}</p>
-                        </div>
-                    ) : (
-                        filteredData.map((item, index) => (
+                        <p className="font-bold text-slate-700 dark:text-slate-300">Aucune réservation trouvée</p>
+                        <p className="text-xs text-slate-400 mt-1">Aucun élément ne correspond au filtre sélectionné.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        {reservationsFiltrees.map((res) => (
                             <div 
-                                key={item.id} 
-                                className="group bg-white dark:bg-slate-900 p-8 rounded-[3rem] border border-slate-50 dark:border-slate-800 transition-all hover:shadow-2xl hover:shadow-blue-500/5 hover:-translate-y-2 animate-in fade-in slide-in-from-bottom-5"
-                                style={{ animationDelay: `${index * 70}ms` }}
+                                key={res.id}
+                                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800/50 shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden"
                             >
-                                <div className="flex flex-col lg:flex-row justify-between items-center gap-8">
-                                    <div className="flex items-center gap-6 w-full lg:w-auto">
-                                        <div className={`w-16 h-16 rounded-[1.5rem] flex items-center justify-center text-2xl transition-all duration-500 ${
-                                            activeTab === 'voyages' 
-                                            ? 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white shadow-lg shadow-blue-500/10' 
-                                            : 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white shadow-lg shadow-emerald-500/10'
-                                        }`}>
-                                            {activeTab === 'voyages' ? <FaBus /> : <FaBox />}
+                                {/* Tag distinctif VID / Normal en haut à droite */}
+                                <div className="absolute top-4 right-4 flex items-center gap-2">
+                                    {res.typeReservation === 'VID' || res.typeReservation === 'VIP' ? (
+                                        <span className="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[10px] font-black tracking-widest rounded-lg uppercase shadow-sm flex items-center gap-1">
+                                            <FaCar size={10} /> VID / À Domicile
+                                        </span>
+                                    ) : (
+                                        <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[10px] font-bold tracking-wider rounded-lg uppercase">
+                                            Standard
+                                        </span>
+                                    )}
+                                </div>
+
+                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                    
+                                    {/* Infos de base du trajet */}
+                                    <div className="space-y-3 flex-1">
+                                        <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold text-indigo-600 dark:text-indigo-400 tracking-wide uppercase">
+                                            <FaCalendarAlt />
+                                            <span>RÉSERVATION N° {res.id}</span>
+                                            <span className="text-slate-300 dark:text-slate-700">•</span>
+                                            <span className="text-slate-400 lowercase font-medium">
+                                                Fait le {res.dateReservation ? new Date(res.dateReservation).toLocaleDateString('fr-FR', {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'}) : 'Date inconnue'}
+                                            </span>
                                         </div>
-                                        
-                                        <div className="flex-1">
-                                            <h4 className="font-black text-slate-900 dark:text-white uppercase tracking-tight text-xl mb-2">
-                                                {activeTab === 'voyages' 
-                                                    ? `${item.trajet?.depart} ➔ ${item.trajet?.destination}` 
-                                                    : (item.description || `Colis #${item.id.toString().slice(-4)}`)}
-                                            </h4>
-                                            
-                                            <div className="flex flex-wrap items-center gap-4">
-                                                <span className="flex items-center gap-2 text-[11px] font-black text-slate-400 uppercase tracking-wider">
-                                                    <FaCalendarAlt className="text-blue-500" />
-                                                    {formatDate(activeTab === 'voyages' ? item.trajet?.dateDepart : item.dateEnvoi)}
-                                                </span>
-                                                <div className="h-1.5 w-1.5 rounded-full bg-slate-200"></div>
-                                                <span className={`text-[10px] font-black px-4 py-1.5 rounded-full uppercase tracking-widest shadow-sm ${
-                                                    (item.statutPaiement === 'CONFIRME' || item.statut === 'LIVRE') 
-                                                    ? 'bg-emerald-100 text-emerald-700' 
-                                                    : 'bg-orange-100 text-orange-700'
-                                                }`}>
-                                                    {activeTab === 'voyages' ? (item.statutPaiement || 'ATTENTE') : (item.statut || 'TRANSIT')}
-                                                </span>
+
+                                        {/* Trajet Départ ➔ Arrivée */}
+                                        <div className="flex items-center gap-3 text-lg font-black text-slate-800 dark:text-white">
+                                            <span>{res.villeDepart}</span>
+                                            <FaArrowRight size={14} className="text-slate-400 mt-0.5" />
+                                            <span>{res.villeArrivee}</span>
+                                            <span className="ml-2 text-sm font-bold px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-slate-600 dark:text-slate-400">
+                                                {res.heureDepart || '--:--'}
+                                            </span>
+                                        </div>
+
+                                        {/* Affichage de l'adresse de ramassage si c'est une option VID */}
+                                        {(res.typeReservation === 'VID' || res.typeReservation === 'VIP') && res.adresseRamassage && (
+                                            <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/40 px-3 py-1.5 rounded-xl w-full max-w-md border border-slate-100 dark:border-indigo-950/20">
+                                                <FaMapMarkerAlt className="text-indigo-500 flex-shrink-0" />
+                                                <span className="truncate"><strong>Ramassage :</strong> {res.adresseRamassage}</span>
                                             </div>
-                                        </div>
+                                        )}
                                     </div>
 
-                                    <div className="flex items-center justify-between lg:justify-end w-full lg:w-auto gap-12 border-t lg:border-none pt-6 lg:pt-0 border-slate-50">
-                                        <div className="text-left lg:text-right">
-                                            <p className="text-[10px] font-black text-slate-300 uppercase mb-1 tracking-tighter">{t('checkout.total_to_pay')}</p>
-                                            <p className="font-black text-slate-900 dark:text-white text-2xl italic">
-                                                {activeTab === 'voyages' ? item.trajet?.prix : item.prix} 
-                                                <span className="text-blue-600 text-sm not-italic ml-1">FCFA</span>
+                                    {/* Prix & Statut financiers (À droite) */}
+                                    <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-4 pt-4 md:pt-0 border-t md:border-t-0 border-slate-50 dark:border-slate-800/50">
+                                        
+                                        {/* Montants */}
+                                        <div className="md:text-right">
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Montant total</p>
+                                            <p className="text-xl font-black text-slate-900 dark:text-white">
+                                                {(res.montantTotal || 0).toLocaleString('fr-FR')} <span className="text-xs font-bold text-slate-500">FC</span>
                                             </p>
+                                            {res.prixSupplementaire > 0 && res.statutPaiement === 'ATTENTE_PAIEMENT_SURPLUS' && (
+                                                <p className="text-[11px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">
+                                                    (Dont surplus ramassage : {(res.prixSupplementaire).toLocaleString('fr-FR')} FC)
+                                                </p>
+                                            )}
                                         </div>
 
-                                        <button 
-                                            onClick={() => activeTab === 'voyages' && navigate(`/client/evaluate/${item.id}`)}
-                                            className="group/btn bg-slate-50 dark:bg-slate-800 p-5 rounded-[1.5rem] text-slate-400 hover:bg-blue-600 hover:text-white transition-all shadow-sm hover:shadow-xl hover:shadow-blue-500/20 active:scale-95"
-                                        >
-                                            {activeTab === 'voyages' ? <FaStar className="animate-pulse" /> : <FaChevronRight />}
-                                        </button>
+                                        {/* Actions et Badges */}
+                                        <div className="flex items-center gap-3">
+                                            {renderBadgeStatut(res.statutPaiement)}
+
+                                            {/* Bouton d'action contextuel de paiement */}
+                                            {res.statutPaiement !== 'PAYE' && res.statutPaiement !== 'VALIDEE' && (
+                                                <button
+                                                    onClick={(e) => gererPaiement(res, e)}
+                                                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-indigo-100 dark:shadow-none cursor-pointer border-0"
+                                                >
+                                                    <FaCreditCard size={12} />
+                                                    <span>Payer</span>
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
+
                                 </div>
                             </div>
-                        ))
-                    )}
-                </div>
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );
 };
 
-export default History;
+export default HistoriqueReservations;

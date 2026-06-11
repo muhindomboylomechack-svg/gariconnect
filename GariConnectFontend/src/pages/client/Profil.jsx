@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'; // Hook de traduction
 import { 
     FaUser, FaPhone, FaLock, 
     FaMoon, FaSun, FaArrowLeft, FaEdit, 
-    FaSave, FaBell, FaShieldAlt, FaGlobe 
+    FaSave, FaBell, FaShieldAlt, FaGlobe, FaCamera 
 } from 'react-icons/fa';
 
 const Profil = () => {
@@ -17,7 +17,8 @@ const Profil = () => {
     const [userData, setUserData] = useState({
         nom: '',
         email: '',
-        telephone: ''
+        telephone: '',
+        photoUrl: '' // 🔥 NOUVEAU : Ajout de la photo
     });
     
     // --- ÉTATS POUR LA SÉCURITÉ (MOT DE PASSE) ---
@@ -30,6 +31,7 @@ const Profil = () => {
     
     // --- ÉTATS POUR L'INTERFACE ---
     const [loading, setLoading] = useState(true);
+    const [isUploading, setIsUploading] = useState(false); // 🔥 NOUVEAU : État pour le chargement de l'image
     const [isEditing, setIsEditing] = useState(false);
     const [message, setMessage] = useState({ text: '', type: '' });
     
@@ -43,17 +45,17 @@ const Profil = () => {
     useEffect(() => {
         const fetchProfil = async () => {
             try {
-                // Utilisation de l'instance api centralisée
                 const response = await api.get('/users/profile');
 
                 setUserData({
                     nom: response.data.nom || '',
                     email: response.data.email || '',
-                    telephone: response.data.telephone || ''
+                    telephone: response.data.telephone || '',
+                    photoUrl: response.data.photoUrl || '' // 🔥 NOUVEAU : Récupération de la photo
                 });
             } catch (error) {
                 console.error("Erreur chargement profil :", error);
-                setMessage({ text: "Erreur", type: 'error' });
+                setMessage({ text: "Erreur lors du chargement de votre profil", type: 'error' });
             } finally {
                 setLoading(false);
             }
@@ -84,16 +86,64 @@ const Profil = () => {
         }
     };
 
+    // 🔥 NOUVEAU : Gestion du changement de l'avatar
+    const handleAvatarChange = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Vérification de la taille (ex: max 2MB)
+        if (file.size > 2 * 1024 * 1024) {
+            setMessage({ text: 'L\'image ne doit pas dépasser 2 Mo', type: 'error' });
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('avatar', file);
+
+        setIsUploading(true);
+        try {
+            // Note: Nous utilisons l'instance api centralisée.
+            // On s'assure que le Content-Type est bien laissé au navigateur (multipart/form-data avec la bonne boundary)
+            const response = await api.post('/users/profile/avatar', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data' 
+                }
+            });
+            
+            const newPhotoUrl = response.data.photoUrl;
+            
+            // 1. Mettre à jour l'affichage local
+            setUserData(prev => ({ ...prev, photoUrl: newPhotoUrl }));
+            
+            // 2. Mettre à jour le localStorage pour que la Navbar la récupère
+            localStorage.setItem('userAvatar', newPhotoUrl);
+            
+            // 3. Informer la Navbar qu'elle doit se rafraîchir
+            window.dispatchEvent(new Event('avatarUpdated'));
+
+            setMessage({ text: 'Photo de profil mise à jour !', type: 'success' });
+        } catch (error) {
+            console.error("Erreur d'upload :", error);
+            setMessage({ text: "Erreur lors du téléchargement de l'image", type: 'error' });
+        } finally {
+            setIsUploading(false);
+            setTimeout(() => setMessage({ text: '', type: '' }), 3000);
+        }
+    };
+
     // Gestion de la sauvegarde des informations
     const handleSave = async () => {
         setLoading(true);
         try {
-            await api.patch('/users/profile', userData);
+            await api.patch('/users/profile', {
+                nom: userData.nom,
+                telephone: userData.telephone
+            });
             
             setMessage({ text: t('success_msg'), type: 'success' });
             setIsEditing(false);
         } catch (error) {
-            setMessage({ text: 'Erreur', type: 'error' });
+            setMessage({ text: 'Erreur lors de la sauvegarde', type: 'error' });
         } finally {
             setLoading(false);
             setTimeout(() => setMessage({ text: '', type: '' }), 3000);
@@ -103,7 +153,7 @@ const Profil = () => {
     const handlePasswordUpdate = async (e) => {
         e.preventDefault();
         if (passwords.newPassword !== passwords.confirmPassword) {
-            setMessage({ text: 'Erreur mot de passe', type: 'error' });
+            setMessage({ text: 'Erreur : Les mots de passe ne correspondent pas', type: 'error' });
             return;
         }
 
@@ -118,10 +168,10 @@ const Profil = () => {
             setIsChangingPassword(false);
             setPasswords({ oldPassword: '', newPassword: '', confirmPassword: '' });
         } catch (error) {
-            setMessage({ text: 'Erreur', type: 'error' });
+            setMessage({ text: "L'ancien mot de passe est incorrect ou une erreur est survenue.", type: 'error' });
         } finally {
             setLoading(false);
-            setTimeout(() => setMessage({ text: '', type: '' }), 3000);
+            setTimeout(() => setMessage({ text: '', type: '' }), 4000);
         }
     };
 
@@ -166,11 +216,35 @@ const Profil = () => {
                     <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] p-8 border border-slate-100 dark:border-slate-800 shadow-xl shadow-slate-200/20 dark:shadow-none relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 dark:bg-blue-500/10 rounded-bl-[100px] -z-10"></div>
 
-                        <div className="flex justify-between items-start mb-8">
+                        <div className="flex flex-col sm:flex-row justify-between items-start mb-8 gap-4">
                             <div className="flex items-center gap-5">
-                                <div className="w-20 h-20 bg-blue-600 rounded-[1.5rem] flex items-center justify-center text-white text-3xl font-black shadow-lg shadow-blue-500/30">
-                                    {userData.nom ? userData.nom.charAt(0).toUpperCase() : 'U'}
+                                
+                                {/* 🔥 NOUVEAU : ZONE AVATAR AVEC UPLOAD */}
+                                <div className="relative group">
+                                    <div className="w-24 h-24 sm:w-20 sm:h-20 bg-blue-600 rounded-[1.5rem] flex items-center justify-center text-white text-3xl font-black shadow-lg shadow-blue-500/30 overflow-hidden border-4 border-white dark:border-slate-800">
+                                        {isUploading ? (
+                                            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                                        ) : userData.photoUrl ? (
+                                            <img src={userData.photoUrl} alt="Avatar" className="w-full h-full object-cover" />
+                                        ) : (
+                                            userData.nom ? userData.nom.charAt(0).toUpperCase() : 'U'
+                                        )}
+                                    </div>
+                                    
+                                    {/* Bouton pour changer la photo */}
+                                    <label className="absolute -bottom-2 -right-2 bg-slate-900 dark:bg-white text-white dark:text-slate-900 p-2.5 rounded-xl cursor-pointer shadow-xl hover:scale-110 transition-transform ring-4 ring-white dark:ring-slate-900">
+                                        <FaCamera size={14} />
+                                        <input 
+                                            type="file" 
+                                            accept="image/*" 
+                                            className="hidden" 
+                                            onChange={handleAvatarChange} 
+                                            disabled={isUploading}
+                                        />
+                                    </label>
                                 </div>
+                                {/* FIN ZONE AVATAR */}
+
                                 <div>
                                     <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">{userData.nom}</h2>
                                     <p className="text-[10px] font-black uppercase text-emerald-500 tracking-widest mt-1">{t('verified')}</p>

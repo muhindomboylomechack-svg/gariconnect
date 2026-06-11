@@ -17,6 +17,7 @@ public class PaiementService {
     // NOUVEAU : Injection du service de réservation
     @Autowired private ReservationService reservationService;
 
+
     @Transactional
     public Paiement effectuerPaiement(Long reservationId, String mode, String referenceClient) {
         Reservation res = reservationRepository.findById(reservationId)
@@ -26,7 +27,14 @@ public class PaiementService {
 
         Paiement p = new Paiement();
         p.setReservation(res);
-        p.setMontant(res.getTrajet().getPrix());
+
+        // 🔥 MODIFICATION : Utilise le montant total payé (Billet + Surplus) s'il a été calculé,
+        // sinon se rabat par défaut sur le prix standard du trajet.
+        Double montantTotal = (res.getMontantPaye() != null && res.getMontantPaye() > 0)
+                ? res.getMontantPaye()
+                : res.getTrajet().getPrix();
+        p.setMontant(montantTotal);
+
         p.setModePaiement(mode);
         p.setDatePaiement(LocalDateTime.now());
 
@@ -49,16 +57,15 @@ public class PaiementService {
             nouveauStatutReservation = "PAYEE_MOBILE";
         }
 
-        // Sauvegarde d'abord les nouveaux attributs
+        // Sauvegarde les attributs mis à jour
         reservationRepository.save(res);
         Paiement savedPaiement = paiementRepository.save(p);
 
-        // 🔥 CORRECTION : Met à jour le statut et déclenche la notification au client !
+        // Met à jour le statut global et déclenche la notification au client
         reservationService.mettreAJourStatut(res.getId(), nouveauStatutReservation);
 
         return savedPaiement;
     }
-
     public void genererCommissionDette(Paiement p, User agence) {
         Double taux = (agence.getTauxCommission() != null) ? agence.getTauxCommission() : 10.0;
         Double montantComm = (p.getMontant() * taux) / 100;

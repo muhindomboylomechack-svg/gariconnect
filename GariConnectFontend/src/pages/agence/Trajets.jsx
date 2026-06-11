@@ -38,7 +38,7 @@ const Trajets = () => {
   const fetchTrajets = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/trajets/mes-trajets');
+      const res = await api.get('/trajets');
       setTrajets(res.data);
     } catch (e) { 
       console.error("Erreur chargement trajets:", e); 
@@ -47,7 +47,6 @@ const Trajets = () => {
     }
   };
 
-  // Chargement dynamique des ressources quand le jour change
   useEffect(() => {
     if (formData.joursSemaine) {
       fetchRessourcesParJour(formData.joursSemaine);
@@ -57,15 +56,27 @@ const Trajets = () => {
     }
   }, [formData.joursSemaine]);
 
+  // 🔥 CORRECTION ICI : Synchronisation avec les endpoints du backend
   const fetchRessourcesParJour = async (jourChoisi) => {
     try {
       const paramJour = jourChoisi === "Tous les jours" ? "TOUS" : jourChoisi;
-      const res = await api.get(`/trajets/ressources-disponibles?jour=${paramJour}`);
       
-      let vDispo = res.data.vehicules || [];
-      let cDispo = res.data.chauffeurs || [];
+      // Lancement des requêtes en parallèle pour plus de rapidité
+      const [resRessources, resChauffeurs] = await Promise.all([
+        // 1. Récupération des véhicules via l'ancien endpoint
+        api.get(`/trajets/ressources-disponibles?jour=${paramJour}`).catch(() => ({ data: {} })),
+        // 2. Récupération stricte des chauffeurs via le endpoint qu'on vient de corriger en backend
+        api.get('/users/chauffeurs').catch(() => ({ data: [] }))
+      ]);
+      
+      let vDispo = resRessources.data.vehicules || (Array.isArray(resRessources.data) ? resRessources.data : []);
+      
+      // On priorise les chauffeurs venant du endpoint dédié et sécurisé
+      let cDispo = (Array.isArray(resChauffeurs.data) && resChauffeurs.data.length > 0) 
+                    ? resChauffeurs.data 
+                    : (resRessources.data.chauffeurs || []);
 
-      // LOGIQUE ÉDITION : Si on modifie, on garde les ressources actuelles dans la liste pour éviter qu'elles disparaissent
+      // LOGIQUE ÉDITION : on conserve les ressources déjà assignées au trajet en cours d'édition
       if (isEditing && currentId) {
           const trajetActuel = trajets.find(t => t.id === currentId);
           if (trajetActuel) {
@@ -120,21 +131,21 @@ const Trajets = () => {
     try {
       if (isEditing) {
         await api.put(`/trajets/${currentId}`, payload);
+        alert("✅ Trajet mis à jour avec succès !");
       } else {
         await api.post('/trajets', payload);
+        alert("✅ Trajet enregistré avec succès !");
       }
       setShowModal(false);
       fetchTrajets(); 
-      alert("✅ Trajet enregistré avec succès !");
     } catch (err) {
-      // INTERCEPTION DU MESSAGE D'ERREUR PERSONNALISÉ DU BACKEND
       const errorMsg = err.response?.data?.message || err.response?.data?.erreur || "Erreur lors de l'enregistrement";
       alert("⚠️ " + errorMsg);
     }
   };
 
   const handleEditClick = (trajet) => {
-    const heureExtraite = trajet.dateHeureDepart ? trajet.dateHeureDepart.split('T')[1].substring(0, 5) : '';
+    const heureExtraite = trajet.dateHeureDepart ? trajet.dateHeureDepart.substring(11, 16) : '';
 
     setFormData({
       depart: trajet.depart || '',
@@ -217,10 +228,10 @@ const Trajets = () => {
 
               <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50 dark:border-slate-800">
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                  <FaBus className="text-blue-500"/> {t.vehicule?.plaque_immatriculation || 'No Camion'}
+                  <FaBus className="text-blue-500"/> {t.vehicule?.plaque_immatriculation || 'Non assigné'}
                 </div>
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                  <FaUserTie className="text-blue-500"/> {t.chauffeur?.nom || 'No Driver'}
+                  <FaUserTie className="text-blue-500"/> {t.chauffeur?.nom || 'Non assigné'}
                 </div>
               </div>
 
@@ -320,7 +331,6 @@ const Trajets = () => {
       )}
 
       <style>{`
-        /* Style des inputs avec support complet Dark Mode */
         .form-input-custom {
           width: 100%;
           padding: 0.875rem 1rem;
@@ -332,15 +342,12 @@ const Trajets = () => {
           border: 2px solid transparent;
           transition: all 0.2s;
         }
-
         .form-input-custom:focus {
           border-color: #2563eb;
           background: white;
           box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
           outline: none;
         }
-
-        /* Mode sombre pour les inputs et sélecteurs */
         @media (prefers-color-scheme: dark) {
           .form-input-custom {
             background: #1e293b;
@@ -351,14 +358,11 @@ const Trajets = () => {
             background: #0f172a;
             border-color: #3b82f6;
           }
-          /* Style spécifique pour les options des select en mode sombre */
           select.form-input-custom option {
             background: #1e293b;
             color: #f1f5f9;
           }
         }
-
-        /* Si vous utilisez une classe .dark sur le body/html */
         :global(.dark) .form-input-custom {
             background: #1e293b;
             color: #f1f5f9;

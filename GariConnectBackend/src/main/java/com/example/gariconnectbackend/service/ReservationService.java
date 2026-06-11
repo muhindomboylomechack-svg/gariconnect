@@ -204,15 +204,8 @@ public class ReservationService {
 package com.example.gariconnectbackend.service;
 
 import com.example.gariconnectbackend.dto.PassagerDTO;
-import com.example.gariconnectbackend.model.Notification;
-import com.example.gariconnectbackend.model.Reservation;
-import com.example.gariconnectbackend.model.Role;
-import com.example.gariconnectbackend.model.Trajet;
-import com.example.gariconnectbackend.model.User;
-import com.example.gariconnectbackend.repository.NotificationRepository;
-import com.example.gariconnectbackend.repository.ReservationRepository;
-import com.example.gariconnectbackend.repository.TrajetRepository;
-import com.example.gariconnectbackend.repository.UserRepository;
+import com.example.gariconnectbackend.model.*;
+import com.example.gariconnectbackend.repository.*;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -239,7 +232,8 @@ public class ReservationService {
 
     @Autowired
     private WhatsAppService whatsAppService;
-
+    @Autowired
+    private DemandeRecuperationRepository demandeRecuperationRepository;
 
     /**
      * 🟢 1. CHANGEMENT DE STATUT : Notifie le client du nouveau statut de son voyage
@@ -429,5 +423,54 @@ public class ReservationService {
         notifierLeClient(nouvelleReservation.getClient(), messageNotification);
 
         return nouvelleReservation;
+    }
+
+    /**
+     * Récupère l'historique unifié (Normal & VID) pour le client connecté
+     */
+    public List<com.example.gariconnectbackend.dto.HistoriqueVoyageDTO> obtenirHistoriqueClient(String emailClient) {
+        // 1. Récupération de toutes les réservations du client triées par date décroissante
+        List<Reservation> reservations = reservationRepository.findByClient_EmailOrderByDateReservationDesc(emailClient);
+
+        // 2. Transformation en liste de DTOs enrichis
+        return reservations.stream().map(res -> {
+            com.example.gariconnectbackend.dto.HistoriqueVoyageDTO dto = new com.example.gariconnectbackend.dto.HistoriqueVoyageDTO();
+            dto.setId(res.getId());
+            dto.setDateReservation(res.getDateReservation() != null ? res.getDateReservation() : java.time.LocalDateTime.now());
+
+            // Extraction des informations du trajet (Depart, Destination, Heure)
+            if (res.getTrajet() != null) {
+                dto.setVilleDepart(res.getTrajet().getDepart());       // Correspond à trajet.getDepart()
+                dto.setVilleArrivee(res.getTrajet().getDestination()); // Correspond à trajet.getDestination()
+
+                // CORRECTION : Utilisation de getDateHeureDepart() et formatage en String (HH:mm)
+                if (res.getTrajet().getDateHeureDepart() != null) {
+                    java.time.format.DateTimeFormatter formatter = java.time.format.DateTimeFormatter.ofPattern("HH:mm");
+                    dto.setHeureDepart(res.getTrajet().getDateHeureDepart().format(formatter));
+                } else {
+                    dto.setHeureDepart("--:--");
+                }
+            }
+
+            // Gestion des aspects financiers globaux de la réservation
+            dto.setMontantTotal(res.getMontantPaye() != null ? res.getMontantPaye() : 0.0);
+            dto.setStatutPaiement(res.getStatut()); // Ex: "PAYE", "EN_ATTENTE"
+
+            // 3. Vérification s'il existe une demande de ramassage à domicile (VID) liée à cette réservation
+            java.util.Optional<DemandeRecuperation> demandeOpt = demandeRecuperationRepository.findByReservationId(res.getId());
+
+            if (demandeOpt.isPresent()) {
+                DemandeRecuperation dm = demandeOpt.get();
+                dto.setTypeReservation("VID");
+                dto.setAdresseRamassage(dm.getAdresseTextuelle());
+                dto.setPrixSupplementaire(dm.getPrixSupplementaire() != null ? dm.getPrixSupplementaire() : 0.0);
+            } else {
+                dto.setTypeReservation("NORMAL");
+                dto.setAdresseRamassage(null);
+                dto.setPrixSupplementaire(0.0);
+            }
+
+            return dto;
+        }).collect(java.util.stream.Collectors.toList());
     }
 }

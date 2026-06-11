@@ -310,6 +310,7 @@ public class TrajetController {
 package com.example.gariconnectbackend.controller;
 
 import com.example.gariconnectbackend.dto.TrajetDTO;
+import com.example.gariconnectbackend.model.Role;
 import com.example.gariconnectbackend.model.Trajet;
 import com.example.gariconnectbackend.model.User;
 import com.example.gariconnectbackend.model.Vehicule;
@@ -557,6 +558,34 @@ public ResponseEntity<?> getTrajetsAujourdhui() {
                 .collect(Collectors.toList());
 
         return ResponseEntity.ok(dtos);
+    }
+
+    // Dans TrajetController.java
+
+    @GetMapping("/chauffeurs-disponibles")
+    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> getChauffeursDeMonAgence() {
+        try {
+            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+            User currentUser = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+
+            // 🔥 CORRECTION : On récupère l'ID stricte au lieu de l'objet complet
+            Long agenceId = (currentUser.getRole() == Role.AGENCY_ADMIN)
+                    ? currentUser.getId()
+                    : currentUser.getAgenceEmployeur().getId();
+
+            if (agenceId == null) {
+                return ResponseEntity.badRequest().body("Vous n'êtes rattaché à aucune agence.");
+            }
+
+            // 🔥 CORRECTION : Utilisation de la méthode fiable par ID
+            List<User> chauffeurs = userRepository.findByRoleAndAgenceEmployeur_Id(Role.CHAUFFEUR, agenceId);
+
+            return ResponseEntity.ok(chauffeurs);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Erreur : " + e.getMessage());
+        }
     }
 }
 

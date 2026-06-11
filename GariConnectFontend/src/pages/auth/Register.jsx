@@ -2,13 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../../services/api'; 
 import { useAuth } from '../../context/AuthContext';
-import { FaUser, FaEnvelope, FaLock, FaChevronRight, FaBus, FaUserTag, FaBuilding, FaShieldAlt, FaEye, FaEyeSlash } from 'react-icons/fa';
+import { 
+  FaUser, 
+  FaEnvelope, 
+  FaLock, 
+  FaChevronRight, 
+  FaBus, 
+  FaUserTag, 
+  FaBuilding, 
+  FaShieldAlt, 
+  FaEye, 
+  FaEyeSlash,
+  FaPhone // Ajout de l'icône pour le téléphone
+} from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const Register = () => {
   const [formData, setFormData] = useState({ 
     nom: '', 
     email: '', 
+    telephone: '', // Ajout du champ téléphone dans l'état initial
     password: '',
     role: 'CLIENT', // Valeur par défaut alignée avec le backend
     agenceId: '' 
@@ -48,6 +61,7 @@ const Register = () => {
     const dataToSubmit = {
       nom: formData.nom,
       email: formData.email,
+      telephone: formData.telephone, // Transmission du numéro de téléphone au backend
       password: formData.password,
       role: formData.role,
       agenceEmployeur: requiresAgency ? { id: formData.agenceId } : null
@@ -129,7 +143,7 @@ const Register = () => {
                 </motion.div>
               )}
 
-              {/* INPUTS SUR DEUX COLONNES */}
+              {/* INPUTS SUR DEUX COLONNES - ROW 1 */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* CHAMP NOM COMPLET */}
                 <div className="relative group">
@@ -156,24 +170,18 @@ const Register = () => {
                 </div>
               </div>
 
+              {/* INPUTS SUR DEUX COLONNES - ROW 2 */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* CHAMP RÔLE PUBLIQUEMENT AUTORISÉ */}
+                {/* CHAMP NUMÉRO DE TÉLÉPHONE */}
                 <div className="relative group">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors pointer-events-none z-10">
-                    <FaUserTag size={15} />
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors pointer-events-none">
+                    <FaPhone size={15} />
                   </span>
-                  <select 
-                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50/50 hover:bg-slate-50/80 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-none font-semibold text-slate-700 text-sm appearance-none cursor-pointer relative z-0 transition-all focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]" 
-                    value={formData.role} 
-                    onChange={(e) => {
-                      setFormData({...formData, role: e.target.value, agenceId: ''});
-                    }}
-                  >
-                    <option value="CLIENT">Client / Passager</option>
-                    <option value="CHAUFFEUR">Chauffeur</option>
-                    <option value="AGENCY_MANAGER">Manageur de l'agence</option>
-                    <option value="AGENCY_ADMIN">Agence de Transport (Créer une entreprise)</option>
-                  </select>
+                  <input 
+                    type="tel" placeholder="Numéro de téléphone" required 
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50/50 hover:bg-slate-50/80 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-none font-semibold text-slate-800 text-sm transition-all focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]"
+                    onChange={(e) => setFormData({...formData, telephone: e.target.value})} 
+                  />
                 </div>
 
                 {/* CHAMP MOT DE PASSE */}
@@ -198,6 +206,25 @@ const Register = () => {
                 </div>
               </div>
 
+              {/* CHAMP RÔLE (PLEINE LARGEUR POUR UN MEILLEUR BALANCE VISUEL) */}
+              <div className="relative group">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors pointer-events-none z-10">
+                  <FaUserTag size={15} />
+                </span>
+                <select 
+                  className="w-full pl-11 pr-4 py-3.5 bg-slate-50/50 hover:bg-slate-50/80 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-none font-semibold text-slate-700 text-sm appearance-none cursor-pointer relative z-0 transition-all focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]" 
+                  value={formData.role} 
+                  onChange={(e) => {
+                    setFormData({...formData, role: e.target.value, agenceId: ''});
+                  }}
+                >
+                  <option value="CLIENT">Client / Passager</option>
+                  <option value="CHAUFFEUR">Chauffeur</option>
+                  <option value="AGENCY_MANAGER">Manageur de l'agence</option>
+                  <option value="AGENCY_ADMIN">Agence de Transport (Créer une entreprise)</option>
+                </select>
+              </div>
+
               {/* MESSAGE INFORMATIF LIÉ AU RÔLE DE L'AGENCE */}
               <AnimatePresence>
                 {formData.role === 'AGENCY_ADMIN' && (
@@ -210,7 +237,7 @@ const Register = () => {
                     <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-xs font-medium text-blue-800 flex items-start gap-3">
                       <div className="mt-0.5"><FaShieldAlt size={14} className="text-blue-600" /></div>
                       <p className="leading-relaxed">
-                        Vous êtes sur le point d'inscrire une entreprise de transport sur GariConnect. Après soumission, le Super Administrateur de la plateforme devra examiner vos informations et activer manuellement votre espace de gestion.
+                        Vous êtes sur le point d'inscrire une entreprise de transport sur GariConnect. Après soumission, le Super Administrateur de la plateforme devra examiner vos informations et activer manuellement votre space de gestion.
                       </p>
                     </div>
                   </motion.div>

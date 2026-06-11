@@ -30,7 +30,8 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     // SOLUTION OPTIMALE : Requête native compatible MySQL/H2/PostgreSQL
     // Suppression de "INTERVAL 7 DAY" qui cause souvent l'erreur 400 si mal supporté
 
-
+    // À ajouter à l'intérieur de l'interface ReservationRepository
+    List<Reservation> findByClient_EmailOrderByDateReservationDesc(String email);
 
     @Query(value = "SELECT CAST(r.date_reservation AS DATE) as date, COUNT(r.id) as count " +
             "FROM reservations r " +  // Ajout du 's'

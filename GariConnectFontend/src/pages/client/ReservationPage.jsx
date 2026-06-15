@@ -1,53 +1,64 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-// Import de l'instance API centralisée
 import api from '../../services/api';
-import { useTranslation } from 'react-i18next'; // Hook pour les langues
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { 
-    FaMoon, FaSun, FaTimes, FaChair, FaInfoCircle, 
-    FaCheck, FaMoneyBillWave, FaExclamationTriangle
+    FaMoon, FaSun, FaTimes, FaChair, 
+    FaCheck, FaMoneyBillWave, FaHome, FaTicketAlt, FaPaperPlane
 } from 'react-icons/fa';
 
-// Importation du composant de récupération à domicile créé à l'étape 2
+// Importation du composant enfant pour le ramassage à domicile
 import FormulaireRecuperation from './FormulaireRecuperation';
 
 const ReservationPage = () => {
-    const { id } = useParams();
+    const { id } = useParams(); // 🔥 Représente l'ID du TRAJET sélectionné
     const navigate = useNavigate();
     const { user } = useAuth();
-    const { t } = useTranslation(); // Initialisation de la traduction
+    const { t } = useTranslation();
     
+    // États du Trajet et de l'Interface
     const [trajet, setTrajet] = useState(null);
     const [selectedSeat, setSelectedSeat] = useState('');
     const [loading, setLoading] = useState(true);
+    const [darkMode, setDarkMode] = useState(localStorage.getItem('client-theme') === 'dark');
+    
+    // États du Processus de Réservation et Modals
     const [showModal, setShowModal] = useState(false);
     const [paymentStep, setPaymentStep] = useState(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    
+    // Choix explicite du type de voyage (Standard vs Ramassage à domicile VIP)
+    const [isVip, setIsVip] = useState(false);
+    const [recuperationData, setRecuperationData] = useState(null);
+
     const [paymentData, setPaymentData] = useState({ 
         modePaiement: 'M-PESA', 
         referenceTransaction: '' 
     });
 
-    // État local pour stocker les données du formulaire de récupération à domicile
-    const [recuperationData, setRecuperationData] = useState({ voulaitRecuperation: false });
-
-    const [darkMode, setDarkMode] = useState(localStorage.getItem('client-theme') === 'dark');
+    // Écouteur pour appliquer la classe "dark" globalement pour Tailwind
+    useEffect(() => {
+        if (darkMode) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    }, [darkMode]);
 
     useEffect(() => {
         const fetchTrajet = async () => {
             try {
-                // Utilisation de l'instance api centralisée
-                const res = await api.get('/trajets/tous');
-                const found = res.data.find(t => t.id === parseInt(id));
-                setTrajet(found);
+                // Appel optimisé pour récupérer les détails du trajet
+                const res = await api.get(`/trajets/${id}?t=${Date.now()}`);
+                setTrajet(res.data);
                 
-                // Présélectionner automatiquement le premier siège disponible si possible
-                if (found && found.placesDisponibles > 0) {
+                // Présélection automatique de la première place disponible
+                if (res.data && res.data.placesDisponibles > 0) {
                     setSelectedSeat('1');
                 }
             } catch (err) {
-                console.error("Erreur chargement trajet", err);
+                console.error("Erreur lors du chargement du trajet :", err);
             } finally {
                 setLoading(false);
             }
@@ -55,241 +66,318 @@ const ReservationPage = () => {
         fetchTrajet();
     }, [id]);
 
-    const handleFinalSubmit = async (isCash = false) => {
-        
-        if (!user?.id) return alert(t('auth_error') || "Reconnectez-vous.");
-        if (!selectedSeat) return alert(t('select_seat_error') || "Choisissez un siège.");
-        if (!isCash && !paymentData.referenceTransaction) return alert(t('transaction_id_error') || "ID Transaction requis.");
-
-        setIsSubmitting(true);
-
-        try {
-            const reservationPayload = {
-                trajet: { id: parseInt(id) },
-                client: { id: user.id },
-                numeroSiege: parseInt(selectedSeat),
-                montantPaye: trajet.prix,
-                statut: "ATTENTE_PAIEMENT"
-            };
-
-            // 1. Enregistrement de la réservation initiale du billet
-            const resReservation = await api.post('/reservations', reservationPayload);
-            const reservationId = resReservation.data.id;
-
-            // 2. AJOUT : Si le voyageur a coché l'option de récupération, on envoie la demande au backend
-            if (recuperationData.voulaitRecuperation) {
-                await api.post('/recuperations/demande', {
-                    reservationId: reservationId,
-                    latitudeClient: recuperationData.latitudeClient,
-                    longitudeClient: recuperationData.longitudeClient,
-                    adresseTextuelle: recuperationData.adresseTextuelle
-                });
-            }
-
-            const mode = isCash ? "CASH" : paymentData.modePaiement;
-            const ref = isCash ? "CAISSE" : paymentData.referenceTransaction;
-
-            // 3. Enregistrement du paiement lié
-            await api.post(`/paiements/payer/${reservationId}?mode=${mode}&reference=${ref}`, {});
-            
-            alert(isCash ? t('success_cash') : t('success_mobile'));
-            navigate('/client/dashboard');
-        } catch (error) {
-            console.error("Erreur:", error);
-            alert(t('generic_error'));
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
     const toggleTheme = () => {
         const newMode = !darkMode;
         setDarkMode(newMode);
         localStorage.setItem('client-theme', newMode ? 'dark' : 'light');
     };
 
+    // ====================================================================
+    // SOUMISSION METIER : ENCHAÎNEMENT DES ACTIONS 
+    // ====================================================================
+    
+    // ACTION 1 : Clic sur le bouton principal (Standard ou VIP)
+    const handleInitialSubmit = () => {
+        if (!user?.id) return alert(t('auth_error') || "Veuillez vous reconnecter.");
+        
+        if (!isVip) {
+            // Mode STANDARD : On doit choisir un siège et on passe au paiement
+            if (!selectedSeat) return alert(t('select_seat_error') || "Veuillez choisir un siège.");
+            setShowModal(true);
+            setPaymentStep(1);
+        } else {
+            // Mode VIP : Pas de siège à choisir immédiatement, pas de paiement. On lance la création directe.
+            if (!recuperationData || !recuperationData.adresseTextuelle) {
+                return alert("Veuillez valider votre adresse sur la carte avant de continuer.");
+            }
+            creerReservationVIP();
+        }
+    };
+
+    // ACTION 2-VIP : Création de la réservation + Demande VIP (SANS PAIEMENT)
+    const creerReservationVIP = async () => {
+        setIsSubmitting(true);
+        try {
+            // 1. Création de la réservation de base (sans numéro de siège strict pour l'instant)
+            const reservationPayload = {
+                trajet: { id: parseInt(id) },
+                numeroSiege: 0, 
+                montantPaye: trajet?.prix || 0,
+                statut: "ATTENTE_PAIEMENT" 
+            };
+
+            const resReservation = await api.post('/reservations/creer', reservationPayload);
+            const nouvelleReservationId = resReservation.data.id;
+
+            if (!nouvelleReservationId) throw new Error("Erreur de génération du billet.");
+
+            // 2. Lancement de la demande VIP avec le VRAI identifiant généré
+            await api.post('/recuperations/creer', {
+                reservationId: nouvelleReservationId,
+                latitudeClient: parseFloat(recuperationData.latitudeClient) || 0.0,
+                longitudeClient: parseFloat(recuperationData.longitudeClient) || 0.0,
+                adresseTextuelle: recuperationData.adresseTextuelle
+            });
+
+            alert("Succès ! Votre demande de ramassage a été envoyée. L'agence va calculer votre tarif kilométrique.");
+            navigate('/client/historique');
+
+        } catch (error) {
+            console.error("Erreur cycle VIP :", error);
+            const errorMessage = error.response?.data?.message || "Erreur de connexion.";
+            alert("Échec de la demande : " + errorMessage);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // ACTION 2-STANDARD : Finalisation du paiement (Déclenché depuis la Modale)
+    const handleFinalizePaymentStandard = async (isCash = false) => {
+        if (!isCash && !paymentData.referenceTransaction) return alert(t('transaction_id_error') || "L'ID de transaction est requis.");
+        
+        setIsSubmitting(true);
+        try {
+            // 1. Création de la réservation
+            const reservationPayload = {
+                trajet: { id: parseInt(id) },
+                numeroSiege: parseInt(selectedSeat),
+                montantPaye: trajet?.prix || 0,
+                statut: "ATTENTE_PAIEMENT"
+            };
+            const resReservation = await api.post('/reservations/creer', reservationPayload);
+            const reservationId = resReservation.data.id;
+
+            // 2. Finalisation du paiement
+            const mode = isCash ? "CASH" : paymentData.modePaiement;
+            const ref = isCash ? "CAISSE" : paymentData.referenceTransaction;
+
+            await api.patch(`/reservations/${reservationId}/finaliser`, {
+                modePaiement: mode,
+                referenceTransaction: ref
+            });
+            
+            alert(isCash ? "Réservation en attente (Paiement physique à valider à l'agence)" : "Réservation validée et confirmée avec succès !");
+            setShowModal(false);
+            navigate('/client/historique'); 
+            
+        } catch (error) {
+            const errorMessage = error.response?.data?.message || "Erreur lors du paiement.";
+            alert("Échec de la réservation : " + errorMessage);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
     if (loading) return (
-        <div className={`h-screen flex items-center justify-center font-black animate-pulse ${darkMode ? 'bg-slate-950 text-indigo-500' : 'bg-slate-50 text-indigo-600'}`}>
-            {t('loading_trip').toUpperCase()}...
+        <div className={`h-screen w-full flex items-center justify-center font-black text-center p-4 animate-pulse transition-colors duration-500 ${darkMode ? 'bg-slate-950 text-indigo-400' : 'bg-slate-50 text-indigo-600'}`}>
+            CHARGEMENT DU TRAJET...
         </div>
     );
 
-    if (!trajet) return <div className="text-center p-10 font-bold">{t('trip_not_found')}</div>;
-
-    // Vérifier si le trajet est complet
+    if (!trajet) return (
+        <div className={`h-screen w-full flex items-center justify-center font-bold p-10 transition-colors duration-500 ${darkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
+            Trajet introuvable.
+        </div>
+    );
+    
     const isFull = !trajet.placesDisponibles || trajet.placesDisponibles <= 0;
 
     return (
-        <div className={`min-h-screen transition-colors duration-500 flex flex-col items-center justify-center p-4 ${darkMode ? 'bg-slate-950' : 'bg-slate-50'}`}>
+        <div className={`min-h-screen w-full transition-colors duration-500 flex flex-col items-center justify-center py-6 px-4 md:py-12 ${darkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
             
-            {/* Bouton Theme */}
-            <button onClick={toggleTheme} className={`fixed top-6 right-6 p-4 rounded-2xl shadow-lg border transition-all z-10 ${darkMode ? 'bg-slate-900 border-slate-800 text-yellow-400' : 'bg-white border-slate-200 text-slate-400'}`}>
+            {/* Bouton Theme dark/light */}
+            <button 
+                onClick={toggleTheme} 
+                className={`fixed top-4 right-4 md:top-6 md:right-6 p-3 md:p-4 rounded-2xl shadow-lg border z-10 transition-all active:scale-[0.95] ${darkMode ? 'bg-slate-900 border-slate-800 text-yellow-400 hover:bg-slate-800' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-100'}`}
+            >
                 {darkMode ? <FaSun size={20}/> : <FaMoon size={20}/>}
             </button>
 
-            <div className={`max-w-md w-full rounded-[3rem] shadow-2xl overflow-hidden border transition-all ${darkMode ? 'bg-slate-900 border-slate-800 shadow-black/50' : 'bg-white border-slate-100'}`}>
+            {/* Conteneur principal Responsive adaptif */}
+            <div className={`w-full max-w-md md:max-w-2xl lg:max-w-4xl rounded-[2rem] md:rounded-[3rem] shadow-2xl overflow-hidden border transition-all duration-500 ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
                 
-                {/* Header (Indigo Style) */}
-                <div className="bg-indigo-600 p-10 text-white text-center">
-                    <span className="text-[10px] font-black uppercase bg-black/20 px-4 py-1 rounded-full mb-4 inline-block tracking-widest">
-                        {trajet?.agence?.nom || "Agence GariConnect"}
-                    </span>
-                    <h2 className="text-3xl font-black tracking-tighter">{t('book_ticket')}</h2>
-                    <p className="text-indigo-100 text-sm mt-2 opacity-80">{trajet?.depart} ➔ {trajet?.destination}</p>
-                </div>
-
-                <div className="p-10">
-                    {/* Sélection Siège Dynamique avec support Sombre/Clair parfait */}
-                    <div className="mb-8">
-                        <label className={`block text-[10px] font-black uppercase mb-3 ml-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                            <FaChair className="inline mr-2 text-indigo-500"/> {t('seat_number')}
-                        </label>
-                        
-                        {isFull ? (
-                            <div className="w-full p-5 rounded-[1.5rem] bg-red-500/10 border-2 border-red-500/30 text-red-500 font-bold text-sm flex items-center justify-center gap-2">
-                                <FaExclamationTriangle /> {t('bus_full') || "Désolé, ce trajet est complet !"}
-                            </div>
-                        ) : (
-                            <>
-                                <select 
-                                    className={`w-full p-5 rounded-[1.5rem] outline-none font-black text-xl text-center border-2 appearance-none transition-all cursor-pointer ${
-                                        darkMode 
-                                        ? 'bg-slate-950 text-white border-slate-800 focus:border-indigo-500' 
-                                        : 'bg-slate-50 text-slate-800 border-slate-100 focus:border-indigo-300'
-                                    }`}
-                                    value={selectedSeat}
-                                    onChange={(e) => setSelectedSeat(e.target.value)}
-                                >
-                                    {[...Array(trajet.placesDisponibles).keys()].map(i => (
-                                        <option 
-                                            key={i + 1} 
-                                            value={i + 1}
-                                            className={`${darkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-800'}`}
-                                        >
-                                            {t('seat') || "Siège"} {i + 1}
-                                        </option>
-                                    ))}
-                                </select>
-                                <p className="text-xs font-bold text-emerald-500 mt-2 ml-2">
-                                    🟢 {trajet.placesDisponibles} {t('available_seats') || "places encore disponibles"}
-                                </p>
-                            </>
-                        )}
-                    </div>
-
-                    {/* Affichage Prix */}
-                    <div className={`p-8 rounded-[2rem] border-2 mb-6 text-center ${darkMode ? 'bg-indigo-900/20 border-indigo-900/40' : 'bg-indigo-50 border-indigo-100'}`}>
-                        <p className="text-[10px] font-black uppercase mb-1 text-indigo-400 tracking-widest">{t('amount_to_pay')}</p>
-                        <p className="text-4xl font-black text-indigo-500 dark:text-indigo-400">
-                            {trajet?.prix?.toLocaleString()} <span className="text-sm font-bold">FC</span>
+                {/* Structure en Grille Responsive : 1 colonne sur Mobile, multi-colonnes sur grand écran */}
+                <div className="lg:grid lg:grid-cols-12 min-h-[500px]">
+                    
+                    {/* Header Ticket (Bandeau du haut ou colonne latérale sur grand écran) */}
+                    <div className="bg-indigo-600 p-6 md:p-10 text-white text-center flex flex-col justify-center items-center lg:col-span-4 transition-colors duration-500">
+                        <span className="text-[10px] font-black uppercase bg-black/20 px-4 py-1 rounded-full mb-3 inline-block tracking-wider">
+                            {trajet?.agence?.nom || "Agence Partenaire"}
+                        </span>
+                        <h2 className="text-2xl md:text-3xl font-black tracking-tight">Réservation</h2>
+                        <p className="text-indigo-100 mt-2 text-sm md:text-base font-medium break-words w-full px-2">
+                            {trajet?.depart} ➔ {trajet?.destination}
                         </p>
                     </div>
 
-                    {/* INTEGRATION DE L'ETAPE 2 : Insertion du module de géolocalisation à domicile */}
-                    <div className="mb-8">
-                        <FormulaireRecuperation 
-                            reservationId={parseInt(id)} 
-                            onDataChange={(data) => setRecuperationData(data)} 
-                        />
-                    </div>
+                    {/* Section Formulaires / Actions */}
+                    <div className="p-6 md:p-10 lg:col-span-8 flex flex-col justify-between">
+                        <div>
+                            {/* CHOIX DU TYPE DE VOYAGE (STANDARD VS VIP) */}
+                            <div className="mb-6 md:mb-8">
+                                <label className={`block text-[10px] font-black uppercase mb-3 tracking-wider transition-colors duration-500 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                    Type de voyage
+                                </label>
+                                <div className={`flex p-1.5 rounded-2xl transition-all duration-500 ${darkMode ? 'bg-slate-950' : 'bg-slate-100'}`}>
+                                    <button 
+                                        type="button"
+                                        onClick={() => setIsVip(false)}
+                                        className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-xs transition-all ${!isVip ? 'bg-white dark:bg-slate-800 shadow-md text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                                    >
+                                        <FaTicketAlt size={14} /> Standard
+                                    </button>
+                                    <button 
+                                        type="button"
+                                        onClick={() => setIsVip(true)}
+                                        className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-xs transition-all ${isVip ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                                    >
+                                        <FaHome size={14} /> Ramassage VIP
+                                    </button>
+                                </div>
+                            </div>
 
-                    <button 
-                        onClick={() => { setShowModal(true); setPaymentStep(1); }}
-                        disabled={isFull || !selectedSeat || isSubmitting}
-                        className={`w-full font-black py-5 rounded-[1.8rem] uppercase text-xs tracking-widest transition-all active:scale-95 ${
-                            (isFull || !selectedSeat) 
-                            ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed' 
-                            : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-xl shadow-indigo-500/20'
-                        }`}
-                    >
-                        {isSubmitting ? t('processing') : (isFull ? (t('sold_out') || "COMPLET") : t('continue_to_payment'))}
-                    </button>
+                            {/* CONDITION CONDITIONNELLE : Choix du siège uniquement si Standard */}
+                            {!isVip ? (
+                                <div className="mb-6 md:mb-8">
+                                    <label className={`block text-[10px] font-black uppercase mb-3 tracking-wider transition-colors duration-500 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                        <FaChair className="inline mr-2 text-indigo-500" size={12}/> Choix du siège
+                                    </label>
+                                    {isFull ? (
+                                        <div className="w-full p-4 rounded-2xl bg-red-500/10 text-red-500 font-black text-sm text-center tracking-widest border border-red-500/20 animate-pulse">
+                                            COMPLET
+                                        </div>
+                                    ) : (
+                                        <div className="relative">
+                                            <select 
+                                                className={`w-full p-4 rounded-2xl outline-none font-black text-lg md:text-xl text-center border-2 appearance-none cursor-pointer transition-all duration-500 focus:ring-4 focus:ring-indigo-500/10 ${darkMode ? 'bg-slate-950 text-white border-slate-800 focus:border-indigo-500' : 'bg-slate-50 text-slate-800 border-slate-200 focus:border-indigo-400'}`}
+                                                value={selectedSeat}
+                                                onChange={(e) => setSelectedSeat(e.target.value)}
+                                            >
+                                                {[...Array(trajet.placesDisponibles).keys()].map(i => (
+                                                    <option key={i + 1} value={i + 1} className="text-slate-900 dark:text-white bg-white dark:bg-slate-950 font-bold">
+                                                        Siège N° {i + 1}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                            ) : (
+                                /* Si c'est VIP, formulaire de ramassage */
+                                <div className={`mb-6 md:mb-8 p-4 md:p-6 border-2 rounded-2xl transition-all duration-500 w-full overflow-hidden ${darkMode ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-emerald-500/30 bg-emerald-50/30'}`}>
+                                    <h3 className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 mb-4 tracking-wider flex items-center gap-2">
+                                        📍 Où devons-nous vous chercher ?
+                                    </h3>
+                                    <FormulaireRecuperation 
+                                        onDataChange={(data) => setRecuperationData(data)} 
+                                    />
+                                </div>
+                            )}
+
+                            {/* AFFICHAGE DU PRIX TOTAL DU BILLET */}
+                            <div className={`p-5 md:p-6 rounded-3xl border-2 mb-6 text-center transition-all duration-500 ${darkMode ? 'bg-indigo-950/20 border-indigo-900/40' : 'bg-indigo-50/50 border-indigo-100'}`}>
+                                <p className={`text-[10px] font-black uppercase mb-1 tracking-wider ${darkMode ? 'text-indigo-400' : 'text-indigo-500'}`}>Montant du Billet</p>
+                                <p className="text-2xl md:text-3xl font-black text-indigo-600 dark:text-indigo-400">
+                                    {trajet?.prix?.toLocaleString()} <span className="text-sm font-bold">FC</span>
+                                </p>
+                                {isVip && (
+                                    <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-2 animate-pulse">
+                                        ⏳ + Frais de ramassage (À coter par l'agence)
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* BOUTON D'ACTION DYNAMIQUE */}
+                        <button 
+                            onClick={handleInitialSubmit}
+                            disabled={isFull || isSubmitting || (!isVip && !selectedSeat)}
+                            className={`w-full font-black py-4 md:py-5 rounded-2xl uppercase text-xs transition-all shadow-lg flex items-center justify-center gap-2 tracking-wider active:scale-[0.99] ${isFull ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed shadow-none' : (isVip ? 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-600/20')}`}
+                        >
+                            {isSubmitting ? "Traitement..." : (isVip ? <><FaPaperPlane /> Envoyer demande de ramassage</> : "Procéder au paiement")}
+                        </button>
+
+                    </div>
                 </div>
             </div>
 
-            {/* MODAL DE PAIEMENT */}
-            {showModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
-                    <div className={`w-full max-w-sm rounded-[3rem] p-8 relative shadow-2xl animate-in zoom-in-95 duration-200 ${darkMode ? 'bg-slate-900 text-white border border-slate-800' : 'bg-white text-slate-900'}`}>
+            {/* FENÊTRE DIALOGUE (MODAL) DU PAIEMENT MOBILE MONEY (Réservée au mode Standard) */}
+            {showModal && !isVip && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
+                    <div className={`w-full max-w-sm rounded-[2rem] md:rounded-[2.5rem] p-6 md:p-8 relative shadow-2xl transition-all duration-500 border ${darkMode ? 'bg-slate-900 text-white border-slate-800' : 'bg-white text-slate-900 border-slate-100'}`}>
                         
-                        <button onClick={() => setShowModal(false)} className="absolute top-6 right-6 text-slate-400 hover:text-red-500 transition-colors">
-                            <FaTimes size={24}/>
+                        {/* Bouton de fermeture */}
+                        <button 
+                            onClick={() => setShowModal(false)} 
+                            className="absolute top-4 right-4 text-slate-400 hover:text-red-500 transition-colors p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
+                        >
+                            <FaTimes size={20}/>
                         </button>
 
+                        {/* Étape Écran 1 : Résumé des montants */}
                         {paymentStep === 1 ? (
-                            <div className="text-center py-4">
-                                <h3 className="text-xl font-black mb-6">{t('summary')}</h3>
-                                <div className={`p-6 rounded-3xl mb-8 space-y-4 ${darkMode ? 'bg-slate-950/50' : 'bg-slate-50 border border-slate-100'}`}>
-                                    <div className="flex justify-between items-center text-sm font-bold">
-                                        <span className="text-slate-400 uppercase text-[10px]">{t('seat_number')}</span>
-                                        <span className="text-indigo-500 px-3 py-1 bg-indigo-500/10 rounded-lg font-black">№ {selectedSeat}</span>
+                            <div className="text-center py-2">
+                                <h3 className="text-xl font-black mb-4 md:mb-6 tracking-tight">Résumé</h3>
+                                <div className={`p-5 rounded-2xl mb-6 space-y-4 transition-all duration-500 border ${darkMode ? 'bg-slate-950 border-slate-800/60' : 'bg-slate-50 border-slate-200/60'}`}>
+                                    <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider">
+                                        <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>Type de Voyage</span>
+                                        <span className="text-indigo-600 dark:text-indigo-400">Standard</span>
                                     </div>
-                                    <div className="flex justify-between items-center text-sm font-bold border-t border-slate-200 dark:border-slate-800 pt-4">
-                                        <span className="text-slate-400 uppercase text-[10px]">Total</span>
-                                        <span className="text-2xl font-black">{trajet?.prix?.toLocaleString()} FC</span>
+                                    <div className={`flex justify-between items-center text-xs font-bold uppercase tracking-wider border-t pt-4 ${darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+                                        <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>Total Billet</span>
+                                        <span className="text-lg md:text-xl font-black text-slate-900 dark:text-white">
+                                            {trajet?.prix?.toLocaleString()} FC
+                                        </span>
                                     </div>
                                 </div>
-                                <button onClick={() => setPaymentStep(2)} className="w-full bg-indigo-600 text-white font-black py-5 rounded-2xl uppercase text-[11px] shadow-lg shadow-indigo-500/30">
-                                    {t('choose_payment_method')}
+                                <button 
+                                    onClick={() => setPaymentStep(2)} 
+                                    className="w-full bg-indigo-600 text-white font-black py-4 rounded-xl hover:bg-indigo-500 transition-colors text-xs uppercase tracking-wider shadow-lg shadow-indigo-600/20 active:scale-[0.98]"
+                                >
+                                    Choisir le paiement
                                 </button>
                             </div>
                         ) : (
-                            <div className="space-y-5 py-4">
-                                <h3 className="text-xl font-black text-center mb-2">{t('payment_method')}</h3>
+                            /* Étape Écran 2 : Sélection de la passerelle de règlement */
+                            <div className="space-y-4 md:space-y-5 py-2">
+                                <h3 className="text-xl font-black text-center mb-2 tracking-tight">Paiement</h3>
                                 
-                                {/* INFOS MARCHAND */}
-                                <div className={`p-5 rounded-3xl border-2 ${darkMode ? 'border-emerald-500/30 bg-emerald-500/10' : 'border-emerald-500/20 bg-emerald-500/5'}`}>
-                                    <p className="text-[9px] font-black uppercase text-emerald-500 mb-2 flex items-center gap-2">
-                                        <FaInfoCircle/> {t('agency_info')}
-                                    </p>
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[10px] font-bold text-slate-500 uppercase">{t('contact')}</span>
-                                        <span className="text-sm font-black text-emerald-500">{trajet?.agence?.telephone || "N/A"}</span>
-                                    </div>
-                                </div>
-
-                                <div className="space-y-3">
-                                    {/* Option Cash */}
-                                    <button 
-                                        onClick={() => handleFinalSubmit(true)} 
-                                        disabled={isSubmitting}
-                                        className={`w-full p-4 rounded-2xl font-black text-[10px] border-2 transition-all flex items-center justify-center gap-2 ${darkMode ? 'border-slate-800 hover:bg-slate-800 text-slate-300' : 'border-slate-100 hover:bg-slate-50 text-slate-600'}`}
-                                    >
-                                        <FaMoneyBillWave className="text-emerald-500"/> {t('pay_later_cash').toUpperCase()}
-                                    </button>
-                                    
-                                    <div className="pt-2 space-y-3 border-t border-slate-200 dark:border-slate-800">
-                                        <p className="text-[9px] font-black text-center text-slate-400 uppercase tracking-widest">{t('or_mobile_payment')}</p>
-                                        
+                                <button 
+                                    onClick={() => handleFinalizePaymentStandard(true)} 
+                                    disabled={isSubmitting} 
+                                    className={`w-full p-4 rounded-xl font-black text-xs border-2 flex items-center justify-center gap-3 transition-all active:scale-[0.98] ${darkMode ? 'border-slate-800 text-white hover:bg-slate-950' : 'border-slate-200 text-slate-800 hover:bg-slate-50'}`}
+                                >
+                                    <FaMoneyBillWave className="text-emerald-500 flex-shrink-0" size={16}/> PAYER À L'AGENCE (CASH)
+                                </button>
+                                
+                                <div className={`pt-4 border-t space-y-3 ${darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
+                                    <div className="relative">
                                         <select 
-                                            className={`w-full p-4 rounded-2xl font-bold outline-none border-2 appearance-none ${darkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-slate-50 border-slate-100 text-slate-800'}`}
+                                            className={`w-full p-4 rounded-xl font-bold border-2 bg-transparent outline-none appearance-none transition-all duration-500 cursor-pointer ${darkMode ? 'border-slate-800 text-white focus:border-indigo-500 bg-slate-950' : 'border-slate-200 text-slate-800 focus:border-indigo-400 bg-white'}`}
                                             onChange={(e) => setPaymentData({...paymentData, modePaiement: e.target.value})}
+                                            value={paymentData.modePaiement}
                                         >
-                                            <option value="M-PESA" className={`${darkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-800'}`}>M-PESA</option>
-                                            <option value="ORANGE_MONEY" className={`${darkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-800'}`}>ORANGE MONEY</option>
-                                            <option value="AIRTEL_MONEY" className={`${darkMode ? 'bg-slate-950 text-white' : 'bg-white text-slate-800'}`}>AIRTEL MONEY</option>
+                                            <option value="M-PESA" className="text-slate-900 dark:bg-slate-950 dark:text-white font-bold">M-PESA</option>
+                                            <option value="ORANGE_MONEY" className="text-slate-900 dark:bg-slate-950 dark:text-white font-bold">ORANGE MONEY</option>
                                         </select>
-                                        
-                                        <input 
-                                            type="text" 
-                                            placeholder={t('transaction_id_placeholder') || "ID Transaction"} 
-                                            className={`w-full p-4 rounded-2xl font-bold border-2 outline-none focus:border-indigo-500 transition-all ${darkMode ? 'bg-slate-950 border-slate-800 text-white' : 'bg-white border-slate-100 text-slate-800'}`}
-                                            onChange={(e) => setPaymentData({...paymentData, referenceTransaction: e.target.value})}
-                                        />
                                     </div>
+                                    
+                                    <input 
+                                        type="text" 
+                                        placeholder="ID Transaction Mobile Money" 
+                                        className={`w-full p-4 rounded-xl font-bold border-2 bg-transparent outline-none transition-all duration-500 ${darkMode ? 'border-slate-800 text-white focus:border-indigo-500 placeholder-slate-600' : 'border-slate-200 text-slate-800 focus:border-indigo-400 placeholder-slate-400'}`}
+                                        onChange={(e) => setPaymentData({...paymentData, referenceTransaction: e.target.value})} 
+                                        value={paymentData.referenceTransaction}
+                                    />
                                 </div>
 
                                 <button 
-                                    onClick={() => handleFinalSubmit(false)} 
-                                    disabled={!paymentData.referenceTransaction || isSubmitting}
-                                    className={`w-full font-black py-5 rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-95 ${(!paymentData.referenceTransaction || isSubmitting) ? 'bg-slate-700 text-slate-500 cursor-not-allowed' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20'}`}
+                                    onClick={() => handleFinalizePaymentStandard(false)} 
+                                    disabled={!paymentData.referenceTransaction || isSubmitting} 
+                                    className={`w-full font-black py-4 rounded-xl flex items-center justify-center gap-2 shadow-lg transition-all text-xs tracking-wider active:scale-[0.98] ${!paymentData.referenceTransaction || isSubmitting ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed shadow-none' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-600/20'}`}
                                 >
-                                    {isSubmitting ? t('sending') : <><FaCheck/> {t('confirm_payment').toUpperCase()}</>}
+                                    {isSubmitting ? "Traitement..." : <><FaCheck size={12}/> CONFIRMER LE PAIEMENT</>}
                                 </button>
-                                
-                                <p className="text-[9px] text-center text-slate-500 font-bold italic px-4">
-                                    {t('agency_verification_note')}
-                                </p>
                             </div>
                         )}
                     </div>

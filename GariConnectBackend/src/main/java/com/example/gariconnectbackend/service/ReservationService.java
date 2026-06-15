@@ -212,6 +212,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -235,28 +236,7 @@ public class ReservationService {
     @Autowired
     private DemandeRecuperationRepository demandeRecuperationRepository;
 
-    /**
-     * 🟢 1. CHANGEMENT DE STATUT : Notifie le client du nouveau statut de son voyage
-     */
-    @Transactional
-    public Reservation mettreAJourStatut(Long id, String nouveauStatut) {
-        Reservation reservation = reservationRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Réservation introuvable avec l'ID : " + id));
 
-        String ancienStatut = reservation.getStatut();
-        reservation.setStatut(nouveauStatut);
-        Reservation reservationMiseAJour = reservationRepository.save(reservation);
-
-        String detailsTrajet = (reservation.getTrajet() != null)
-                ? "le trajet " + reservation.getTrajet().getDepart() + " - " + reservation.getTrajet().getDestination()
-                : "votre voyage";
-
-        String message = "🔔 Le statut de votre réservation pour " + detailsTrajet + " a changé de [" + ancienStatut + "] à [" + nouveauStatut + "].";
-
-        notifierLeClient(reservation.getClient(), message);
-
-        return reservationMiseAJour;
-    }
 
     /**
      * 📝 2. MODIFICATION : Notifie le client des changements apportés à sa réservation (ex: changement de siège)
@@ -368,63 +348,6 @@ public class ReservationService {
         }
     }
 
-    @Transactional
-    public Reservation creerReservation(Reservation reservation) {
-        // 1. Vérifier que le trajet est bien fourni
-        if (reservation.getTrajet() == null || reservation.getTrajet().getId() == null) {
-            throw new RuntimeException("❌ Échec : Aucun trajet n'est associé à cette réservation.");
-        }
-
-        // 2. Recharger le trajet depuis la base de données pour avoir les données fraîches et réelles
-        Trajet trajet = trajetRepository.findById(reservation.getTrajet().getId())
-                .orElseThrow(() -> new RuntimeException("❌ Échec : Trajet introuvable."));
-
-        // 3. Vérifier s'il reste des places disponibles
-        if (trajet.getPlacesDisponibles() == null || trajet.getPlacesDisponibles() <= 0) {
-            throw new RuntimeException("❌ Échec : Plus de places disponibles pour ce trajet !");
-        }
-
-        // 4. Déterminer dynamiquement le numéro de siège
-        // On récupère la capacité totale depuis le véhicule de l'agence associé au trajet
-        int capaciteTotale = 0;
-        if (trajet.getVehicule() != null && trajet.getVehicule().getCapacite() != null) {
-            capaciteTotale = trajet.getVehicule().getCapacite();
-        } else {
-            // Option de secours si la capacité du véhicule n'est pas renseignée
-            capaciteTotale = 30;
-        }
-
-        // Calcul proportionnel du numéro de siège (ex: s'il reste 18 places sur 20, c'est le siège 3)
-        int numeroSiegeCalcule = (capaciteTotale - trajet.getPlacesDisponibles()) + 1;
-        reservation.setNumeroSiege(numeroSiegeCalcule);
-
-        // 5. Diminuer le nombre de places disponibles du trajet de 1
-        trajet.setPlacesDisponibles(trajet.getPlacesDisponibles() - 1);
-        trajetRepository.save(trajet); // Met à jour le trajet côté agence
-
-        // 6. Rattacher le trajet mis à jour à la réservation
-        reservation.setTrajet(trajet);
-
-        // 7. Initialisation des autres paramètres de la réservation
-        reservation.setDateReservation(LocalDateTime.now());
-        reservation.setStatut("EN_ATTENTE"); // Ou "VALIDE" selon votre flux de paiement
-
-        if (reservation.getCodeTicket() == null || reservation.getCodeTicket().isEmpty()) {
-            reservation.setCodeTicket("TK-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase());
-        }
-
-        // 8. Sauvegarde de la réservation
-        Reservation nouvelleReservation = reservationRepository.save(reservation);
-        System.out.println("🎉 [SUCCÈS] Réservation créée. Siège N°: " + numeroSiegeCalcule + ". Places restantes sur le trajet : " + trajet.getPlacesDisponibles());
-
-        // 9. Notification automatique du client
-        String messageNotification = "Bonjour, votre réservation pour le trajet " + trajet.getDepart() + " - " +
-                trajet.getDestination() + " a été enregistrée. Siège réservé : N°" + numeroSiegeCalcule + ". Ticket : " + nouvelleReservation.getCodeTicket();
-        notifierLeClient(nouvelleReservation.getClient(), messageNotification);
-
-        return nouvelleReservation;
-    }
-
     /**
      * Récupère l'historique unifié (Normal & VID) pour le client connecté
      */
@@ -472,5 +395,186 @@ public class ReservationService {
 
             return dto;
         }).collect(java.util.stream.Collectors.toList());
+    }
+
+    /**
+     * 🟢 1. CHANGEMENT DE STATUT : Notifie le client du nouveau statut de son voyage
+     */
+    @Transactional
+    public Reservation mettreAJourStatut(Long id, String nouveauStatut) {
+        Reservation reservation = reservationRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Réservation introuvable avec l'ID : " + id));
+
+        String ancienStatut = reservation.getStatut();
+        reservation.setStatut(nouveauStatut);
+        Reservation reservationMiseAJour = reservationRepository.save(reservation);
+
+        String detailsTrajet = (reservation.getTrajet() != null)
+                ? "le trajet " + reservation.getTrajet().getDepart() + " - " + reservation.getTrajet().getDestination()
+                : "votre voyage";
+
+        String message = "🔔 Le statut de votre réservation pour " + detailsTrajet + " a changé de [" + ancienStatut + "] à [" + nouveauStatut + "].";
+
+        // PROTECTION ANTI-ROLLBACK : Si la notification échoue, la transaction reste validée
+        try {
+            notifierLeClient(reservation.getClient(), message);
+        } catch (Exception e) {
+            System.err.println("⚠️ [ATTENTION] La réservation est mise à jour, mais la notification a échoué : " + e.getMessage());
+        }
+
+        return reservationMiseAJour;
+    }
+
+    /**
+     * 📝 CRÉER UNE RÉSERVATION (Avec logique "À la caisse" et Notification Agence)
+     */
+    @Transactional
+    public Reservation creerReservation(Reservation reservation) {
+        // 1. Vérification de sécurité pour le trajet
+        if (reservation.getTrajet() == null || reservation.getTrajet().getId() == null) {
+            throw new RuntimeException("Le trajet est obligatoire pour effectuer une réservation.");
+        }
+
+        Trajet trajet = trajetRepository.findById(reservation.getTrajet().getId())
+                .orElseThrow(() -> new RuntimeException("Trajet introuvable avec l'ID : " + reservation.getTrajet().getId()));
+
+        reservation.setTrajet(trajet);
+
+        // 2. 🟢 LOGIQUE DE STATUT : Toute nouvelle réservation passe en "ATTENTE_PAIEMENT"
+        // L'agent de l'agence changera le statut à "PAYE" au guichet physique lors du paiement
+        reservation.setStatut("ATTENTE_PAIEMENT");
+
+        // Initialisation de la date si manquante
+        if (reservation.getDateReservation() == null) {
+            reservation.setDateReservation(LocalDateTime.now());
+        }
+
+        // Génération d'un code ticket temporaire ou unique si nécessaire
+        if (reservation.getCodeTicket() == null) {
+            reservation.setCodeTicket("TICK-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase());
+        }
+
+        // 3. Sauvegarder la réservation dans la base de données
+        Reservation nouvelleReservation = reservationRepository.save(reservation);
+
+        // 4. 🔔 NOTIFICATIONS
+
+        // --- A) Notification au Client ---
+        try {
+            if (nouvelleReservation.getClient() != null) {
+                String messageClient = "✅ Votre réservation pour le trajet " + trajet.getDepart() + " - " + trajet.getDestination() + " a été enregistrée. " +
+                        "Veuillez vous rendre à l'agence pour finaliser votre paiement à la caisse.";
+
+                Notification notifClient = new Notification();
+                notifClient.setMessage(messageClient);
+                notifClient.setDate(LocalDateTime.now());
+                notifClient.setLue(false);
+                notifClient.setDestinataire(nouvelleReservation.getClient());
+                notificationRepository.save(notifClient);
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ Erreur lors de la notification au client : " + e.getMessage());
+        }
+
+        // --- B) 🟢 Notification à l'Agence ---
+        try {
+            String messageAgence = "📢 Nouvelle réservation (N°" + nouvelleReservation.getId() + ") en ATTENTE DE PAIEMENT " +
+                    "pour le trajet " + trajet.getDepart() + " - " + trajet.getDestination() + ". " +
+                    "Le client doit payer à la caisse.";
+
+            // On recherche les agents/managers de l'agence pour leur envoyer la notification
+            List<User> agents = userRepository.findAll().stream()
+                    .filter(u -> u.getRole() != null &&
+                            (u.getRole().name().equals("AGENCY_MANAGER") ||
+                                    u.getRole().name().equals("AGENCY_ADMIN") ||
+                                    u.getRole().name().equals("SUPER_ADMIN")))
+                    .collect(Collectors.toList());
+
+            // Envoi de la notification à chaque agent trouvé
+            for (User agent : agents) {
+                Notification notifAgence = new Notification();
+                notifAgence.setMessage(messageAgence);
+                notifAgence.setDate(LocalDateTime.now());
+                notifAgence.setLue(false);
+                notifAgence.setDestinataire(agent);
+                notificationRepository.save(notifAgence);
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ Erreur lors de la notification à l'agence : " + e.getMessage());
+        }
+
+        return nouvelleReservation;
+    }
+
+    /**
+     * 🏁 FINALISER LE PAIEMENT GLOBAL (Version Ultra-Sécurisée)
+     */
+    @Transactional
+    public Reservation finaliserPaiementGlobal(Long reservationId, Map<String, Object> payload) {
+        // 1. Récupération sécurisée de la réservation
+        Reservation reservation = reservationRepository.findById(reservationId)
+                .orElseThrow(() -> new RuntimeException("Réservation introuvable avec l'ID : " + reservationId));
+
+        // 2. Mise à jour du statut principal
+        reservation.setStatut("PAYE");
+
+        // 3. Mise à jour du montant total à partir du payload envoyé par React (plus sûr)
+        if (payload != null && payload.containsKey("montantTotal")) {
+            try {
+                double montantTotal = Double.parseDouble(payload.get("montantTotal").toString());
+                reservation.setMontantPaye(montantTotal);
+            } catch (Exception e) {
+                System.err.println("❌ Erreur de parsing du montantTotal : " + e.getMessage());
+            }
+        }
+
+        // 4. Gestion de la demande VIP (entourée d'un try-catch pour ne pas bloquer le reste)
+        boolean hasVip = false;
+        try {
+            java.util.Optional<DemandeRecuperation> demandeOpt = demandeRecuperationRepository.findByReservationId(reservationId);
+
+            if (demandeOpt.isPresent()) {
+                DemandeRecuperation demande = demandeOpt.get();
+                hasVip = true;
+
+                // Note : Assurez-vous que l'Enum StatutRecuperation possède bien la valeur PAYE.
+                // Si ça souligne en rouge dans votre IDE, remplacez-le par une valeur valide (ex: ACCEPTEE)
+                // demande.setStatut(StatutRecuperation.PAYE);
+
+                demandeRecuperationRepository.save(demande);
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ Erreur silencieuse lors du traitement de la demande VIP : " + e.getMessage());
+        }
+
+        // 5. Recalcul sécurisé de la commission (10%)
+        double montantFinal = reservation.getMontantPaye() != null ? reservation.getMontantPaye() : 0.0;
+        double nouvelleCommission = montantFinal * 0.10;
+        reservation.setMontantCommission(nouvelleCommission);
+        reservation.setPartAgence(montantFinal - nouvelleCommission);
+
+        // 6. Sauvegarde finale
+        Reservation reservationMiseAJour = reservationRepository.save(reservation);
+
+        // 7. Notification (avec vérification de nullité sur le trajet)
+        String detailsTrajet = "votre voyage";
+        if (reservation.getTrajet() != null && reservation.getTrajet().getDepart() != null && reservation.getTrajet().getDestination() != null) {
+            detailsTrajet = "le trajet " + reservation.getTrajet().getDepart() + " - " + reservation.getTrajet().getDestination();
+        }
+
+        String message = "🎉 Paiement confirmé ! Votre réservation pour " + detailsTrajet + " est validée.";
+        if (hasVip) {
+            message += " Vos frais de ramassage VIP sont inclus.";
+        }
+
+        try {
+            if (reservation.getClient() != null) {
+                notifierLeClient(reservation.getClient(), message);
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ [ATTENTION] La notification a échoué : " + e.getMessage());
+        }
+
+        return reservationMiseAJour;
     }
 }

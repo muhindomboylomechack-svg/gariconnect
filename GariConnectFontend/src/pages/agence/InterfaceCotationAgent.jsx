@@ -1,10 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Bell, MapPin, DollarSign, Navigation, CheckCircle, AlertTriangle, Calculator, Coins } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+// 🆕 Import de l'instance API centralisée
+import api from '../../services/api';
 
-// 📍 Coordonnées de référence de votre Agence
+// 📍 Coordonnées de référence de votre Agence (Kinshasa par exemple)
 const COORDONNEES_AGENCE = { lat: -4.325, lng: 15.322 }; 
 
 // Fix pour les icônes Leaflet
@@ -47,6 +49,9 @@ const InterfaceCotationAgent = () => {
   // 💰 État pour le tarif dynamique par kilomètre (par défaut à 5000 FC)
   const [tarifParKm, setTarifParKm] = useState(5000);
 
+  // Utilisation d'une référence pour éviter les boucles infinies dans le useEffect
+  const demandesLengthRef = useRef(0);
+
   // Formulaire local pour la cotation
   const [selectedDemande, setSelectedDemande] = useState(null);
   const [formData, setFormData] = useState({
@@ -57,28 +62,22 @@ const InterfaceCotationAgent = () => {
 
   const fetchDemandesEnAttente = async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:8080/api/agences/demandes-recuperation/en-attente', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (!response.ok) throw new Error('Erreur lors de la récupération des demandes');
+      // 🛠️ CORRECTION ROUTE : Alignement strict sur le mapping du DemandeRecuperationController Spring Boot
+      const response = await api.get('/recuperations/en-attente');
+      const data = response.data;
       
-      const data = await response.json();
-      
-      if (data.length > demandes.length && demandes.length > 0) {
+      if (data.length > demandesLengthRef.current && demandesLengthRef.current > 0) {
         setNewAlert(true);
         const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-500.wav');
-        audio.play().catch(e => console.log("Audio bloqué"));
+        audio.play().catch(e => console.log("Audio bloqué par le navigateur"));
       }
 
+      demandesLengthRef.current = data.length;
       setDemandes(data);
       setLoading(false);
     } catch (err) {
-      setError(err.message);
+      const errorMsg = err.response?.data?.message || err.message || 'Erreur lors de la récupération des demandes';
+      setError(errorMsg);
       setLoading(false);
     }
   };
@@ -89,13 +88,11 @@ const InterfaceCotationAgent = () => {
       fetchDemandesEnAttente();
     }, 10000);
     return () => clearInterval(interval);
-  }, [demandes.length]);
+  }, []);
 
   const handleActionCotation = async (e) => {
     e.preventDefault();
     try {
-      const token = localStorage.getItem('token');
-      
       const distanceEnvoyee = parseFloat(formData.distanceEstimee) || 0.0;
       const prixEnvoye = parseFloat(formData.prixSupplementaire) || 0.0;
 
@@ -107,25 +104,8 @@ const InterfaceCotationAgent = () => {
 
       console.log("📤 Envoi de la cotation au serveur :", payload);
 
-      const response = await fetch(`http://localhost:8080/api/agences/demandes-recuperation/coter/${selectedDemande.id}`, {
-        method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        let errorMessage = `Erreur HTTP ${response.status}`;
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.message || errorMessage;
-        } catch (parseError) {
-          console.warn("Impossible de lire le JSON de l'erreur renvoyée.");
-        }
-        throw new Error(errorMessage);
-      }
+      // 🛠️ CORRECTION ROUTE : Envoi sur le bon sous-segment du contrôleur /api/recuperations/...
+      await api.put(`/recuperations/${selectedDemande.id}/cotation`, payload);
 
       setSelectedDemande(null);
       setFormData({ pointRepereAgence: '', distanceEstimee: '', prixSupplementaire: '' });
@@ -133,7 +113,8 @@ const InterfaceCotationAgent = () => {
       alert("✅ Cotation transmise avec succès au passager !");
     } catch (err) {
       console.error("❌ Détail technique de l'erreur :", err);
-      alert("Erreur lors du traitement de la cotation : " + err.message);
+      const errorPayloadMsg = err.response?.data?.message || err.message;
+      alert("Erreur lors du traitement de la cotation : " + errorPayloadMsg);
     }
   };
 

@@ -1,3 +1,6 @@
+
+
+
 package com.example.gariconnectbackend.service;
 
 import com.example.gariconnectbackend.dto.CotationRequest;
@@ -14,6 +17,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 
+
+import com.example.gariconnectbackend.model.*;
+
+import java.util.Optional;
 @Service
 public class DemandeRecuperationService {
 
@@ -29,126 +36,110 @@ public class DemandeRecuperationService {
     @Autowired
     private NotificationRepository notificationRepository;
 
-    /**
-     * 🛠️ Méthode utilitaire privée pour créer et sauvegarder une notification rapidement
-     */
-    private void envoyerNotification(String message, User destinataire) {
-        if (destinataire != null) {
-            Notification notification = new Notification();
-            notification.setMessage(message);
-            notification.setDate(LocalDateTime.now());
-            notification.setLue(false);
-            notification.setDestinataire(destinataire);
-            notificationRepository.save(notification);
-        }
-    }
 
-    /**
-     * 1. CRÉATION : Permet à un client de soumettre une demande de ramassage à domicile
-     */
+
+
+
     @Transactional
-    public DemandeRecuperation creerDemandeRecuperation(DemandeRecuperationRequest request, String emailClient) {
+    public DemandeRecuperation creerDemande(DemandeRecuperationRequest request, String emailClient) {
+        // 1. Récupérer le client connecté
         User client = userRepository.findByEmail(emailClient)
-                .orElseThrow(() -> new RuntimeException("Client non trouvé avec l'email : " + emailClient));
+                .orElseThrow(() -> new RuntimeException("Client non trouvé"));
 
-        // Vérification si une demande existe déjà pour cette réservation
-        demandeRepository.findByReservationId(request.getReservationId()).ifPresent(d -> {
-            throw new RuntimeException("Une demande de récupération existe déjà pour cette réservation.");
-        });
+        // 2. Vérifier si la réservation existe
+        Reservation reservation = reservationRepository.findById(request.getReservationId())
+                .orElseThrow(() -> new RuntimeException("Réservation introuvable"));
 
+        // 3. Forcer les valeurs par défaut pour éviter les NullPointerException plus tard
         DemandeRecuperation demande = DemandeRecuperation.builder()
                 .client(client)
                 .reservationId(request.getReservationId())
                 .latitudeClient(request.getLatitudeClient())
                 .longitudeClient(request.getLongitudeClient())
                 .adresseTextuelle(request.getAdresseTextuelle())
-                .statut(StatutRecuperation.EN_ATTENTE_COTATION)
+                .pointRepereAgence("Non défini") // Sera rempli par l'agence
+                .distanceEstimee(0.0)            // Sera calculé par l'agence
+                .prixSupplementaire(0.0)         // Sera calculé par l'agence
+                .statut(StatutRecuperation.EN_ATTENTE_COTATION) // ⏳ Étape 1 de votre logique
                 .build();
 
-        return demandeRepository.save(demande);
-    }
+        DemandeRecuperation demandeSauvegardee = demandeRepository.save(demande);
 
-    /**
-     * 2. COTATION : Un agent fixe le prix et le point de repère.
-     * Met à jour le montant et passe la réservation au statut "ATTENTE_PAIEMENT_SURPLUS".
-     */
+        // 4. Notifier l'agence qu'une nouvelle demande VIP est arrivée
+        try {
+            User agence = reservation.getTrajet().getAgence();
+            if (agence != null) {
+                String msg = "📍 Nouvelle demande de ramassage VIP à coter pour la réservation N°" + reservation.getId();
+                envoyerNotification(msg, agence);
+            }
+        } catch (Exception e) {
+            System.err.println("Erreur notification agence: " + e.getMessage());
+        }
+
+        return demandeSauvegardee;
+    }
     @Transactional
     public DemandeRecuperation attribuerCotation(Long id, CotationRequest request) {
         DemandeRecuperation demande = demandeRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Demande de récupération introuvable"));
+                .orElseThrow(() -> new RuntimeException("Demande introuvable"));
 
-        // Mise à jour des informations fournies par l'agence
+        // Injection des calculs faits par l'agence
         demande.setPointRepereAgence(request.getPointRepereAgence());
         demande.setDistanceEstimee(request.getDistanceEstimee());
         demande.setPrixSupplementaire(request.getPrixSupplementaire());
+
+        // 🔥 Passage au statut suivant pour ouvrir le bouton de paiement côté client
         demande.setStatut(StatutRecuperation.EN_ATTENTE_PAIEMENT);
 
-        Reservation reservation = reservationRepository.findById(demande.getReservationId())
-                .orElseThrow(() -> new RuntimeException("Réservation N°" + demande.getReservationId() + " introuvable"));
+        DemandeRecuperation demandeMiseAJour = demandeRepository.save(demande);
 
-        // 🔥 SECURITÉ ANTI-NULL : Évite le NullPointerException si le montant initial ou le supplément est NULL
-        Double montantInitial = (reservation.getMontantPaye() != null) ? reservation.getMontantPaye() : 0.0;
-        Double supplement = (request.getPrixSupplementaire() != null) ? request.getPrixSupplementaire() : 0.0;
+        // 🔔 Notification au client pour lui dire que le prix est disponible !
+        String messageClient = String.format(
+                "💰 Le prix de votre ramassage a été fixé à %.2f FC. Vous pouvez maintenant procéder au paiement depuis votre historique.",
+                request.getPrixSupplementaire()
+        );
+        envoyerNotification(messageClient, demande.getClient());
 
-        // Calcul et mise à jour du montant total de la réservation
-        Double prixTotalFinal = montantInitial + supplement;
-        reservation.setMontantPaye(prixTotalFinal);
+        return demandeMiseAJour;
+    }
 
-        // 🔥 MODIFICATION : Passage au statut spécifique pour le flux de paiement du surplus
-        reservation.setStatut("ATTENTE_PAIEMENT_SURPLUS");
-        reservationRepository.save(reservation);
 
-        // 🔔 ENVOI DE LA NOTIFICATION AU PASSAGER
-        User passager = demande.getClient();
-        if (passager != null) {
-            String messagePassager = String.format(
-                    "💰 Votre demande de ramassage pour la réservation N°%d a été cotée. Supplément : %,.0f FC. Point de repère : %s. Vous pouvez maintenant procéder au paiement.",
-                    reservation.getId(), supplement, demande.getPointRepereAgence()
-            );
-            envoyerNotification(messagePassager, passager);
-        }
-
-        return demandeRepository.save(demande);
+    /**
+     * 🟢 Récupérer toutes les demandes de récupération d'un client par son email
+     */
+    public List<DemandeRecuperation> obtenirDemandesDuClient(String emailClient) {
+        User client = userRepository.findByEmail(emailClient)
+                .orElseThrow(() -> new RuntimeException("Client non trouvé"));
+        return demandeRepository.findByClientId(client.getId());
     }
 
     /**
-     * 3. VALIDATION PAIEMENT : Méthode appelée après le paiement réussi du surplus.
-     * Notifie l'agence et assigne formellement la mission au chauffeur.
+     * 🔍 Récupérer une demande de ramassage spécifique via l'ID de sa réservation
+     * (Résout le problème de méthode manquante pour le contrôleur)
+     */
+    public Optional<DemandeRecuperation> obtenirDemandeParReservationId(Long reservationId) {
+        return demandeRepository.findFirstByReservationId(reservationId);
+    }
+
+    /**
+     * 🟢 Validation du paiement du surplus après un paiement réussi (Simulation / Webhook)
      */
     @Transactional
     public DemandeRecuperation validerPaiementRecuperation(Long id) {
         DemandeRecuperation demande = demandeRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Demande de récupération introuvable"));
 
-        demande.setStatut(StatutRecuperation.VALIDE);
-        DemandeRecuperation demandeValidee = demandeRepository.save(demande);
+        // Passage au statut payé
+        demande.setStatut(StatutRecuperation.PAYE);
 
-        Reservation reservation = reservationRepository.findById(demande.getReservationId())
-                .orElseThrow(() -> new RuntimeException("Réservation associée introuvable"));
-
-        // Optionnel : Mettre également à jour le statut global de la réservation si requis par votre logique métier
-        // reservation.setStatut("EMBARQUEMENT_VALIDE");
-        // reservationRepository.save(reservation);
-
-        // 🔔 NOTIFICATION POUR L'AGENCE
-        User agence = reservation.getTrajet().getAgence();
-        String messageAgence = String.format(
-                "✅ Paiement du ramassage validé pour la réservation N°%d (Client : %s).",
-                reservation.getId(), demande.getClient().getNom()
+        // 🔔 Notification de confirmation au client
+        String messageClient = String.format(
+                "✅ Le paiement de votre ramassage à domicile pour la réservation N°%d a été validé avec succès !",
+                demande.getReservationId()
         );
-        envoyerNotification(messageAgence, agence);
+        envoyerNotification(messageClient, demande.getClient());
 
-        // 🔔 NOTIFICATION POUR LE CHAUFFEUR : Mission de déviation de route
-        User chauffeur = reservation.getTrajet().getChauffeur();
-        if (chauffeur != null) {
-            String messageChauffeur = String.format(
-                    "🚐 Mission de ramassage : Vous devez récupérer le passager %s à l'adresse suivante : %s (Coordonnées dispo sur votre carte).",
-                    demande.getClient().getNom(), demande.getAdresseTextuelle()
-            );
-            envoyerNotification(messageChauffeur, chauffeur);
-        }
-
-        return demandeValidee;
+        return demandeRepository.save(demande);
     }
 
     /**
@@ -159,41 +150,24 @@ public class DemandeRecuperationService {
     }
 
     /**
-     * 5. CONSULTATION CLIENT : Voir l'historique personnel d'un client connecté
+     * 🛠️ Méthode utilitaire privée pour créer et sauvegarder une notification rapidement
      */
-    public List<DemandeRecuperation> obtenirDemandesDuClient(String emailClient) {
-        User client = userRepository.findByEmail(emailClient)
-                .orElseThrow(() -> new RuntimeException("Client non trouvé avec l'email : " + emailClient));
+    private void envoyerNotification(String message, User destinataire) {
+        if (destinataire != null) {
+            Notification notification = new Notification();
+            notification.setMessage(message);
+            notification.setDate(LocalDateTime.now());
+            notification.setLue(false);
+            notification.setDestinataire(destinataire);
 
-        return demandeRepository.findByClientId(client.getId());
-    }
-    // 1. Un client crée une demande de récupération (Généré depuis React)
-    public DemandeRecuperation creerDemande(DemandeRecuperationRequest request, String emailClient) {
-        User client = userRepository.findByEmail(emailClient)
-                .orElseThrow(() -> new RuntimeException("Client non trouvé"));
-
-        DemandeRecuperation demande = DemandeRecuperation.builder()
-                .client(client)
-                .reservationId(request.getReservationId())
-                .latitudeClient(request.getLatitudeClient())
-                .longitudeClient(request.getLongitudeClient())
-                .adresseTextuelle(request.getAdresseTextuelle())
-                .statut(StatutRecuperation.EN_ATTENTE_COTATION) // ⏳ Statut initial
-                .build();
-
-        // 🔔 ENVOI DE LA NOTIFICATION À L'AGENCE
-        Reservation reservation = reservationRepository.findById(request.getReservationId())
-                .orElseThrow(() -> new RuntimeException("Réservation introuvable"));
-
-        User agence = reservation.getTrajet().getAgence();
-        if (agence != null) {
-            String messageAgence = String.format(
-                    "📍 Nouvelle demande de ramassage à domicile pour la réservation N°%d de %s.",
-                    reservation.getId(), client.getNom()
-            );
-            envoyerNotification(messageAgence, agence);
+            notificationRepository.save(notification);
         }
-
-        return demandeRepository.save(demande);
     }
+
+
 }
+
+
+
+
+

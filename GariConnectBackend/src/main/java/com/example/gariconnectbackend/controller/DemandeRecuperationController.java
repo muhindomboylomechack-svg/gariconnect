@@ -5,6 +5,7 @@ import com.example.gariconnectbackend.dto.DemandeRecuperationRequest;
 import com.example.gariconnectbackend.model.DemandeRecuperation;
 import com.example.gariconnectbackend.service.DemandeRecuperationService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -12,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
         import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import org.springframework.web.bind.annotation.*;
 
@@ -23,6 +25,7 @@ public class DemandeRecuperationController {
 
     @Autowired
     private DemandeRecuperationService recuperationService;
+
 
 
     // CLIENT : Obtenir toutes ses demandes de récupération personnelles
@@ -38,7 +41,6 @@ public class DemandeRecuperationController {
     }
 
     // AGENT/ADMIN : Lister toutes les demandes en attente de prix (Cotation)
-    // 🔥 MODIFICATION : Reçoit l'ancienne route client ET la nouvelle route de l'interface Guichet React
     @GetMapping({"/recuperations/en-attente", "/agences/demandes-recuperation/en-attente"})
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
     public ResponseEntity<?> obtenirDemandesEnAttente() {
@@ -49,7 +51,6 @@ public class DemandeRecuperationController {
             return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
         }
     }
-
 
     // CLIENT : Faire une demande de ramassage à domicile
     @PostMapping("/recuperations/demande")
@@ -64,17 +65,14 @@ public class DemandeRecuperationController {
     }
 
     // AGENT/ADMIN : Fixer le point de repère et le prix final pour le client
-    // Supporte les deux formats d'URL pour assurer la compatibilité avec le frontend
     @PutMapping({"/recuperations/{id}/cotation", "/agences/demandes-recuperation/coter/{id}"})
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
     public ResponseEntity<?> fixerCotation(@PathVariable Long id, @RequestBody CotationRequest request) {
         try {
-            // 🔥 BLOC DE SÉCURITÉ ANTI-400 : Traitement manuel des valeurs nulles ou mal formées
             if (request.getPointRepereAgence() == null || request.getPointRepereAgence().trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(Map.of("message", "Le point de repère de l'agence ne peut pas être vide."));
             }
 
-            // Si la distance ou le prix sont nulls ou indéfinis, on applique une valeur par défaut sécurisée (0)
             if (request.getDistanceEstimee() == null) {
                 request.setDistanceEstimee(0.0);
             }
@@ -82,17 +80,14 @@ public class DemandeRecuperationController {
                 request.setPrixSupplementaire(0.0);
             }
 
-            // Validation logique additionnelle
             if (request.getDistanceEstimee() < 0 || request.getPrixSupplementaire() < 0) {
                 return ResponseEntity.badRequest().body(Map.of("message", "La distance et le prix doivent être des valeurs positives."));
             }
 
-            // Exécution du traitement métier sécurisé
             DemandeRecuperation demandeCotee = recuperationService.attribuerCotation(id, request);
             return ResponseEntity.ok(demandeCotee);
 
         } catch (Exception e) {
-            // Renvoie une erreur propre lisible par l'instruction "alert()" ou "catch" de votre code React
             return ResponseEntity.badRequest().body(Map.of("message", "Erreur lors du traitement de la cotation : " + e.getMessage()));
         }
     }
@@ -111,4 +106,35 @@ public class DemandeRecuperationController {
         }
     }
 
+    // CLIENT : Soumettre une nouvelle demande de ramassage (URL Alternative)
+    @PostMapping("/recuperations/creer")
+    @PreAuthorize("hasRole('CLIENT') or isAuthenticated()")
+    public ResponseEntity<?> creerUneDemande(@RequestBody DemandeRecuperationRequest request) {
+        try {
+            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
+            DemandeRecuperation nouvelleDemande = recuperationService.creerDemande(request, emailConnecte);
+            return ResponseEntity.ok(nouvelleDemande);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Impossible de créer la demande : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 🔍 Récupérer une demande de ramassage à partir de l'ID de la réservation
+     */
+    @GetMapping("/recuperations/reservation/{reservationId}")
+    public ResponseEntity<?> obtenirDemandeParReservation(@PathVariable Long reservationId) {
+        try {
+            Optional<DemandeRecuperation> demandeOpt = recuperationService.obtenirDemandeParReservationId(reservationId);
+
+            if (demandeOpt.isPresent()) {
+                return ResponseEntity.ok(demandeOpt.get());
+            } else {
+                return ResponseEntity.noContent().build();
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Erreur lors de la recherche de la demande : " + e.getMessage()));
+        }
+    }
 }

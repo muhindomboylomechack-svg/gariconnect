@@ -17,8 +17,7 @@ import org.springframework.web.bind.annotation.*;
         import java.util.*;
 
 @RestController
-@RequestMapping("/api/agences")
-// CORRECTION : Syntaxe standard pour inclure les DEUX rôles d'agence
+@RequestMapping("/api/agences") // Le préfixe global reste ici
 @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
 @CrossOrigin(origins = "*")
 public class AgenceController {
@@ -306,5 +305,32 @@ public class AgenceController {
                     userRepository.save(chauffeur);
                     return ResponseEntity.ok(Map.of("message", "Chauffeur validé avec succès"));
                 }).orElse(ResponseEntity.notFound().build());
+    }
+    /**
+     * 🏢 RÉCUPÉRER LE PROFIL DE L'AGENCE CONNECTÉE
+     * Règle l'erreur 404 de React sur /api/agence/profile
+     */
+    @GetMapping("/profile")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> getProfilAgence() {
+        try {
+            // 1. Utiliser la méthode utilitaire existante pour obtenir la bonne entité agence
+            // (Si c'est un ADMIN, c'est lui-même. Si c'est un MANAGER, c'est son agenceEmployeur)
+            User agenceConnectee = getAuthenticatedAgence();
+
+            // 2. Vérifier si une agence a bien été trouvée
+            if (agenceConnectee == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("message", "Aucune agence n'est associée à votre compte."));
+            }
+
+            // 3. Renvoyer les informations de l'agence
+            return ResponseEntity.ok(agenceConnectee);
+
+        } catch (Exception e) {
+            System.err.println("❌ Erreur lors de la récupération du profil agence : " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Erreur serveur : " + e.getMessage()));
+        }
     }
 }

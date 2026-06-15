@@ -559,7 +559,17 @@ public ResponseEntity<?> getTrajetsAujourdhui() {
 
         return ResponseEntity.ok(dtos);
     }
-
+    @GetMapping("/{id}")
+    public ResponseEntity<?> obtenirTrajetParId(@PathVariable Long id) {
+        try {
+            Trajet trajet = trajetRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Trajet introuvable"));
+            return ResponseEntity.ok(trajet);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
     // Dans TrajetController.java
 
     @GetMapping("/chauffeurs-disponibles")

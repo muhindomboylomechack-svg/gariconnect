@@ -394,4 +394,5 @@ public class UserController {
                     .body(Map.of("message", "Erreur serveur : " + e.getMessage()));
         }
     }
+
 }

@@ -52,7 +52,10 @@ public class Reservation {
     @ManyToOne
     @JoinColumn(name = "vehicule_id")
     private Vehicule vehicule;
-
+    // --- MODE DE PAIEMENT ---
+    @Column(name = "mode_paiement")
+    @com.fasterxml.jackson.annotation.JsonProperty("mode_paiement")
+    private String modePaiement;
     // =========================================================================
     // GETTERS ET SETTERS MANUELS (Surcharge et compatibilité)
     // =========================================================================
@@ -162,6 +165,5 @@ public class Reservation {
     public void setReferencePaiement(String caisse) {
     }
 
-    public void setModePaiement(String cash) {
-    }
+
 }

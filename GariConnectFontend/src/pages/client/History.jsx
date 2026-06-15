@@ -12,6 +12,9 @@ import {
     FaExclamationCircle 
 } from 'react-icons/fa';
 
+// 🌐 Import de l'instance API centralisée
+import api from '../../services/api';
+
 const HistoriqueReservations = () => {
     const navigate = useNavigate();
     const [reservations, setReservations] = useState([]);
@@ -19,15 +22,12 @@ const HistoriqueReservations = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [errorMsg, setErrorMsg] = useState(null);
 
-    // 🌐 Configuration de l'URL de votre API Backend
-    const API_BASE_URL = 'http://localhost:8080/api/reservations'; 
-
     useEffect(() => {
         const chargerHistorique = async () => {
             setIsLoading(true);
             setErrorMsg(null);
             try {
-                // 🔐 Récupération du jeton d'authentification utilisateur
+                // 🔐 Vérification locale du jeton d'authentification utilisateur
                 const token = localStorage.getItem('token'); 
                 
                 if (!token) {
@@ -36,39 +36,26 @@ const HistoriqueReservations = () => {
                     return;
                 }
 
-                // 🚀 Appel API réel vers l'endpoint lié à obtenirHistoriqueClient
-                const response = await fetch(`${API_BASE_URL}/mon-historique`, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${token}` // Transmission sécurisée du token JWT
-                    }
-                });
+                // 🚀 Appel via l'instance API centralisée
+                const response = await api.get('/reservations/mon-historique');
+                
+                // Extraction des données de manière sécurisée
+                const data = response.data !== undefined ? response.data : response;
+                setReservations(Array.isArray(data) ? data : []);
 
-                // 🆕 GESTION SPÉCIFIQUE DE L'ERREUR 401 (Session expirée ou invalide)
-                if (response.status === 401) {
-                    localStorage.removeItem('token'); // On nettoie le faux token
+            } catch (error) {
+                console.error("Erreur lors du chargement de l'historique :", error);
+                
+                // 🆕 GESTION SPÉCIFIQUE DE L'ERREUR 401 via l'instance centralisée
+                if (error.response?.status === 401 || error.status === 401) {
+                    localStorage.removeItem('token'); // Nettoyage du token expiré
                     setErrorMsg("Votre session a expiré ou est invalide. Redirection vers la page de connexion...");
                     
                     // Redirection automatique vers le login après 3 secondes
                     setTimeout(() => {
                         navigate('/login');
                     }, 3000);
-                    
-                    throw new Error("Erreur 401 : Non autorisé");
-                }
-
-                if (!response.ok) {
-                    throw new Error(`Erreur serveur: ${response.status}`);
-                }
-
-                const data = await response.json(); // Récupère la liste des HistoriqueVoyageDTO
-                setReservations(data);
-
-            } catch (error) {
-                console.error("Erreur lors du chargement de l'historique :", error);
-                // On n'écrase le message d'erreur que si ce n'est pas déjà un 401 géré plus haut
-                if (error.message !== "Erreur 401 : Non autorisé") {
+                } else {
                     setErrorMsg("Impossible de charger votre historique de voyages. Veuillez réessayer plus tard.");
                 }
             } finally {
@@ -280,7 +267,7 @@ const HistoriqueReservations = () => {
                                         <div className="flex items-center gap-3">
                                             {renderBadgeStatut(res.statutPaiement)}
 
-                                            {/* Bouton d'action contextuel de paiement */}
+                                            {/* 🟢 ÉTAPE 4 : Affichage strictement conditionnel du bouton Payer */}
                                             {res.statutPaiement !== 'PAYE' && res.statutPaiement !== 'VALIDEE' && (
                                                 <button
                                                     onClick={(e) => gererPaiement(res, e)}

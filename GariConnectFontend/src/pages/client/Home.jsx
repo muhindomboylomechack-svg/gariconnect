@@ -3,10 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
     FaMapMarkerAlt, FaSearch, FaBus, 
-    FaClock, FaChevronRight, FaCalendarAlt,
-    FaHome, FaTicketAlt, FaTimes
+    FaChevronRight, FaCalendarAlt
 } from 'react-icons/fa';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 import api from '../../services/api'; 
 
@@ -16,9 +15,6 @@ const Home = () => {
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState({ depart: '', destination: '', date: '' });
     const navigate = useNavigate();
-
-    // Gestion de la modale de choix de flux
-    const [choiceModal, setChoiceModal] = useState({ show: false, trajetId: null });
 
     useEffect(() => {
         fetchTrajets();
@@ -54,8 +50,8 @@ const Home = () => {
         }
     };
 
-    // Ouvre la modale de choix après vérification du token d'authentification
-    const openChoiceModal = (trajetId) => {
+    // 🔥 Redirection directe vers la page unifiée après vérification du token
+    const proceedToReservation = (trajetId) => {
         const token = localStorage.getItem('token');
         
         if (!token) {
@@ -64,60 +60,73 @@ const Home = () => {
             return;
         }
 
-        setChoiceModal({ show: true, trajetId });
-    };
-
-    // 🔥 Redirection propre vers les 2 pages distinctes selon le choix de l'utilisateur
-    const proceedToReservation = (type) => {
-        const { trajetId } = choiceModal;
-        
-        if (type === 'NORMAL') {
-            // Route vers la page de réservation standard (sans ramassage)
-            navigate(`/client/reservation-normale/${trajetId}`);
-        } else if (type === 'DOMICILE') {
-            // Route vers la nouvelle page exclusive de récupération à domicile
-            navigate(`/client/reservation-recuperation/${trajetId}`);
-        }
-        
-        // Fermeture de la modale
-        setChoiceModal({ show: false, trajetId: null });
+        // Redirection vers ta nouvelle page de réservation unifiée
+        navigate(`/client/reservation/${trajetId}`);
     };
 
     return (
-        <div className="pb-20 space-y-8 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-800 dark:text-slate-100 transition-colors duration-300 relative">
+        <div className="pb-20 space-y-6 md:space-y-8 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-800 dark:text-slate-100 transition-colors duration-300 relative px-4 md:px-8 py-4">
             
             {/* SECTION HERO */}
             <motion.div 
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="relative bg-gradient-to-br from-indigo-700 via-indigo-600 to-violet-700 dark:from-indigo-900 dark:via-slate-900 dark:to-violet-950 rounded-[2.5rem] p-6 md:p-12 shadow-2xl overflow-hidden m-4 md:m-8 mt-0"
+                className="relative bg-gradient-to-br from-indigo-700 via-indigo-600 to-violet-700 dark:from-slate-900 dark:via-indigo-950 dark:to-slate-900 rounded-3xl md:rounded-[2.5rem] p-5 sm:p-8 md:p-12 shadow-2xl overflow-hidden mt-0 mx-0"
             >
-                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 dark:bg-indigo-500/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+                <div className="absolute top-0 right-0 w-64 h-64 bg-white/10 dark:bg-indigo-500/5 rounded-full blur-3xl -mr-20 -mt-20"></div>
                 
                 <div className="relative z-10 space-y-6">
-                    <div className="space-y-2">
-                        <p className="text-indigo-200 dark:text-indigo-300 font-black uppercase tracking-[0.3em] text-[10px]">
+                    <div className="space-y-2 text-center sm:text-left">
+                        <p className="text-indigo-200 dark:text-indigo-400 font-black uppercase tracking-[0.3em] text-[10px]">
                             GariConnect Express
                         </p>
-                        <h1 className="text-3xl md:text-5xl font-black text-white tracking-tighter">
+                        <h1 className="text-2xl sm:text-3xl md:text-5xl font-black text-white tracking-tighter">
                             {t('home.where_to_go', "Où allez-vous ?")}
                         </h1>
                     </div>
 
-                    <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-4 lg:p-3 rounded-[2rem] flex flex-col lg:flex-row items-center gap-4 lg:gap-2 shadow-2xl border border-transparent dark:border-slate-800">
-                        <div className="flex-1 flex items-center px-4 w-full border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 pb-4 lg:pb-0">
-                            <FaMapMarkerAlt className="text-indigo-500 dark:text-indigo-400 shrink-0" />
-                            <input type="text" placeholder={t('home.departure_city', "Ville de départ")} className="w-full p-3 bg-transparent border-none focus:ring-0 font-bold text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none" onChange={(e) => setSearchQuery({...searchQuery, depart: e.target.value})} />
+                    {/* FORMULAIRE DE RECHERCHE RESPONSIVE */}
+                    <div className="bg-white/95 dark:bg-slate-950/95 backdrop-blur-md p-4 lg:p-3 rounded-2xl md:rounded-[2rem] flex flex-col lg:flex-row items-center gap-4 lg:gap-2 shadow-2xl border border-slate-100 dark:border-slate-800/60">
+                        
+                        {/* DEPART */}
+                        <div className="flex-1 flex items-center px-3 w-full border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 pb-3 lg:pb-0">
+                            <FaMapMarkerAlt className="text-indigo-500 dark:text-indigo-400 shrink-0 text-lg md:text-base" />
+                            <input 
+                                type="text" 
+                                placeholder={t('home.departure_city', "Ville de départ")} 
+                                className="w-full p-2.5 bg-transparent border-none focus:ring-0 font-bold text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none text-sm md:text-base" 
+                                onChange={(e) => setSearchQuery({...searchQuery, depart: e.target.value})} 
+                            />
                         </div>
-                        <div className="flex-1 flex items-center px-4 w-full border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 pb-4 lg:pb-0">
-                            <FaMapMarkerAlt className="text-violet-500 dark:text-violet-400 shrink-0" />
-                            <input type="text" placeholder={t('home.destination_city', "Ville de destination")} className="w-full p-3 bg-transparent border-none focus:ring-0 font-bold text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none" onChange={(e) => setSearchQuery({...searchQuery, destination: e.target.value})} />
+                        
+                        {/* DESTINATION */}
+                        <div className="flex-1 flex items-center px-3 w-full border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 pb-3 lg:pb-0">
+                            <FaMapMarkerAlt className="text-violet-500 dark:text-violet-400 shrink-0 text-lg md:text-base" />
+                            <input 
+                                type="text" 
+                                placeholder={t('home.destination_city', "Ville de destination")} 
+                                className="w-full p-2.5 bg-transparent border-none focus:ring-0 font-bold text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none text-sm md:text-base" 
+                                onChange={(e) => setSearchQuery({...searchQuery, destination: e.target.value})} 
+                            />
                         </div>
-                        <div className="flex-1 flex items-center px-4 w-full pb-4 lg:pb-0">
-                            <FaCalendarAlt className="text-emerald-500 dark:text-emerald-400 shrink-0" />
-                            <input type="date" className="w-full p-3 bg-transparent border-none focus:ring-0 font-bold text-slate-700 dark:text-slate-200 focus:outline-none" onChange={(e) => setSearchQuery({...searchQuery, date: e.target.value})} />
+                        
+                        {/* DATE */}
+                        <div className="flex-1 flex items-center px-3 w-full pb-3 lg:pb-0">
+                            <FaCalendarAlt className="text-emerald-500 dark:text-emerald-400 shrink-0 text-lg md:text-base" />
+                            <input 
+                                type="date" 
+                                className="w-full p-2.5 bg-transparent border-none focus:ring-0 font-bold text-slate-800 dark:text-slate-100 focus:outline-none text-sm md:text-base dark:[color-scheme:dark]" 
+                                onChange={(e) => setSearchQuery({...searchQuery, date: e.target.value})} 
+                            />
                         </div>
-                        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleSearch} className="w-full lg:w-auto bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black uppercase flex items-center justify-center gap-2 transition-all shadow-lg shrink-0">
+                        
+                        {/* BOUTON RECHERCHE */}
+                        <motion.button 
+                            whileHover={{ scale: 1.01 }} 
+                            whileTap={{ scale: 0.99 }} 
+                            onClick={handleSearch} 
+                            className="w-full lg:w-auto bg-indigo-600 hover:bg-indigo-500 dark:bg-indigo-600 dark:hover:bg-indigo-500 text-white px-8 py-4 rounded-xl md:rounded-2xl font-black uppercase flex items-center justify-center gap-2 transition-all shadow-lg shrink-0 text-xs md:text-sm tracking-wider"
+                        >
                             <FaSearch /> {t('home.search', "Rechercher")}
                         </motion.button>
                     </div>
@@ -125,122 +134,68 @@ const Home = () => {
             </motion.div>
 
             {/* LISTE DES TRAJETS */}
-            <div className="px-4 md:px-8 space-y-6">
-                <div className="flex items-center justify-between">
-                    <h2 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 flex items-center gap-2">
+            <div className="space-y-4 md:space-y-6">
+                <div className="flex items-center justify-between px-1">
+                    <h2 className="text-xs font-black uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 flex items-center gap-2">
                         <FaBus className="text-indigo-500" /> {t('home.available_trips', "Trajets disponibles")}
                     </h2>
                 </div>
 
                 {loading ? (
-                    <div className="text-center py-20 animate-pulse text-indigo-600 font-bold">{t('common.loading', "Chargement...")}</div>
+                    <div className="text-center py-20 animate-pulse text-indigo-600 dark:text-indigo-400 font-black tracking-widest text-sm uppercase">
+                        {t('common.loading', "Chargement...")}
+                    </div>
                 ) : (
                     <div className="grid gap-4">
-                        {trajets.map((trajet) => (
-                            <motion.div key={trajet.id} className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-800 flex flex-col md:flex-row items-center justify-between gap-6 hover:shadow-xl transition-all">
-                                
-                                {/* AGENCE & HEURE */}
-                                <div className="flex items-center gap-4 min-w-[200px]">
-                                    <div className="w-14 h-14 bg-indigo-50 dark:bg-slate-800 text-indigo-600 rounded-[1.2rem] flex flex-col items-center justify-center">
-                                        <FaBus size={18} />
+                        {trajets.length === 0 ? (
+                            <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-900 p-6 font-semibold text-slate-400 dark:text-slate-600 text-sm">
+                                Aucun trajet ne correspond à vos critères.
+                            </div>
+                        ) : (
+                            trajets.map((trajet) => (
+                                <motion.div 
+                                    key={trajet.id} 
+                                    className="bg-white dark:bg-slate-900 p-5 md:p-6 rounded-2xl md:rounded-[2rem] border border-slate-100 dark:border-slate-900 flex flex-col sm:flex-row items-center justify-between gap-5 sm:gap-6 hover:shadow-xl dark:hover:shadow-slate-950/40 transition-all shadow-sm"
+                                >
+                                    {/* AGENCE & HEURE */}
+                                    <div className="flex items-center gap-4 w-full sm:w-auto min-w-[180px]">
+                                        <div className="w-12 h-12 md:w-14 md:h-14 bg-indigo-50 dark:bg-slate-950 text-indigo-600 dark:text-indigo-400 rounded-xl md:rounded-[1.2rem] flex flex-col items-center justify-center shrink-0 border dark:border-slate-800/40">
+                                            <FaBus className="text-lg md:text-xl" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">{trajet.agence?.nom || "Express"}</p>
+                                            <h3 className="text-lg md:text-xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">{trajet.heureDepart}</h3>
+                                            {trajet.jourDepart && (
+                                                <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{trajet.jourDepart}</p>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="text-[10px] font-black text-indigo-600 uppercase">{trajet.agence?.nom || "Express"}</p>
-                                        <h3 className="text-xl font-black text-slate-800 dark:text-slate-200 tracking-tighter">{trajet.heureDepart}</h3>
-                                        {trajet.jourDepart && (
-                                            <p className="text-[10px] font-bold text-slate-400">{trajet.jourDepart}</p>
-                                        )}
+
+                                    {/* ITINÉRAIRE (LIGNE ADAPTATIVE) */}
+                                    <div className="flex flex-1 items-center justify-center gap-3 sm:gap-4 w-full sm:w-auto py-2 sm:py-0 border-y sm:border-y-0 border-slate-100 dark:border-slate-800/60">
+                                        <p className="font-bold text-sm md:text-base text-slate-700 dark:text-slate-300">{trajet.depart}</p>
+                                        <div className="h-[2px] flex-1 max-w-[60px] bg-slate-200 dark:bg-slate-800" />
+                                        <p className="font-bold text-sm md:text-base text-slate-700 dark:text-slate-300">{trajet.destination}</p>
                                     </div>
-                                </div>
 
-                                {/* ITINÉRAIRE */}
-                                <div className="flex flex-1 items-center justify-center gap-4">
-                                    <p className="font-bold text-slate-700 dark:text-slate-300">{trajet.depart}</p>
-                                    <div className="h-[2px] w-12 bg-slate-200 dark:bg-slate-800" />
-                                    <p className="font-bold text-slate-700 dark:text-slate-300">{trajet.destination}</p>
-                                </div>
-
-                                {/* PRIX & ACTION */}
-                                <div className="flex items-center gap-6">
-                                    <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400">{trajet.prix} <span className="text-xs">Fc</span></p>
-                                    <button 
-                                        onClick={() => openChoiceModal(trajet.id)} 
-                                        className="w-12 h-12 bg-slate-900 hover:bg-indigo-600 text-white rounded-2xl flex items-center justify-center transition-colors"
-                                    >
-                                        <FaChevronRight />
-                                    </button>
-                                </div>
-                            </motion.div>
-                        ))}
+                                    {/* PRIX & ACTION */}
+                                    <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto mt-1 sm:mt-0">
+                                        <p className="text-xl md:text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                                            {trajet.prix} <span className="text-xs font-bold tracking-normal uppercase">Fc</span>
+                                        </p>
+                                        <button 
+                                            onClick={() => proceedToReservation(trajet.id)} 
+                                            className="w-11 h-11 md:w-12 md:h-12 bg-slate-900 hover:bg-indigo-600 dark:bg-slate-950 dark:hover:bg-indigo-600 dark:border dark:border-slate-800 text-white rounded-xl md:rounded-2xl flex items-center justify-center transition-all active:scale-95 shadow-md"
+                                        >
+                                            <FaChevronRight className="text-xs md:text-sm" />
+                                        </button>
+                                    </div>
+                                </motion.div>
+                            ))
+                        )}
                     </div>
                 )}
             </div>
-
-            {/* MODAL DE CHOIX DE RÉSERVATION */}
-            <AnimatePresence>
-                {choiceModal.show && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-                        <motion.div 
-                            initial={{ scale: 0.9, opacity: 0 }}
-                            animate={{ scale: 1, opacity: 1 }}
-                            exit={{ scale: 0.9, opacity: 0 }}
-                            className="bg-white dark:bg-slate-900 rounded-[3rem] p-8 max-w-md w-full shadow-2xl relative border border-slate-100 dark:border-slate-800"
-                        >
-                            <button 
-                                onClick={() => setChoiceModal({ show: false, trajetId: null })}
-                                className="absolute top-6 right-6 text-slate-400 hover:text-red-500 transition-colors"
-                            >
-                                <FaTimes size={24} />
-                            </button>
-
-                            <h3 className="text-2xl font-black text-center text-slate-800 dark:text-white mb-2">
-                                Mode de réservation
-                            </h3>
-                            <p className="text-xs text-center text-slate-500 font-bold mb-8">
-                                Comment souhaitez-vous voyager avec nous aujourd'hui ?
-                            </p>
-
-                            <div className="space-y-4">
-                                {/* Option 1 : Normal */}
-                                <button 
-                                    onClick={() => proceedToReservation('NORMAL')}
-                                    className="w-full flex items-center gap-4 p-5 rounded-[2rem] border-2 border-slate-100 dark:border-slate-800 hover:border-indigo-500 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all group text-left"
-                                >
-                                    <div className="w-12 h-12 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center shrink-0">
-                                        <FaTicketAlt size={20} />
-                                    </div>
-                                    <div>
-                                        <h4 className="font-black text-slate-800 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                                            Réservation Standard
-                                        </h4>
-                                        <p className="text-[10px] font-bold text-slate-400 mt-1 leading-tight">
-                                            J'achète mon billet et je me rendrai moi-même au parking de l'agence.
-                                        </p>
-                                    </div>
-                                </button>
-
-                                {/* Option 2 : Domicile */}
-                                <button 
-                                    onClick={() => proceedToReservation('DOMICILE')}
-                                    className="w-full flex items-center gap-4 p-5 rounded-[2rem] border-2 border-emerald-100 dark:border-emerald-900/30 hover:border-emerald-500 dark:hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all group text-left"
-                                >
-                                    <div className="w-12 h-12 bg-emerald-100 dark:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center shrink-0">
-                                        <FaHome size={22} />
-                                    </div>
-                                    <div>
-                                        <h4 className="font-black text-slate-800 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                                            Billet + Récupération Domicile
-                                        </h4>
-                                        <p className="text-[10px] font-bold text-slate-400 mt-1 leading-tight">
-                                            Un véhicule de l'agence viendra me chercher directement chez moi (VIP).
-                                        </p>
-                                    </div>
-                                </button>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
         </div>
     );
 };

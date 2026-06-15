@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 // ==========================================
-// 1. CONTEXTE & PROTECTION DES ROUTES
+// 1. CONCONTEXTE & PROTECTION DES ROUTES
 // ==========================================
 import ProtectedRoute from './component/ProtectedRoute'; 
 import { useAuth } from './context/AuthContext';
@@ -44,7 +44,7 @@ import GestionChauffeurs from './pages/agence/GestionChauffeurs';
 import CourriersPage from './pages/agence/CourriersPage';
 import GestionFinance from './pages/agence/GestionFinance';
 import DashboardPerformance from './pages/agence/DashboardPerformance';
-import InterfaceCotationAgent from './pages/agence/InterfaceCotationAgent'; // 🆕 Interface de cotation / VIP
+import InterfaceCotationAgent from './pages/agence/InterfaceCotationAgent'; 
 
 // ==========================================
 // 6. PAGES : Espace Chauffeur & Client
@@ -62,7 +62,7 @@ import CheckoutPage from "./pages/client/CheckoutPage";
 import FormulaireEvaluation from "./pages/client/FormulaireEvaluation";
 import ReservationRecuperationPage from "./pages/client/RecuperationReservationPage";
 
-// 🆕 IMPORT AJOUTÉ : Page de paiement dynamique
+// 🆕 Nouvelle page de paiement dynamique (VIP/Normal) après validation/cotation
 import PagePaiementReservation from "./pages/client/PagePaiementReservation"; 
 
 /**
@@ -149,7 +149,7 @@ function App() {
 
         {/* --- ESPACE 5 : CLIENT --- */}
         <Route path="/client" element={<ProtectedRoute allowedRoles={['CLIENT', 'USER']}><ClientLayout /></ProtectedRoute>}>
-          {/* URL locale : /client -> Affiche l'accueil (Recherche et réservation de trajets) */}
+          {/* URL locale : /client -> Accueil (Recherche et choix des places) */}
           <Route index element={<HomeClient />} />
           <Route path="tickets" element={<MesTickets />} />
           <Route path="historique" element={<History />} />
@@ -157,16 +157,16 @@ function App() {
           <Route path="reservation/:id" element={<ReservationPage />} />
           <Route path="evaluer/:id" element={<FormulaireEvaluation />} />
           
-          {/* 🆕 CORRECTION : La route dynamique pour le paiement (retrait du slash initial) */}
+          {/* ⚡ NOUVELLE LOGIQUE : Route de paiement unifiée et dynamique par ID de réservation */}
           <Route path="paiement-reservation/:reservationId" element={<PagePaiementReservation />} />
           
-          {/* Flux A : Réservation classique */}
+          {/* Étape intermédiare - Flux A : Réservation classique */}
           <Route path="reservation-normale/:id" element={<CheckoutPage />} />
           
-          {/* Flux B : Réservation avec demande de récupération à domicile */}
+          {/* Étape intermédiare - Flux B : Demande de récupération / Ramassage à domicile */}
           <Route path="reservation-recuperation/:id" element={<ReservationRecuperationPage />} />
 
-          {/* Compatibilité descendante (Au cas où d'autres composants pointent dessus) */}
+          {/* Fallback de compatibilité descendante */}
           <Route path="finaliser-reservation/:id" element={<CheckoutPage />} />
         </Route>
 

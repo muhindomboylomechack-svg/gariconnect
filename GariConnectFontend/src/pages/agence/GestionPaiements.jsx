@@ -64,7 +64,8 @@ const GestionPaiements = () => {
   };
 
   const reservationsEnAttente = useMemo(() => {
-    return paiements.filter(p => p?.statut === 'EN_ATTENTE_AGENCE' || p?.statut === 'EN_ATTENTE');
+    // 🟢 CORRECTION STATUT : Le backend renvoie "ATTENTE_PAIEMENT"
+    return paiements.filter(p => p?.statut === 'ATTENTE_PAIEMENT' || p?.statut === 'EN_ATTENTE_AGENCE' || p?.statut === 'EN_ATTENTE');
   }, [paiements]);
 
   /**
@@ -88,8 +89,9 @@ const GestionPaiements = () => {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await api.post(`/paiements/${targetId}/encaisser`, {
-        montant: parseFloat(cashPayload.montant)
+      // 🟢 CORRECTION ICI : api.put vers /reservations/{id}/encaisser avec montantTotal
+      await api.put(`/reservations/${targetId}/encaisser`, {
+        montantTotal: parseFloat(cashPayload.montant)
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -101,7 +103,7 @@ const GestionPaiements = () => {
       fetchCommissionEtNotifs();
     } catch (error) {
       console.error("Erreur Backend:", error.response?.data);
-      alert(error.response?.data?.message || "Erreur : L'ID envoyé ne correspond à aucun paiement existant.");
+      alert(error.response?.data?.error || error.response?.data?.message || "Erreur lors de l'encaissement.");
     }
   };
 
@@ -111,8 +113,9 @@ const GestionPaiements = () => {
     if (!window.confirm("Confirmer la réception de ce montant ?")) return;
     try {
       const token = localStorage.getItem('token');
-      await api.post(`/paiements/${targetId}/encaisser`, { 
-        montant: parseFloat(p.montantPaye || p.prixTotal) 
+      // 🟢 CORRECTION ICI : api.put vers /reservations/{id}/encaisser avec montantTotal
+      await api.put(`/reservations/${targetId}/encaisser`, { 
+        montantTotal: parseFloat(p.montantPaye || p.prixTotal || 0) 
       }, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -121,12 +124,13 @@ const GestionPaiements = () => {
       fetchInitialData(); 
       fetchCommissionEtNotifs();
     } catch (error) {
-      alert(error.response?.data?.message || "Erreur d'encaissement.");
+      alert(error.response?.data?.error || error.response?.data?.message || "Erreur d'encaissement.");
     }
   };
 
   const stats = useMemo(() => {
-    const valid = paiements.filter(p => p?.statut === 'CONFIRMEE');
+    // 🟢 CORRECTION STATUT : Le backend renvoie "PAYE" une fois encaissé
+    const valid = paiements.filter(p => p?.statut === 'PAYE' || p?.statut === 'CONFIRMEE');
     return {
       total: valid.reduce((sum, p) => sum + (p.montantPaye || 0), 0),
       mobile: valid.filter(p => p.modePaiement !== 'CASH').reduce((sum, p) => sum + (p.montantPaye || 0), 0),
@@ -286,7 +290,8 @@ const GestionPaiements = () => {
                                 {(p.montantPaye || p.prixTotal || 0).toLocaleString()} FC
                             </td>
                             <td className="px-8 py-6 text-center">
-                                {p.statut === 'CONFIRMEE' ? (
+                                {/* 🟢 CORRECTION STATUT : PAYE ou CONFIRMEE */}
+                                {p.statut === 'PAYE' || p.statut === 'CONFIRMEE' ? (
                                     <span className="text-emerald-500 font-black text-[10px] uppercase flex items-center justify-center gap-1">
                                         <FaCheckDouble/> Encaissé
                                     </span>

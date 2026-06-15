@@ -27,9 +27,13 @@ const GestionFinance = () => {
         fetchInfosAgence();
     }, []);
 
+    // 🟢 CORRECTION : Mise à jour de l'URL vers '/agences/profile' (avec le "s")
     const fetchInfosAgence = async () => {
         try {
-            const response = await api.get('/agence/profile');
+            const token = localStorage.getItem('token');
+            const response = await api.get('/agences/profile', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
             setNomAgence(response.data.nom); 
         } catch (error) {
             console.error("Erreur nom agence", error);
@@ -37,10 +41,14 @@ const GestionFinance = () => {
         }
     };
 
+    // 🟢 CORRECTION : Ajout du token pour la récupération du livre de caisse
     const fetchLivreDeCaisse = async () => {
         try {
             setLoading(true);
-            const response = await api.get('/finance/livre-de-caisse');
+            const token = localStorage.getItem('token');
+            const response = await api.get('/finance/livre-de-caisse', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
             const sortedData = response.data.sort((a, b) => new Date(a.date) - new Date(b.date));
             setTransactions(sortedData);
         } catch (error) {
@@ -74,11 +82,16 @@ const GestionFinance = () => {
         ? transactionsWithBalances[transactionsWithBalances.length - 1] 
         : { computedSoldeUSD: 0, computedSoldeCDF: 0 };
 
+    // 🟢 CORRECTION : Ajout du token pour la création d'une nouvelle transaction
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
+            const token = localStorage.getItem('token');
             const payload = { ...formData, montant: parseFloat(formData.montant) };
-            await api.post('/finance/transactions', payload);
+            
+            await api.post('/finance/transactions', payload, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
 
             setShowForm(false);
             setFormData({ ...formData, description: '', montant: '', entite: '', documentRef: '' });

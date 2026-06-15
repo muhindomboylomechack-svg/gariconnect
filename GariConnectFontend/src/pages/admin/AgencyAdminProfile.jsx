@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
+// Import de l'instance API centralisée
+import api from '../../services/api';
 
 const AgencyAdminProfile = () => {
   // Récupération de l'utilisateur connecté et de la méthode pour mettre à jour le contexte global
@@ -35,9 +37,6 @@ const AgencyAdminProfile = () => {
     }
   }, [user]);
 
-  // Base URL de votre API Spring Boot
-  const API_BASE_URL = 'http://localhost:8080/api/users';
-
   // 1. GESTION DU CLIC ET DE L'UPLOAD DE L'AVATAR (POST ou PATCH /api/users/profile/avatar)
   const handleAvatarClick = () => {
     fileInputRef.current.click();
@@ -60,23 +59,9 @@ const AgencyAdminProfile = () => {
     formData.append('avatar', file); // Correspond à @RequestParam("avatar") MultipartFile file en Spring Boot
 
     try {
-      const token = localStorage.getItem('token');
-
-      const response = await fetch(`${API_BASE_URL}/profile/avatar`, {
-        method: 'POST', 
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : ''
-          // ⚠️ ATTENTION : Ne pas mettre 'Content-Type': 'multipart/form-data'. 
-          // Le navigateur doit le définir lui-même pour inclure la limite ("boundary").
-        },
-        body: formData
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || "Impossible de charger l'avatar");
-      }
+      // L'instance centralisée gère l'URL relative, le token et le type de contenu multipart automatiquement
+      const response = await api.post('/users/profile/avatar', formData);
+      const data = response.data;
 
       // On extrait l'URL de l'image renvoyée par le serveur (ex: stockée en local ou sur Cloudinary/S3)
       const updatedPhotoUrl = data.photoUrl;
@@ -92,7 +77,8 @@ const AgencyAdminProfile = () => {
 
       setStatusMessage({ type: 'success', text: 'Photo de profil mise à jour avec succès !' });
     } catch (error) {
-      setStatusMessage({ type: 'error', text: error.message || "Erreur lors de l'envoi de la photo." });
+      const errorMessage = error.response?.data?.message || error.message || "Erreur lors de l'envoi de la photo.";
+      setStatusMessage({ type: 'error', text: errorMessage });
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -105,25 +91,11 @@ const AgencyAdminProfile = () => {
     setStatusMessage({ type: '', text: '' });
 
     try {
-      const token = localStorage.getItem('token');
-
-      const response = await fetch(`${API_BASE_URL}/profile`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
-        },
-        body: JSON.stringify({
-          nom: nom,
-          telephone: telephone
-        })
+      const response = await api.patch('/users/profile', {
+        nom: nom,
+        telephone: telephone
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Impossible de mettre à jour le profil');
-      }
+      const data = response.data;
 
       if (updateUser) {
         updateUser({
@@ -135,7 +107,8 @@ const AgencyAdminProfile = () => {
 
       setStatusMessage({ type: 'success', text: data.message || 'Profil mis à jour avec succès !' });
     } catch (error) {
-      setStatusMessage({ type: 'error', text: error.message || 'Erreur lors de la mise à jour.' });
+      const errorMessage = error.response?.data?.message || error.message || 'Erreur lors de la mise à jour.';
+      setStatusMessage({ type: 'error', text: errorMessage });
     } finally {
       setIsSavingInfo(false);
     }
@@ -154,25 +127,11 @@ const AgencyAdminProfile = () => {
     setIsSavingPassword(true);
 
     try {
-      const token = localStorage.getItem('token');
-
-      const response = await fetch(`${API_BASE_URL}/change-password`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
-        },
-        body: JSON.stringify({
-          oldPassword: oldPassword,
-          newPassword: newPassword
-        })
+      const response = await api.patch('/users/change-password', {
+        oldPassword: oldPassword,
+        newPassword: newPassword
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Erreur lors du changement de mot de passe');
-      }
+      const data = response.data;
 
       setStatusMessage({ type: 'success', text: data.message || 'Mot de passe mis à jour avec succès !' });
       
@@ -180,7 +139,8 @@ const AgencyAdminProfile = () => {
       setNewPassword('');
       setConfirmPassword('');
     } catch (error) {
-      setStatusMessage({ type: 'error', text: error.message || "L'ancien mot de passe est incorrect." });
+      const errorMessage = error.response?.data?.message || error.message || "L'ancien mot de passe est incorrect.";
+      setStatusMessage({ type: 'error', text: errorMessage });
     } finally {
       setIsSavingPassword(false);
     }

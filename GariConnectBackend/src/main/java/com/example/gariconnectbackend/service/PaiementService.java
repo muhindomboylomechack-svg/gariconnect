@@ -1,11 +1,14 @@
 package com.example.gariconnectbackend.service;
 
 import com.example.gariconnectbackend.model.*;
-        import com.example.gariconnectbackend.repository.*;
-        import org.springframework.beans.factory.annotation.Autowired;
+import com.example.gariconnectbackend.repository.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Optional;
 
 @Service
 public class PaiementService {
@@ -13,70 +16,215 @@ public class PaiementService {
     @Autowired private PaiementRepository paiementRepository;
     @Autowired private ReservationRepository reservationRepository;
     @Autowired private CommissionDetteRepository commissionDetteRepository;
-
-    // NOUVEAU : Injection du service de réservation
     @Autowired private ReservationService reservationService;
+    @Autowired private FinanceRepository financeRepository;
+    @Autowired private DemandeRecuperationRepository demandeRecuperationRepository;
 
+   // @Transactional
+//    public Paiement effectuerPaiement(Long reservationId, String mode, String referenceClient) {
+//        // 1. Récupération de la réservation
+//        Reservation res = reservationRepository.findById(reservationId)
+//                .orElseThrow(() -> new RuntimeException("Réservation non trouvée"));
+//
+//        System.out.println("🚨 [SERVEUR PAIEMENT] Traitement paiement " + mode + " pour Réservation N°: " + reservationId);
+//
+//        Paiement p = new Paiement();
+//        p.setReservation(res);
+//        p.setModePaiement(mode);
+//        p.setReferenceTransaction(referenceClient);
+//        p.setDatePaiement(LocalDateTime.now());
+//        p.setStatut("SUCCES");
+//
+//        // 2. 🟢 INTERCEPTION & CALCUL DU MONTANT COMPLET (Billet normal + VIP)
+//        Double prixBilletNormal = (res.getMontantPaye() != null && res.getMontantPaye() > 0)
+//                ? res.getMontantPaye()
+//                : (res.getTrajet() != null && res.getTrajet().getPrix() != null ? res.getTrajet().getPrix() : 0.0);
+//
+//        Double montantTotal = prixBilletNormal;
+//
+//        // Ajouter les frais de récupération à domicile s'ils existent
+//        Optional<DemandeRecuperation> optDemande = demandeRecuperationRepository.findByReservationId(res.getId());
+//        if (optDemande.isPresent()) {
+//            DemandeRecuperation demande = optDemande.get();
+//            if (demande.getPrixSupplementaire() != null) {
+//                montantTotal += demande.getPrixSupplementaire();
+//                System.out.println("🚐 [SUPPLÉMENT VIP] Frais de récupération ajoutés au paiement : " + demande.getPrixSupplementaire() + " CDF/USD");
+//
+//                // Mettre à jour immédiatement la demande VIP au statut PAYE
+//                demande.setStatut(StatutRecuperation.PAYE);
+//                demandeRecuperationRepository.save(demande);
+//            }
+//        }
+//
+//        // Assigner le montant total (Billet + VIP) au paiement et à la réservation
+//        p.setMontant(montantTotal);
+//        res.setMontantPaye(montantTotal); // Indique combien a été payé en tout
+//        String nouveauStatutReservation = "PAYE";
+//
+//        // =========================================================================
+//        // 3. 💰 AUTOMATISATION FINANCIÈRE : Écriture dans le Livre de Caisse
+//        // =========================================================================
+//        User agence = (res.getTrajet() != null) ? res.getTrajet().getAgence() : null;
+//        if (agence != null) {
+//            String codeTicket = (res.getCodeTicket() != null) ? res.getCodeTicket() : "TK-" + res.getId();
+//            String nomClient = (res.getClient() != null) ? res.getClient().getNom() : "Client Divers";
+//
+//            // A. ENTRÉE DE CAISSE GLOBALE (Argent total reçu : Billet + VIP)
+//            FinanceTransaction transactionEntree = new FinanceTransaction();
+//            transactionEntree.setDate(LocalDate.now());
+//            transactionEntree.setTypeTransaction("ENTREE");
+//            transactionEntree.setDescription("Encaissement " + mode + " - Ticket : " + codeTicket);
+//            transactionEntree.setMontant(montantTotal); // L'agence reçoit l'intégralité
+//            transactionEntree.setDevise("CDF");
+//            transactionEntree.setAgence(agence);
+//            transactionEntree.setEntite("Guichet Agence - " + nomClient);
+//            transactionEntree.setDocumentRef(codeTicket);
+//            financeRepository.save(transactionEntree);
+//
+//            // B. DÉBIT DE LA COMMISSION DE LA PLATEFORME (Calculé uniquement sur le billet de base)
+//            if (prixBilletNormal > 0) {
+//                Double taux = (agence.getTauxCommission() != null) ? agence.getTauxCommission() : 10.0;
+//                Double montantComm = (prixBilletNormal * taux) / 100.0;
+//
+//                FinanceTransaction transactionSortie = new FinanceTransaction();
+//                transactionSortie.setDate(LocalDate.now());
+//                transactionSortie.setTypeTransaction("SORTIE");
+//                transactionSortie.setDescription("Commission Plateforme (" + taux + "%) - Ticket : " + codeTicket);
+//                transactionSortie.setMontant(montantComm); // La plateforme prélève 10% du billet normal
+//                transactionSortie.setDevise("CDF");
+//                transactionSortie.setAgence(agence);
+//                transactionSortie.setEntite("GariConnect Platform");
+//                transactionSortie.setDocumentRef(codeTicket);
+//                financeRepository.save(transactionSortie);
+//
+//                // C. Enregistrement de la dette dans la table des commissions
+//                CommissionDette cd = new CommissionDette();
+//                cd.setAgence(agence);
+//                cd.setReservation(res);
+//                cd.setPaiement(p);
+//                cd.setMontant(montantComm);
+//                cd.setMontantDu(montantComm);
+//                commissionDetteRepository.save(cd);
+//            }
+//        }
+//        // =========================================================================
+//
+//        // 4. Sauvegardes et bascule de l'état
+//        Paiement savedPaiement = paiementRepository.save(p);
+//        res.setStatut(nouveauStatutReservation);
+//        reservationRepository.save(res);
+//
+//        // 5. Notification et synchronisation globale
+//        try {
+//            reservationService.mettreAJourStatut(res.getId(), nouveauStatutReservation);
+//        } catch (Exception e) {
+//            System.err.println("⚠️ Erreur lors de la mise à jour du statut global : " + e.getMessage());
+//        }
+//
+//        return savedPaiement;
+//    }
+   @Transactional
+   public Paiement effectuerPaiement(Long reservationId, String mode, String referenceClient) {
+       // 1. Récupération de la réservation
+       Reservation res = reservationRepository.findById(reservationId)
+               .orElseThrow(() -> new RuntimeException("Réservation non trouvée"));
 
-    @Transactional
-    public Paiement effectuerPaiement(Long reservationId, String mode, String referenceClient) {
-        Reservation res = reservationRepository.findById(reservationId)
-                .orElseThrow(() -> new RuntimeException("Réservation non trouvée"));
+       System.out.println("🚨 [SERVEUR PAIEMENT] Traitement paiement " + mode + " pour Réservation N°: " + reservationId);
 
-        User agence = res.getTrajet().getAgence();
+       Paiement p = new Paiement();
+       p.setReservation(res);
+       p.setModePaiement(mode);
+       p.setReferenceTransaction(referenceClient);
+       p.setDatePaiement(LocalDateTime.now());
+       p.setStatut("SUCCES");
 
-        Paiement p = new Paiement();
-        p.setReservation(res);
+       // 2. 🟢 INTERCEPTION & CALCUL DU MONTANT COMPLET (Billet normal + VIP)
+       Double prixBilletNormal = (res.getMontantPaye() != null && res.getMontantPaye() > 0)
+               ? res.getMontantPaye()
+               : (res.getTrajet() != null && res.getTrajet().getPrix() != null ? res.getTrajet().getPrix() : 0.0);
 
-        // 🔥 MODIFICATION : Utilise le montant total payé (Billet + Surplus) s'il a été calculé,
-        // sinon se rabat par défaut sur le prix standard du trajet.
-        Double montantTotal = (res.getMontantPaye() != null && res.getMontantPaye() > 0)
-                ? res.getMontantPaye()
-                : res.getTrajet().getPrix();
-        p.setMontant(montantTotal);
+       Double montantTotal = prixBilletNormal;
 
-        p.setModePaiement(mode);
-        p.setDatePaiement(LocalDateTime.now());
+       // Ajouter les frais de récupération à domicile s'ils existent
+       Optional<DemandeRecuperation> optDemande = demandeRecuperationRepository.findByReservationId(res.getId());
+       if (optDemande.isPresent()) {
+           DemandeRecuperation demande = optDemande.get();
+           if (demande.getPrixSupplementaire() != null) {
+               montantTotal += demande.getPrixSupplementaire();
+               System.out.println("🚐 [SUPPLÉMENT VIP] Frais ajoutés au paiement : " + demande.getPrixSupplementaire());
 
-        String nouveauStatutReservation;
+               demande.setStatut(StatutRecuperation.PAYE);
+               demandeRecuperationRepository.save(demande);
+           }
+       }
 
-        if ("CASH".equals(mode)) {
-            p.setStatut("EN_ATTENTE_CAISSE");
-            p.setReferenceTransaction("CASH-PENDING");
+       p.setMontant(montantTotal);
+       res.setMontantPaye(montantTotal);
+       String nouveauStatutReservation = "PAYE";
 
-            res.setModePaiement("CASH");
-            res.setReferencePaiement("A_PAYER_A_L_AGENCE");
-            nouveauStatutReservation = "ATTENTE_PAIEMENT";
-        }
-        else {
-            p.setStatut("VERIFICATION_MOBILE");
-            p.setReferenceTransaction(referenceClient);
+       // =========================================================================
+       // 3. 💰 AUTOMATISATION FINANCIÈRE : Écriture dans le Livre de Caisse
+       // =========================================================================
+       User agence = (res.getTrajet() != null) ? res.getTrajet().getAgence() : null;
+       if (agence != null) {
+           String codeTicket = (res.getCodeTicket() != null) ? res.getCodeTicket() : "TK-" + res.getId();
+           String nomClient = (res.getClient() != null) ? res.getClient().getNom() : "Client Divers";
 
-            res.setModePaiement(mode);
-            res.setReferencePaiement(referenceClient);
-            nouveauStatutReservation = "PAYEE_MOBILE";
-        }
+           // A. ENTRÉE DE CAISSE GLOBALE
+           FinanceTransaction transactionEntree = new FinanceTransaction();
+           transactionEntree.setDate(LocalDate.now());
+           transactionEntree.setTypeTransaction("ENTREE");
+           transactionEntree.setDescription("Encaissement " + mode + " - Ticket : " + codeTicket);
+           transactionEntree.setMontant(montantTotal);
+           transactionEntree.setDevise("CDF");
+           transactionEntree.setAgence(agence);
+           transactionEntree.setEntite("Guichet Agence - " + nomClient);
+           transactionEntree.setDocumentRef(codeTicket);
+           financeRepository.save(transactionEntree);
 
-        // Sauvegarde les attributs mis à jour
-        reservationRepository.save(res);
-        Paiement savedPaiement = paiementRepository.save(p);
+           // B. DÉBIT DE LA COMMISSION DE LA PLATEFORME (LOGIQUE SAAS)
+           if (prixBilletNormal > 0) {
+               boolean isAbonnementDefinitif = "DEFINITIF".equalsIgnoreCase(agence.getTypeAbonnement());
 
-        // Met à jour le statut global et déclenche la notification au client
-        reservationService.mettreAJourStatut(res.getId(), nouveauStatutReservation);
+               if (!isAbonnementDefinitif) {
+                   Double taux = (agence.getTauxCommission() != null) ? agence.getTauxCommission() : 10.0;
+                   Double montantComm = (prixBilletNormal * taux) / 100.0;
 
-        return savedPaiement;
-    }
-    public void genererCommissionDette(Paiement p, User agence) {
-        Double taux = (agence.getTauxCommission() != null) ? agence.getTauxCommission() : 10.0;
-        Double montantComm = (p.getMontant() * taux) / 100;
+                   FinanceTransaction transactionSortie = new FinanceTransaction();
+                   transactionSortie.setDate(LocalDate.now());
+                   transactionSortie.setTypeTransaction("SORTIE");
+                   transactionSortie.setDescription("Commission Plateforme (" + taux + "%) - Ticket : " + codeTicket);
+                   transactionSortie.setMontant(montantComm);
+                   transactionSortie.setDevise("CDF");
+                   transactionSortie.setAgence(agence);
+                   transactionSortie.setEntite("GariConnect Platform");
+                   transactionSortie.setDocumentRef(codeTicket);
+                   financeRepository.save(transactionSortie);
 
-        CommissionDette dette = new CommissionDette();
-        dette.setAgence(agence);
-        dette.setPaiement(p);
-        dette.setMontant(montantComm);
-        dette.setStatut("NON_PAYEE");
-        dette.setDateGeneration(LocalDateTime.now());
+                   CommissionDette cd = new CommissionDette();
+                   cd.setAgence(agence);
+                   cd.setReservation(res);
+                   cd.setPaiement(p);
+                   cd.setMontant(montantComm);
+                   cd.setMontantDu(montantComm);
+                   commissionDetteRepository.save(cd);
+               } else {
+                   System.out.println("✅ [SaaS] L'agence " + agence.getNom() + " est exemptée de commission (Abonnement DEFINITIF).");
+               }
+           }
+       }
+       // =========================================================================
 
-        commissionDetteRepository.save(dette);
-    }
+       Paiement savedPaiement = paiementRepository.save(p);
+       res.setStatut(nouveauStatutReservation);
+       reservationRepository.save(res);
+
+       try {
+           reservationService.mettreAJourStatut(res.getId(), nouveauStatutReservation);
+       } catch (Exception e) {
+           System.err.println("⚠️ Erreur lors de la mise à jour du statut global : " + e.getMessage());
+       }
+
+       return savedPaiement;
+   }
 }

@@ -245,6 +245,7 @@ public class ReservationController {
         }
     }
 
+
     @GetMapping("/mon-historique")
     public ResponseEntity<?> getMonHistorique() {
         try {
@@ -265,8 +266,17 @@ public class ReservationController {
                 HistoriqueVoyageDTO dto = new HistoriqueVoyageDTO();
                 dto.setId(res.getId());
                 dto.setDateReservation(res.getDateReservation());
-                dto.setMontantTotal(res.getMontantPaye());
                 dto.setStatutPaiement(res.getStatut());
+
+                // 💸 CORRECTION DU MONTANT TOTAL :
+                // Si montantPaye est à 0 ou null (non encore payé), on prend le prix de base de la réservation/trajet
+                double prixDeBase = 0.0;
+                if (res.getMontantPaye() != null && res.getMontantPaye() > 0) {
+                    prixDeBase = res.getMontantPaye();
+                } else if (res.getTrajet() != null && res.getTrajet().getPrix() != null) {
+                    prixDeBase = res.getTrajet().getPrix();
+                }
+                dto.setMontantTotal(prixDeBase);
 
                 if (res.getTrajet() != null) {
                     dto.setVilleDepart(res.getTrajet().getDepart());
@@ -281,7 +291,7 @@ public class ReservationController {
                 Optional<DemandeRecuperation> demandeOpt = demandeRecuperationRepository.findFirstByReservationId(res.getId());
                 if (demandeOpt.isPresent()) {
                     DemandeRecuperation dm = demandeOpt.get();
-                    dto.setTypeReservation("VIP");
+                    dto.setTypeReservation("VID"); // Aligné avec ton filtre React 'VID' / 'VIP'
                     dto.setAdresseRamassage(dm.getAdresseTextuelle());
                     dto.setPrixSupplementaire(dm.getPrixSupplementaire() != null ? dm.getPrixSupplementaire() : 0.0);
                 } else {
@@ -300,7 +310,6 @@ public class ReservationController {
                     .body("Erreur interne du serveur lors du chargement de l'historique : " + e.getMessage());
         }
     }
-
     /**
      * 🏁 FINALISER UNE RÉSERVATION (Paiement Global)
      * Gère les requêtes PUT envoyées par React depuis la page de paiement
@@ -342,6 +351,37 @@ public class ReservationController {
             System.err.println("❌ Erreur lors de l'encaissement au guichet : " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("error", "Erreur lors de l'encaissement : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 💵 ENREGISTRER L'INTENTION DE PAIEMENT EN CASH (Côté Client)
+     * Cet endpoint accepte la déclaration du client sans toucher au statut de la réservation.
+     * Seul l'AGENCY_MANAGER pourra changer le statut lors du paiement physique.
+     */
+    @PostMapping("/{id}/intention-cash")
+    @PreAuthorize("hasRole('CLIENT')")
+    public ResponseEntity<?> enregistrerIntentionCash(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
+        try {
+            // 1. Vérifier si la réservation existe
+            Reservation reservation = reservationRepository.findById(id)
+                    .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Réservation introuvable"));
+
+            // 2. Optionnel : Log ou persistence de l'intention dans un historique si nécessaire
+            System.out.println("💵 [INTENTION CASH] Le client " + reservation.getClient().getNom()
+                    + " a déclaré vouloir payer la réservation N°" + id + " au guichet.");
+
+            // 3. Retourner une réponse positive au client SANS modifier le statut de la réservation
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Votre choix de paiement en espèces a été enregistré. Veuillez vous présenter au guichet de l'agence pour régler votre facture."
+            ));
+        } catch (jakarta.persistence.EntityNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Erreur lors de l'enregistrement de l'intention : " + e.getMessage()));
         }
     }
 }

@@ -381,7 +381,31 @@ public class AdminController {
     /**
      * Validation générique d'un utilisateur par son ID
      */
+    /**
+     * 💰 BASCULER LE TYPE D'ABONNEMENT D'UNE AGENCE (SaaS)
+     * Permet au SUPER_ADMIN de définir si l'agence paie par "COMMISSION" ou si elle a un abonnement "DEFINITIF"
+     */
+    @PutMapping("/agences/{id}/abonnement")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<?> changerTypeAbonnement(@PathVariable Long id, @RequestBody Map<String, String> payload) {
+        User agence = userRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Agence introuvable"));
 
+        // On vérifie que c'est bien un compte Agence
+        if (agence.getRole() != Role.AGENCY_ADMIN && agence.getRole() != Role.AGENCY_MANAGER) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Cet utilisateur n'est pas une agence."));
+        }
+
+        String nouveauType = payload.get("typeAbonnement");
+        if (!"COMMISSION".equals(nouveauType) && !"DEFINITIF".equals(nouveauType)) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Type d'abonnement invalide. Utilisez COMMISSION ou DEFINITIF."));
+        }
+
+        agence.setTypeAbonnement(nouveauType);
+        userRepository.save(agence);
+
+        return ResponseEntity.ok(Map.of("message", "L'abonnement de l'agence " + agence.getNom() + " a été mis à jour avec succès en : " + nouveauType));
+    }
     @PutMapping("/users/{id}/valider")
     public ResponseEntity<?> validerUtilisateur(@PathVariable Long id) {
         String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();

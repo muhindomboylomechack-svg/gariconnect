@@ -153,6 +153,7 @@ public interface TrajetRepository extends JpaRepository<Trajet, Long> {
     Optional<Trajet> findActiveTrajetByChauffeurId(Long chauffeurId);
 
     Object countByAgenceAndStatut(User agence, String enRoute);
-
+    // Récupérer tous les trajets appartenant à une agence spécifique
+    List<Trajet> findByAgence_Id(Long agenceId);
     List<Trajet> findByDepartContainingIgnoreCaseAndDestinationContainingIgnoreCase(String depart, String destination);
 }

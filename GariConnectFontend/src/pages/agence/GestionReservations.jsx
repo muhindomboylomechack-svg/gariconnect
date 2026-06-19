@@ -90,10 +90,11 @@ const GestionReservations = () => {
     });
   }, [reservations, searchTerm]);
 
+  // AJOUT AJUSTEMENT : Prise en compte de 'PAYE' ou 'CONFIRMEE'
   const stats = useMemo(() => ({
     total: reservations.length,
-    confirmees: reservations.filter(r => r?.statut === 'CONFIRMEE').length,
-    enAttente: reservations.filter(r => r?.statut !== 'CONFIRMEE').length,
+    confirmees: reservations.filter(r => r?.statut === 'CONFIRMEE' || r?.statut === 'PAYE').length,
+    enAttente: reservations.filter(r => r?.statut !== 'CONFIRMEE' && r?.statut !== 'PAYE').length,
   }), [reservations]);
 
   const handlePrintTicket = (reservation) => {
@@ -208,8 +209,11 @@ const GestionReservations = () => {
                       <div className="text-[10px] text-blue-500 dark:text-blue-400 font-mono font-bold mt-1 tracking-tighter">REF: {res.codeTicket || 'SANS TICKET'}</div>
                     </td>
                     <td className="px-6 py-4">
+                      {/* AJOUT AJUSTEMENT : Statut Vert pour PAYE ou CONFIRMEE */}
                       <div className={`mx-auto w-fit px-4 py-1.5 rounded-full text-[10px] font-black shadow-sm ${
-                        res.statut === 'CONFIRMEE' ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
+                        res.statut === 'CONFIRMEE' || res.statut === 'PAYE' 
+                          ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' 
+                          : 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
                       }`}>
                         {res.statut}
                       </div>
@@ -219,7 +223,8 @@ const GestionReservations = () => {
                         <button onClick={() => handleDelete(res.id)} className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-600 dark:hover:bg-red-600 hover:text-white transition-all active:scale-90">
                           <FaTrash size={14} />
                         </button>
-                        {res.statut === 'CONFIRMEE' && (
+                        {/* AJOUT AJUSTEMENT : Autoriser l'impression si le statut est PAYE ou CONFIRMEE */}
+                        {(res.statut === 'CONFIRMEE' || res.statut === 'PAYE') && (
                           <button onClick={() => handlePrintTicket(res)} className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-600 dark:hover:bg-red-600 hover:text-white transition-all active:scale-90">
                             <FaPrint size={14} />
                           </button>

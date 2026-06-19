@@ -45,6 +45,6 @@ public interface PaiementRepository extends JpaRepository<Paiement, Long> {
             "GROUP BY CAST(p.date_paiement AS DATE) " +
             "ORDER BY date_paiement ASC", nativeQuery = true)
     List<Map<String, Object>> getStatsPaiementsParJourPourAgence(@Param("agenceId") Long agenceId);
-    Optional<Paiement> findByReservationId(Long reservationId);
+   Optional<Paiement> findByReservationId(Long reservationId);
 }
 

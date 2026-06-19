@@ -14,13 +14,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.util.Collections;
-import java.util.List;
 
 @Component
 public class JwtFilter extends OncePerRequestFilter {
 
     @Autowired
     private JwtUtil jwtUtil;
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
@@ -31,26 +31,35 @@ public class JwtFilter extends OncePerRequestFilter {
             String token = authHeader.substring(7);
             try {
                 String email = jwtUtil.extractEmail(token);
+
                 if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                     String role = jwtUtil.extractClaim(token, claims -> claims.get("role", String.class));
 
                     if (role != null) {
-                        // On normalise le rôle : on enlève ROLE_ s'il existe puis on le remet
+                        // Normalisation stricte pour Spring Security :
+                        // hasAnyRole("ADMIN") attend l'autorité "ROLE_ADMIN".
                         String cleanRole = role.replace("ROLE_", "");
                         SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + cleanRole);
 
+                        // Création du jeton d'authentification pour le contexte Spring Security
                         UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                                email, null, Collections.singletonList(authority));
+                                email,
+                                null,
+                                Collections.singletonList(authority)
+                        );
 
                         authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+
+                        // Injection dans le contexte de sécurité
                         SecurityContextHolder.getContext().setAuthentication(authToken);
                     }
                 }
             } catch (Exception e) {
-                System.err.println("JWT Error: " + e.getMessage());
+                System.err.println("JWT Authentication Error: " + e.getMessage());
             }
         }
+
+        // Poursuite de la chaîne de filtres
         filterChain.doFilter(request, response);
     }
-
 }

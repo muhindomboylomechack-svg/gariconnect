@@ -15,14 +15,11 @@ const Trajets = () => {
   const [currentId, setCurrentId] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const JOURS_SEMAINE = [
-    "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche", "Tous les jours"
-  ];
-
+  // 🟢 L'état utilise maintenant "joursSemaine" comme déclencheur principal au lieu de "dateDepart"
   const [formData, setFormData] = useState({
     depart: '', 
     destination: '', 
-    joursSemaine: '', 
+    joursSemaine: '', // Remplacement de la date par le jour de la semaine
     heureDepart: '',  
     prix: '', 
     vehiculeId: '', 
@@ -38,7 +35,10 @@ const Trajets = () => {
   const fetchTrajets = async () => {
     try {
       setLoading(true);
-      const res = await api.get('/trajets');
+      const token = localStorage.getItem('token');
+      const res = await api.get('/trajets/mes-trajets', {
+          headers: { Authorization: `Bearer ${token}` }
+      });
       setTrajets(res.data);
     } catch (e) { 
       console.error("Erreur chargement trajets:", e); 
@@ -47,6 +47,7 @@ const Trajets = () => {
     }
   };
 
+  // 🟢 DÉCLENCHEUR : Récupère les ressources quand le JOUR DE LA SEMAINE change
   useEffect(() => {
     if (formData.joursSemaine) {
       fetchRessourcesParJour(formData.joursSemaine);
@@ -56,27 +57,18 @@ const Trajets = () => {
     }
   }, [formData.joursSemaine]);
 
-  // 🔥 CORRECTION ICI : Synchronisation avec les endpoints du backend
   const fetchRessourcesParJour = async (jourChoisi) => {
     try {
-      const paramJour = jourChoisi === "Tous les jours" ? "TOUS" : jourChoisi;
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
       
-      // Lancement des requêtes en parallèle pour plus de rapidité
-      const [resRessources, resChauffeurs] = await Promise.all([
-        // 1. Récupération des véhicules via l'ancien endpoint
-        api.get(`/trajets/ressources-disponibles?jour=${paramJour}`).catch(() => ({ data: {} })),
-        // 2. Récupération stricte des chauffeurs via le endpoint qu'on vient de corriger en backend
-        api.get('/users/chauffeurs').catch(() => ({ data: [] }))
-      ]);
+      // 🟢 Appel au backend avec le paramètre "jour" pour vérifier la disponibilité
+      const res = await api.get(`/trajets/ressources-disponibles?jour=${jourChoisi}`, { headers });
       
-      let vDispo = resRessources.data.vehicules || (Array.isArray(resRessources.data) ? resRessources.data : []);
-      
-      // On priorise les chauffeurs venant du endpoint dédié et sécurisé
-      let cDispo = (Array.isArray(resChauffeurs.data) && resChauffeurs.data.length > 0) 
-                    ? resChauffeurs.data 
-                    : (resRessources.data.chauffeurs || []);
+      let vDispo = res.data.vehicules || [];
+      let cDispo = res.data.chauffeurs || [];
 
-      // LOGIQUE ÉDITION : on conserve les ressources déjà assignées au trajet en cours d'édition
+      // Astuce UI : En mode "Édition", on rajoute le véhicule et chauffeur actuels dans la liste 
       if (isEditing && currentId) {
           const trajetActuel = trajets.find(t => t.id === currentId);
           if (trajetActuel) {
@@ -113,14 +105,16 @@ const Trajets = () => {
         return;
     }
 
-    const aujourdhui = new Date().toISOString().split('T')[0];
-    const dateComplete = `${aujourdhui}T${formData.heureDepart}:00`;
+    // 🟢 Astuce : On génère une date factice (aujourd'hui) pour conserver la compatibilité
+    // avec le format LocalDateTime du backend, en y attachant l'heure choisie.
+    const today = new Date().toISOString().split('T')[0];
+    const dateIsoPropre = `${today}T${formData.heureDepart}:00`;
 
     const payload = {
       depart: formData.depart,
       destination: formData.destination,
-      joursSemaine: formData.joursSemaine === "Tous les jours" ? "TOUS" : formData.joursSemaine,
-      dateHeureDepart: dateComplete,
+      joursSemaine: formData.joursSemaine,
+      dateHeureDepart: dateIsoPropre, 
       prix: parseFloat(formData.prix),
       statut: formData.statut,
       placesDisponibles: parseInt(formData.placesDisponibles),
@@ -129,17 +123,21 @@ const Trajets = () => {
     };
 
     try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+
       if (isEditing) {
-        await api.put(`/trajets/${currentId}`, payload);
+        await api.put(`/trajets/${currentId}`, payload, config);
         alert("✅ Trajet mis à jour avec succès !");
       } else {
-        await api.post('/trajets', payload);
+        await api.post('/trajets', payload, config);
         alert("✅ Trajet enregistré avec succès !");
       }
       setShowModal(false);
       fetchTrajets(); 
     } catch (err) {
-      const errorMsg = err.response?.data?.message || err.response?.data?.erreur || "Erreur lors de l'enregistrement";
+      console.error("Erreur détaillée du serveur :", err.response?.data);
+      const errorMsg = err.response?.data?.error || err.response?.data?.message || err.response?.data || "Erreur de format de données (400 Bad Request)";
       alert("⚠️ " + errorMsg);
     }
   };
@@ -150,7 +148,7 @@ const Trajets = () => {
     setFormData({
       depart: trajet.depart || '',
       destination: trajet.destination || '',
-      joursSemaine: trajet.joursSemaine === "TOUS" ? "Tous les jours" : (trajet.joursSemaine || ''),
+      joursSemaine: trajet.joursSemaine || '',
       heureDepart: heureExtraite,
       prix: trajet.prix || '',
       vehiculeId: trajet.vehicule?.id || '',
@@ -166,7 +164,10 @@ const Trajets = () => {
   const handleDelete = async (id) => {
     if (window.confirm("Supprimer cette programmation définitivement ?")) {
       try {
-        await api.delete(`/trajets/${id}`);
+        const token = localStorage.getItem('token');
+        await api.delete(`/trajets/${id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
         fetchTrajets();
       } catch (e) { 
         alert("Impossible de supprimer ce trajet."); 
@@ -176,14 +177,13 @@ const Trajets = () => {
 
   return (
     <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-500 max-w-[1600px] mx-auto min-h-screen">
-      
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
         <div>
           <h1 className="text-2xl md:text-3xl font-black text-slate-800 dark:text-white flex items-center gap-3">
             <div className="p-3 bg-blue-600 rounded-2xl shadow-xl">
               <FaMapMarkerAlt className="text-white text-xl" />
             </div>
-            Planning GariConnect (Beni)
+            Planning GariConnect
           </h1>
           <p className="text-slate-400 font-bold text-xs mt-1 italic uppercase">Gestion des rotations véhicules et chauffeurs</p>
         </div>
@@ -209,7 +209,7 @@ const Trajets = () => {
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <span className="px-4 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full text-[10px] font-black uppercase">
-                   {t.joursSemaine === "TOUS" ? "Tous les jours" : t.joursSemaine}
+                   {t.joursSemaine || (t.dateHeureDepart && new Date(t.dateHeureDepart).toLocaleDateString('fr-FR', { weekday: 'long' }))}
                 </span>
                 <span className="text-emerald-600 dark:text-emerald-400 font-black text-sm">{t.prix} FC</span>
               </div>
@@ -219,7 +219,12 @@ const Trajets = () => {
                   <p className="text-[9px] font-black text-slate-400 uppercase">Départ</p>
                   <span className="font-black text-slate-800 dark:text-white uppercase">{t.depart}</span>
                 </div>
-                <FaArrowRight className="text-slate-300" />
+                <div className="flex flex-col items-center">
+                   <span className="text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full mb-1">
+                      {t.dateHeureDepart ? t.dateHeureDepart.substring(11, 16) : '--:--'}
+                   </span>
+                   <FaArrowRight className="text-slate-300" />
+                </div>
                 <div className="flex-1 text-right">
                   <p className="text-[9px] font-black text-slate-400 uppercase">Destination</p>
                   <span className="font-black text-blue-600 dark:text-blue-400 uppercase">{t.destination}</span>
@@ -227,10 +232,15 @@ const Trajets = () => {
               </div>
 
               <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50 dark:border-slate-800">
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                  <FaBus className="text-blue-500"/> {t.vehicule?.plaque_immatriculation || 'Non assigné'}
+                <div className="flex flex-col gap-1">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+                      <FaBus className="text-blue-500"/> {t.vehicule?.plaque_immatriculation || 'Non assigné'}
+                    </div>
+                    <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded w-fit">
+                      <FaUsers /> {t.placesDisponibles} places restantes
+                    </div>
                 </div>
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+                <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 self-start">
                   <FaUserTie className="text-blue-500"/> {t.chauffeur?.nom || 'Non assigné'}
                 </div>
               </div>
@@ -255,15 +265,24 @@ const Trajets = () => {
             </div>
 
             <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-              <FormGroup label="Jour de passage" icon={<FaCalendarAlt />}>
+              
+              {/* 🟢 NOUVEAU : Menu déroulant pour le Jour de la semaine */}
+              <FormGroup label="Jours de la semaine" icon={<FaCalendarAlt />}>
                 <select 
                   className="form-input-custom" 
                   value={formData.joursSemaine} 
                   onChange={(e) => setFormData({...formData, joursSemaine: e.target.value})} 
                   required
                 >
-                  <option value="">Choisir un jour...</option>
-                  {JOURS_SEMAINE.map(j => <option key={j} value={j}>{j}</option>)}
+                  <option value="">Sélectionner un jour...</option>
+                  <option value="LUNDI">Lundi</option>
+                  <option value="MARDI">Mardi</option>
+                  <option value="MERCREDI">Mercredi</option>
+                  <option value="JEUDI">Jeudi</option>
+                  <option value="VENDREDI">Vendredi</option>
+                  <option value="SAMEDI">Samedi</option>
+                  <option value="DIMANCHE">Dimanche</option>
+                  <option value="TOUS LES JOURS">Tous les jours</option>
                 </select>
               </FormGroup>
 
@@ -300,11 +319,11 @@ const Trajets = () => {
               </FormGroup>
 
               <FormGroup label="Ville de Départ" icon={<FaMapMarkerAlt />}>
-                <input className="form-input-custom" value={formData.depart} onChange={(e) => setFormData({...formData, depart: e.target.value})} placeholder="Ex: Beni" required />
+                <input className="form-input-custom" value={formData.depart} onChange={(e) => setFormData({...formData, depart: e.target.value})} placeholder="Ex: Kinshasa" required />
               </FormGroup>
               
               <FormGroup label="Ville de Destination" icon={<FaArrowRight />}>
-                <input className="form-input-custom" value={formData.destination} onChange={(e) => setFormData({...formData, destination: e.target.value})} placeholder="Ex: Butembo" required />
+                <input className="form-input-custom" value={formData.destination} onChange={(e) => setFormData({...formData, destination: e.target.value})} placeholder="Ex: Matadi" required />
               </FormGroup>
 
               <FormGroup label="Prix du ticket (FC)" icon={<FaMoneyBillWave />}>
@@ -317,7 +336,7 @@ const Trajets = () => {
                   className="form-input-custom bg-blue-50/50 dark:bg-blue-900/10" 
                   value={formData.placesDisponibles} 
                   onChange={(e) => setFormData({...formData, placesDisponibles: e.target.value})} 
-                  placeholder="Capacité"
+                  placeholder="Se remplit automatiquement..."
                   required 
                 />
               </FormGroup>

@@ -209,6 +209,7 @@ import com.example.gariconnectbackend.repository.*;
 import jakarta.transaction.Transactional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
+import com.example.gariconnectbackend.repository.FinanceRepository;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -235,6 +236,11 @@ public class ReservationService {
     private WhatsAppService whatsAppService;
     @Autowired
     private DemandeRecuperationRepository demandeRecuperationRepository;
+
+    @Autowired
+    private PaiementRepository paiementRepository; // Assurez-vous que c'est injecté
+    @Autowired
+    private FinanceRepository financeRepository;
 
 
 
@@ -425,8 +431,8 @@ public class ReservationService {
         return reservationMiseAJour;
     }
 
-    /**
-     * 📝 CRÉER UNE RÉSERVATION (Avec logique "À la caisse" et Notification Agence)
+      /**
+     * 📝 CRÉER UNE RÉSERVATION (Avec logique "À la caisse", Diminution des places et Notification Agence)
      */
     @Transactional
     public Reservation creerReservation(Reservation reservation) {
@@ -437,6 +443,16 @@ public class ReservationService {
 
         Trajet trajet = trajetRepository.findById(reservation.getTrajet().getId())
                 .orElseThrow(() -> new RuntimeException("Trajet introuvable avec l'ID : " + reservation.getTrajet().getId()));
+
+        // --- 🟢 AJOUT : Vérification et Diminution des places disponibles ---
+        if (trajet.getPlacesDisponibles() == null || trajet.getPlacesDisponibles() <= 0) {
+            throw new RuntimeException("Désolé, ce trajet est complet ! Plus de places disponibles.");
+        }
+
+        // Diminution de la place disponible
+        trajet.setPlacesDisponibles(trajet.getPlacesDisponibles() - 1);
+        trajetRepository.save(trajet); // Persistance de la mise à jour du trajet
+        // ---------------------------------------------------------------------
 
         reservation.setTrajet(trajet);
 
@@ -505,67 +521,89 @@ public class ReservationService {
 
         return nouvelleReservation;
     }
-
-    /**
-     * 🏁 FINALISER LE PAIEMENT GLOBAL (Version Ultra-Sécurisée)
-     */
     @Transactional
     public Reservation finaliserPaiementGlobal(Long reservationId, Map<String, Object> payload) {
-        // 1. Récupération sécurisée de la réservation
         Reservation reservation = reservationRepository.findById(reservationId)
-                .orElseThrow(() -> new RuntimeException("Réservation introuvable avec l'ID : " + reservationId));
+                .orElseThrow(() -> new RuntimeException("Réservation introuvable"));
 
-        // 2. Mise à jour du statut principal
         reservation.setStatut("PAYE");
 
-        // 3. Mise à jour du montant total à partir du payload envoyé par React (plus sûr)
+        paiementRepository.findByReservationId(reservation.getId()).ifPresent(paiement -> {
+            paiement.setStatut("SUCCES");
+            paiementRepository.save(paiement);
+        });
+
+        double montantFinal = reservation.getMontantPaye() != null && reservation.getMontantPaye() > 0
+                ? reservation.getMontantPaye()
+                : (reservation.getTrajet() != null && reservation.getTrajet().getPrix() != null ? reservation.getTrajet().getPrix() : 0.0);
+
         if (payload != null && payload.containsKey("montantTotal")) {
-            try {
-                double montantTotal = Double.parseDouble(payload.get("montantTotal").toString());
-                reservation.setMontantPaye(montantTotal);
-            } catch (Exception e) {
-                System.err.println("❌ Erreur de parsing du montantTotal : " + e.getMessage());
-            }
+            montantFinal = Double.parseDouble(payload.get("montantTotal").toString());
+            reservation.setMontantPaye(montantFinal);
         }
 
-        // 4. Gestion de la demande VIP (entourée d'un try-catch pour ne pas bloquer le reste)
-        boolean hasVip = false;
-        try {
-            java.util.Optional<DemandeRecuperation> demandeOpt = demandeRecuperationRepository.findByReservationId(reservationId);
+        // 4. 🚀 NOUVELLE LOGIQUE SAAS : Calcul sécurisé de la commission selon l'abonnement
+        User agence = reservation.getTrajet().getAgence();
+        boolean isAbonnementDefinitif = agence != null && "DEFINITIF".equalsIgnoreCase(agence.getTypeAbonnement());
 
-            if (demandeOpt.isPresent()) {
-                DemandeRecuperation demande = demandeOpt.get();
-                hasVip = true;
+        double nouvelleCommission = 0.0;
+        Double taux = 0.0;
 
-                // Note : Assurez-vous que l'Enum StatutRecuperation possède bien la valeur PAYE.
-                // Si ça souligne en rouge dans votre IDE, remplacez-le par une valeur valide (ex: ACCEPTEE)
-                // demande.setStatut(StatutRecuperation.PAYE);
-
-                demandeRecuperationRepository.save(demande);
-            }
-        } catch (Exception e) {
-            System.err.println("⚠️ Erreur silencieuse lors du traitement de la demande VIP : " + e.getMessage());
+        if (agence != null && !isAbonnementDefinitif) {
+            taux = (agence.getTauxCommission() != null) ? agence.getTauxCommission() : 10.0;
+            nouvelleCommission = (montantFinal * taux) / 100;
         }
 
-        // 5. Recalcul sécurisé de la commission (10%)
-        double montantFinal = reservation.getMontantPaye() != null ? reservation.getMontantPaye() : 0.0;
-        double nouvelleCommission = montantFinal * 0.10;
         reservation.setMontantCommission(nouvelleCommission);
         reservation.setPartAgence(montantFinal - nouvelleCommission);
 
-        // 6. Sauvegarde finale
         Reservation reservationMiseAJour = reservationRepository.save(reservation);
 
-        // 7. Notification (avec vérification de nullité sur le trajet)
+        // =========================================================================
+        // 💰 AUTOMATISATION FINANCIÈRE : Écriture dans le Livre de Caisse
+        // =========================================================================
+        if (agence != null) {
+            String codeTicket = reservation.getCodeTicket() != null ? reservation.getCodeTicket() : "EN-ATTENTE";
+            String nomClient = (reservation.getClient() != null) ? reservation.getClient().getNom() : "Client Inconnu";
+
+            FinanceTransaction transactionEntree = new FinanceTransaction();
+            transactionEntree.setAgence(agence);
+            transactionEntree.setDate(java.time.LocalDate.now());
+            transactionEntree.setTypeTransaction("ENTREE");
+            transactionEntree.setDevise("CDF");
+            transactionEntree.setMontant(montantFinal);
+            transactionEntree.setDescription("Paiement Billet Auto - Ticket : " + codeTicket);
+            transactionEntree.setEntite(nomClient);
+            transactionEntree.setDocumentRef(codeTicket);
+            financeRepository.save(transactionEntree);
+
+            // SORTIE AUTOMATIQUE : Effectuée UNIQUEMENT si la commission > 0
+            if (nouvelleCommission > 0) {
+                FinanceTransaction transactionSortie = new FinanceTransaction();
+                transactionSortie.setAgence(agence);
+                transactionSortie.setDate(java.time.LocalDate.now());
+                transactionSortie.setTypeTransaction("SORTIE");
+                transactionSortie.setDevise("CDF");
+                transactionSortie.setMontant(nouvelleCommission);
+                transactionSortie.setDescription("Commission Plateforme (" + taux + "%) - Ticket : " + codeTicket);
+                transactionSortie.setEntite("GariConnect Platform");
+                transactionSortie.setDocumentRef(codeTicket);
+                financeRepository.save(transactionSortie);
+            }
+        }
+        // =========================================================================
+
+        demandeRecuperationRepository.findByReservationId(reservation.getId()).ifPresent(demande -> {
+            demande.setStatut(StatutRecuperation.PAYE);
+            demandeRecuperationRepository.save(demande);
+            System.out.println("🚐 [VIP] Demande de ramassage N°" + demande.getId() + " validée automatiquement suite à l'encaissement.");
+        });
+
         String detailsTrajet = "votre voyage";
         if (reservation.getTrajet() != null && reservation.getTrajet().getDepart() != null && reservation.getTrajet().getDestination() != null) {
             detailsTrajet = "le trajet " + reservation.getTrajet().getDepart() + " - " + reservation.getTrajet().getDestination();
         }
-
         String message = "🎉 Paiement confirmé ! Votre réservation pour " + detailsTrajet + " est validée.";
-        if (hasVip) {
-            message += " Vos frais de ramassage VIP sont inclus.";
-        }
 
         try {
             if (reservation.getClient() != null) {
@@ -578,3 +616,5 @@ public class ReservationService {
         return reservationMiseAJour;
     }
 }
+
+// Dans ton Service (ex: PaiementService ou ReservationService)

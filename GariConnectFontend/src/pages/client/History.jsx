@@ -46,12 +46,10 @@ const HistoriqueReservations = () => {
             } catch (error) {
                 console.error("Erreur lors du chargement de l'historique :", error);
                 
-                // 🆕 GESTION SPÉCIFIQUE DE L'ERREUR 401 via l'instance centralisée
                 if (error.response?.status === 401 || error.status === 401) {
                     localStorage.removeItem('token'); // Nettoyage du token expiré
                     setErrorMsg("Votre session a expiré ou est invalide. Redirection vers la page de connexion...");
                     
-                    // Redirection automatique vers le login après 3 secondes
                     setTimeout(() => {
                         navigate('/login');
                     }, 3000);
@@ -95,6 +93,8 @@ const HistoriqueReservations = () => {
         switch (statut) {
             case 'PAYE':
             case 'VALIDEE':
+            case 'CONFIRMEE':
+            case 'EMBARQUE':
                 return (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
                         <FaCheckCircle size={12} /> Payé
@@ -165,7 +165,7 @@ const HistoriqueReservations = () => {
                                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                             }`}
                         >
-                            Attente Paiement ({reservations.filter(r => r.statutPaiement !== 'PAYE' && r.statutPaiement !== 'VALIDEE').length})
+                            Attente Paiement ({reservations.filter(r => r.statutPaiement !== 'PAYE' && r.statutPaiement !== 'VALIDEE' && r.statutPaiement !== 'CONFIRMEE' && r.statutPaiement !== 'EMBARQUE').length})
                         </button>
                         <button
                             onClick={() => setFilter('RAMASSAGE')}
@@ -250,16 +250,24 @@ const HistoriqueReservations = () => {
                                     {/* Prix & Statut financiers (À droite) */}
                                     <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-4 pt-4 md:pt-0 border-t md:border-t-0 border-slate-50 dark:border-slate-800/50">
                                         
-                                        {/* Montants */}
+                                        {/* Montants calculés d'après le backend */}
                                         <div className="md:text-right">
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Montant total</p>
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Montant total du voyage</p>
                                             <p className="text-xl font-black text-slate-900 dark:text-white">
-                                                {(res.montantTotal || 0).toLocaleString('fr-FR')} <span className="text-xs font-bold text-slate-500">FC</span>
+                                                {/* 🛠️ Somme exacte cumulée et sécurisée */}
+                                                {((res.montantTotal || 0) + (res.prixSupplementaire || 0)).toLocaleString('fr-FR')}{' '}
+                                                <span className="text-xs font-bold text-slate-500">FC</span>
                                             </p>
-                                            {res.prixSupplementaire > 0 && res.statutPaiement === 'ATTENTE_PAIEMENT_SURPLUS' && (
-                                                <p className="text-[11px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">
-                                                    (Dont surplus ramassage : {(res.prixSupplementaire).toLocaleString('fr-FR')} FC)
-                                                </p>
+                                            
+                                            {/* Détails transparents de la tarification */}
+                                            {res.prixSupplementaire > 0 && (
+                                                <div className="mt-1 text-[11px] space-y-0.5 font-semibold text-slate-500 dark:text-slate-400">
+                                                    <p>Billet : {(res.montantTotal || 0).toLocaleString('fr-FR')} FC</p>
+                                                    <p className={res.statutPaiement === 'ATTENTE_PAIEMENT_SURPLUS' ? "text-amber-600 dark:text-amber-400 font-bold animate-pulse" : "text-emerald-600 dark:text-emerald-400"}>
+                                                        Frais de ramassage : {(res.prixSupplementaire).toLocaleString('fr-FR')} FC
+                                                        {res.statutPaiement === 'ATTENTE_PAIEMENT_SURPLUS' ? " (En attente)" : " (Payé)"}
+                                                    </p>
+                                                </div>
                                             )}
                                         </div>
 
@@ -267,8 +275,8 @@ const HistoriqueReservations = () => {
                                         <div className="flex items-center gap-3">
                                             {renderBadgeStatut(res.statutPaiement)}
 
-                                            {/* 🟢 ÉTAPE 4 : Affichage strictement conditionnel du bouton Payer */}
-                                            {res.statutPaiement !== 'PAYE' && res.statutPaiement !== 'VALIDEE' && (
+                                            {/* Affichage conditionnel du bouton Payer */}
+                                            {res.statutPaiement !== 'PAYE' && res.statutPaiement !== 'VALIDEE' && res.statutPaiement !== 'CONFIRMEE' && res.statutPaiement !== 'EMBARQUE' && (
                                                 <button
                                                     onClick={(e) => gererPaiement(res, e)}
                                                     className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-indigo-100 dark:shadow-none cursor-pointer border-0"

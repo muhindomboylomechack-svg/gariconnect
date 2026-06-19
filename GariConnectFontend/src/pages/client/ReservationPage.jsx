@@ -46,24 +46,30 @@ const ReservationPage = () => {
         }
     }, [darkMode]);
 
-    useEffect(() => {
-        const fetchTrajet = async () => {
-            try {
-                // Appel optimisé pour récupérer les détails du trajet
-                const res = await api.get(`/trajets/${id}?t=${Date.now()}`);
-                setTrajet(res.data);
-                
-                // Présélection automatique de la première place disponible
-                if (res.data && res.data.placesDisponibles > 0) {
-                    setSelectedSeat('1');
-                }
-            } catch (err) {
-                console.error("Erreur lors du chargement du trajet :", err);
-            } finally {
-                setLoading(false);
+    // Fonction isolée pour charger ou rafraîchir les données du trajet
+    const fetchTrajet = async () => {
+        try {
+            // 🟢 CORRECTION : Suppression du "/api" en dur pour éviter la duplication (/api/api/...)
+            const res = await api.get(`/trajets/${id}?t=${Date.now()}`);
+            setTrajet(res.data);
+            
+            // Présélection automatique de la première place disponible si applicable
+            if (res.data && res.data.placesDisponibles > 0) {
+                setSelectedSeat('1');
+            } else {
+                setSelectedSeat('');
             }
-        };
-        fetchTrajet();
+        } catch (err) {
+            console.error("Erreur lors du chargement du trajet :", err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (id) {
+            fetchTrajet();
+        }
     }, [id]);
 
     const toggleTheme = () => {
@@ -80,13 +86,20 @@ const ReservationPage = () => {
     const handleInitialSubmit = () => {
         if (!user?.id) return alert(t('auth_error') || "Veuillez vous reconnecter.");
         
+        // Sécurité Frontend : On revérifie l'état actuel des places chargées
+        if (trajet?.placesDisponibles <= 0) {
+            return alert("Désolé, ce trajet vient d'être complété entre-temps.");
+        }
+
+        // Sécurité commune : Peu importe le mode, un siège doit être choisi
+        if (!selectedSeat) return alert(t('select_seat_error') || "Veuillez choisir un siège.");
+
         if (!isVip) {
-            // Mode STANDARD : On doit choisir un siège et on passe au paiement
-            if (!selectedSeat) return alert(t('select_seat_error') || "Veuillez choisir un siège.");
+            // Mode STANDARD : On passe à l'affichage de la modale de paiement direct
             setShowModal(true);
             setPaymentStep(1);
         } else {
-            // Mode VIP : Pas de siège à choisir immédiatement, pas de paiement. On lance la création directe.
+            // Mode VIP : Validation de l'adresse requise avant envoi de la demande
             if (!recuperationData || !recuperationData.adresseTextuelle) {
                 return alert("Veuillez valider votre adresse sur la carte avant de continuer.");
             }
@@ -94,24 +107,24 @@ const ReservationPage = () => {
         }
     };
 
-    // ACTION 2-VIP : Création de la réservation + Demande VIP (SANS PAIEMENT)
+    // ACTION 2-VIP : Création de la réservation + Demande VIP (SANS PAIEMENT IMMEDIAT)
     const creerReservationVIP = async () => {
         setIsSubmitting(true);
         try {
-            // 1. Création de la réservation de base (sans numéro de siège strict pour l'instant)
+            // 1. Création de la réservation de base avec le format attendu par le backend Spring Boot
             const reservationPayload = {
                 trajet: { id: parseInt(id) },
-                numeroSiege: 0, 
-                montantPaye: trajet?.prix || 0,
-                statut: "ATTENTE_PAIEMENT" 
+                numeroSiege: parseInt(selectedSeat) 
             };
 
+            // 🟢 CORRECTION : Suppression du "/api"
             const resReservation = await api.post('/reservations/creer', reservationPayload);
             const nouvelleReservationId = resReservation.data.id;
 
             if (!nouvelleReservationId) throw new Error("Erreur de génération du billet.");
 
-            // 2. Lancement de la demande VIP avec le VRAI identifiant généré
+            // 2. Lancement de la demande VIP liée à la réservation venant d'être créée
+            // 🟢 CORRECTION : Suppression du "/api"
             await api.post('/recuperations/creer', {
                 reservationId: nouvelleReservationId,
                 latitudeClient: parseFloat(recuperationData.latitudeClient) || 0.0,
@@ -119,13 +132,14 @@ const ReservationPage = () => {
                 adresseTextuelle: recuperationData.adresseTextuelle
             });
 
-            alert("Succès ! Votre demande de ramassage a été envoyée. L'agence va calculer votre tarif kilométrique.");
+            alert("Succès ! Votre place a été bloquée et votre demande de ramassage a été envoyée. L'agence va calculer votre tarif kilométrique.");
             navigate('/client/historique');
 
         } catch (error) {
             console.error("Erreur cycle VIP :", error);
-            const errorMessage = error.response?.data?.message || "Erreur de connexion.";
+            const errorMessage = error.response?.data?.error || error.response?.data?.message || "Erreur de connexion.";
             alert("Échec de la demande : " + errorMessage);
+            fetchTrajet(); // Rafraîchit les places en cas d'échec
         } finally {
             setIsSubmitting(false);
         }
@@ -137,21 +151,22 @@ const ReservationPage = () => {
         
         setIsSubmitting(true);
         try {
-            // 1. Création de la réservation
+            // 1. Création de la réservation de base
             const reservationPayload = {
                 trajet: { id: parseInt(id) },
-                numeroSiege: parseInt(selectedSeat),
-                montantPaye: trajet?.prix || 0,
-                statut: "ATTENTE_PAIEMENT"
+                numeroSiege: parseInt(selectedSeat)
             };
+            
+            // 🟢 CORRECTION : Suppression du "/api"
             const resReservation = await api.post('/reservations/creer', reservationPayload);
             const reservationId = resReservation.data.id;
 
-            // 2. Finalisation du paiement
+            // 2. Finalisation classique par Mobile Money ou Cash
             const mode = isCash ? "CASH" : paymentData.modePaiement;
             const ref = isCash ? "CAISSE" : paymentData.referenceTransaction;
 
-            await api.patch(`/reservations/${reservationId}/finaliser`, {
+            // 🟢 CORRECTION : Suppression du "/api"
+            await api.put(`/reservations/${reservationId}/finaliser`, {
                 modePaiement: mode,
                 referenceTransaction: ref
             });
@@ -161,8 +176,10 @@ const ReservationPage = () => {
             navigate('/client/historique'); 
             
         } catch (error) {
-            const errorMessage = error.response?.data?.message || "Erreur lors du paiement.";
+            const errorMessage = error.response?.data?.error || error.response?.data?.message || "Erreur lors de la procédure.";
             alert("Échec de la réservation : " + errorMessage);
+            fetchTrajet(); // Actualise l'état des places disponibles du véhicule à l'écran
+            setShowModal(false);
         } finally {
             setIsSubmitting(false);
         }
@@ -196,10 +213,10 @@ const ReservationPage = () => {
             {/* Conteneur principal Responsive adaptif */}
             <div className={`w-full max-w-md md:max-w-2xl lg:max-w-4xl rounded-[2rem] md:rounded-[3rem] shadow-2xl overflow-hidden border transition-all duration-500 ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
                 
-                {/* Structure en Grille Responsive : 1 colonne sur Mobile, multi-colonnes sur grand écran */}
+                {/* Structure en Grille Responsive */}
                 <div className="lg:grid lg:grid-cols-12 min-h-[500px]">
                     
-                    {/* Header Ticket (Bandeau du haut ou colonne latérale sur grand écran) */}
+                    {/* Header Ticket */}
                     <div className="bg-indigo-600 p-6 md:p-10 text-white text-center flex flex-col justify-center items-center lg:col-span-4 transition-colors duration-500">
                         <span className="text-[10px] font-black uppercase bg-black/20 px-4 py-1 rounded-full mb-3 inline-block tracking-wider">
                             {trajet?.agence?.nom || "Agence Partenaire"}
@@ -208,6 +225,9 @@ const ReservationPage = () => {
                         <p className="text-indigo-100 mt-2 text-sm md:text-base font-medium break-words w-full px-2">
                             {trajet?.depart} ➔ {trajet?.destination}
                         </p>
+                        <span className="text-xs font-bold mt-4 bg-white/20 px-3 py-1 rounded-lg">
+                            🎫 {trajet?.placesDisponibles} places restantes
+                        </span>
                     </div>
 
                     {/* Section Formulaires / Actions */}
@@ -236,34 +256,34 @@ const ReservationPage = () => {
                                 </div>
                             </div>
 
-                            {/* CONDITION CONDITIONNELLE : Choix du siège uniquement si Standard */}
-                            {!isVip ? (
-                                <div className="mb-6 md:mb-8">
-                                    <label className={`block text-[10px] font-black uppercase mb-3 tracking-wider transition-colors duration-500 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                                        <FaChair className="inline mr-2 text-indigo-500" size={12}/> Choix du siège
-                                    </label>
-                                    {isFull ? (
-                                        <div className="w-full p-4 rounded-2xl bg-red-500/10 text-red-500 font-black text-sm text-center tracking-widest border border-red-500/20 animate-pulse">
-                                            COMPLET
-                                        </div>
-                                    ) : (
-                                        <div className="relative">
-                                            <select 
-                                                className={`w-full p-4 rounded-2xl outline-none font-black text-lg md:text-xl text-center border-2 appearance-none cursor-pointer transition-all duration-500 focus:ring-4 focus:ring-indigo-500/10 ${darkMode ? 'bg-slate-950 text-white border-slate-800 focus:border-indigo-500' : 'bg-slate-50 text-slate-800 border-slate-200 focus:border-indigo-400'}`}
-                                                value={selectedSeat}
-                                                onChange={(e) => setSelectedSeat(e.target.value)}
-                                            >
-                                                {[...Array(trajet.placesDisponibles).keys()].map(i => (
-                                                    <option key={i + 1} value={i + 1} className="text-slate-900 dark:text-white bg-white dark:bg-slate-950 font-bold">
-                                                        Siège N° {i + 1}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                /* Si c'est VIP, formulaire de ramassage */
+                            {/* SÉLECTION DE LA PLACE */}
+                            <div className="mb-6 md:mb-8">
+                                <label className={`block text-[10px] font-black uppercase mb-3 tracking-wider transition-colors duration-500 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                    <FaChair className="inline mr-2 text-indigo-500" size={12}/> Sélection de la place
+                                </label>
+                                {isFull ? (
+                                    <div className="w-full p-4 rounded-2xl bg-red-500/10 text-red-500 font-black text-sm text-center tracking-widest border border-red-500/20 animate-pulse">
+                                        COMPLET
+                                    </div>
+                                ) : (
+                                    <div className="relative">
+                                        <select 
+                                            className={`w-full p-4 rounded-2xl outline-none font-black text-lg md:text-xl text-center border-2 appearance-none cursor-pointer transition-all duration-500 focus:ring-4 focus:ring-indigo-500/10 ${darkMode ? 'bg-slate-950 text-white border-slate-800 focus:border-indigo-500' : 'bg-slate-50 text-slate-800 border-slate-200 focus:border-indigo-400'}`}
+                                            value={selectedSeat}
+                                            onChange={(e) => setSelectedSeat(e.target.value)}
+                                        >
+                                            {[...Array(trajet.placesDisponibles).keys()].map(i => (
+                                                <option key={i + 1} value={i + 1} className="text-slate-900 dark:text-white bg-white dark:bg-slate-950 font-bold">
+                                                    Réserver {i + 1} {i + 1 > 1 ? 'places' : 'place'}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* FORMULAIRE CONDITIONNEL DU RAMASSAGE VIP */}
+                            {isVip && (
                                 <div className={`mb-6 md:mb-8 p-4 md:p-6 border-2 rounded-2xl transition-all duration-500 w-full overflow-hidden ${darkMode ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-emerald-500/30 bg-emerald-50/30'}`}>
                                     <h3 className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 mb-4 tracking-wider flex items-center gap-2">
                                         📍 Où devons-nous vous chercher ?
@@ -291,17 +311,17 @@ const ReservationPage = () => {
                         {/* BOUTON D'ACTION DYNAMIQUE */}
                         <button 
                             onClick={handleInitialSubmit}
-                            disabled={isFull || isSubmitting || (!isVip && !selectedSeat)}
-                            className={`w-full font-black py-4 md:py-5 rounded-2xl uppercase text-xs transition-all shadow-lg flex items-center justify-center gap-2 tracking-wider active:scale-[0.99] ${isFull ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed shadow-none' : (isVip ? 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-600/20')}`}
+                            disabled={isFull || isSubmitting || !selectedSeat}
+                            className={`w-full font-black py-4 md:py-5 rounded-2xl uppercase text-xs transition-all shadow-lg flex items-center justify-center gap-2 tracking-wider active:scale-[0.99] ${isFull || !selectedSeat ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed shadow-none' : (isVip ? 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-600/20')}`}
                         >
-                            {isSubmitting ? "Traitement..." : (isVip ? <><FaPaperPlane /> Envoyer demande de ramassage</> : "Procéder au paiement")}
+                            {isSubmitting ? "Traitement..." : (isVip ? <><FaPaperPlane /> Envoyer demande de ramassage VIP</> : "Procéder au paiement")}
                         </button>
 
                     </div>
                 </div>
             </div>
 
-            {/* FENÊTRE DIALOGUE (MODAL) DU PAIEMENT MOBILE MONEY (Réservée au mode Standard) */}
+            {/* FENÊTRE DIALOGUE (MODAL) DU PAIEMENT MOBILE MONEY */}
             {showModal && !isVip && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
                     <div className={`w-full max-w-sm rounded-[2rem] md:rounded-[2.5rem] p-6 md:p-8 relative shadow-2xl transition-all duration-500 border ${darkMode ? 'bg-slate-900 text-white border-slate-800' : 'bg-white text-slate-900 border-slate-100'}`}>
@@ -322,6 +342,10 @@ const ReservationPage = () => {
                                     <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider">
                                         <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>Type de Voyage</span>
                                         <span className="text-indigo-600 dark:text-indigo-400">Standard</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider">
+                                        <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>Siège Sélectionné</span>
+                                        <span className="text-indigo-600 dark:text-indigo-400">N° {selectedSeat}</span>
                                     </div>
                                     <div className={`flex justify-between items-center text-xs font-bold uppercase tracking-wider border-t pt-4 ${darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
                                         <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>Total Billet</span>

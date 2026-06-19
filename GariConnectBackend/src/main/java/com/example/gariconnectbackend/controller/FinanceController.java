@@ -76,8 +76,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
-        import java.util.List;
 import java.util.Map;
+import org.springframework.web.bind.annotation.*;
+
+
 
 @RestController
 @RequestMapping("/api/finance")
@@ -105,20 +107,6 @@ public class FinanceController {
 
         User agence = (userConnecte.getRole() == Role.AGENCY_MANAGER) ? userConnecte : userConnecte.getAgenceEmployeur();
         return ResponseEntity.ok(financeRepository.findByAgence(agence));
-    }
-
-    @PostMapping("/transactions")
-    public ResponseEntity<?> addTransaction(@RequestBody FinanceTransaction transaction) {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        User userConnecte = userRepository.findByEmail(email).orElseThrow();
-
-        // Le SUPER_ADMIN peut forcer une agence, sinon on assigne celle de l'admin/agence
-        if (userConnecte.getRole() != Role.SUPER_ADMIN) {
-            User agence = (userConnecte.getRole() == Role.AGENCY_MANAGER) ? userConnecte : userConnecte.getAgenceEmployeur();
-            transaction.setAgence(agence);
-        }
-
-        return ResponseEntity.ok(financeService.createTransaction(transaction));
     }
 
     @PutMapping("/transactions/{id}")
@@ -167,12 +155,106 @@ public class FinanceController {
         return ResponseEntity.ok(Map.of("message", "Transaction supprimée."));
     }
 
+
+
+
     @GetMapping("/livre-de-caisse")
     public ResponseEntity<?> getReport() {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        User userConnecte = userRepository.findByEmail(email).orElseThrow();
+        System.out.println("\n=====================================================");
+        System.out.println("🚀 APPEL API : /api/finance/livre-de-caisse");
 
-        // Note : Votre service generateLivreDeCaisse devra être adapté pour accepter un ID d'agence
-        return ResponseEntity.ok(financeService.generateLivreDeCaisse());
+        try {
+            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+            System.out.println("👤 Email connecté : " + email);
+
+            User userConnecte = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+
+            System.out.println("🔑 Rôle de l'utilisateur : " + userConnecte.getRole());
+            System.out.println("🆔 ID de l'utilisateur connecté : " + userConnecte.getId());
+            if (userConnecte.getAgenceEmployeur() != null) {
+                System.out.println("🏢 ID de l'agence employeur : " + userConnecte.getAgenceEmployeur().getId());
+            }
+
+            // 🔥 LE BYPASS ABSOLU : On récupère TOUTES les transactions de la DB, sans aucun filtre
+            System.out.println("⏳ Interrogation de la base de données (findAll)...");
+            var allData = financeService.generateLivreDeCaisseGlobal();
+
+            System.out.println("📦 Nombre de lignes générées : " + allData.size());
+
+            if (allData.isEmpty()) {
+                System.out.println("🚨 ALERTE : Le service retourne 0 lignes ! Le problème vient de la lecture JPA (Hibernate ne lit pas la bonne table ou la table est vraiment vide pour lui).");
+            } else {
+                System.out.println("✅ SUCCÈS : Les données sont lues ! Envoi au frontend...");
+            }
+            System.out.println("=====================================================\n");
+
+            // On renvoie TOUT au frontend pour forcer l'affichage
+            return ResponseEntity.ok(allData);
+
+        } catch (Exception e) {
+            System.err.println("❌ ERREUR CRITIQUE : " + e.getMessage());
+            e.printStackTrace();
+            return ResponseEntity.status(500).body("Erreur : " + e.getMessage());
+        }
     }
-}
+
+    @PostMapping("/transactions")
+    @PreAuthorize("hasAnyRole('AGENCE','SUPER_ADMIN', 'AGENCY_MANAGER', 'AGENCY_ADMIN')") // Extension des rôles autorisés
+    public ResponseEntity<?> addTransaction(@RequestBody FinanceTransaction transaction) {
+        try {
+            // 1. Récupérer l'utilisateur actuellement connecté via le token SecurityContext
+            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+            User userConnecte = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur connecté non trouvé"));
+
+            System.out.println("📝 [FINANCE] Création manuelle de transaction par : " + email + " (Rôle: " + userConnecte.getRole() + ")");
+
+            // 2. Détermination de l'agence propriétaire de cette écriture comptable
+            User agenceCible = null;
+
+            if (userConnecte.getRole() == Role.AGENCY_MANAGER || userConnecte.getRole() == Role.AGENCY_ADMIN) {
+                // Le gestionnaire est lui-même l'entité agence
+                agenceCible = userConnecte;
+            } else if (userConnecte.getAgenceEmployeur() != null) {
+                // C'est un employé, on récupère son agence de rattachement
+                agenceCible = userConnecte.getAgenceEmployeur();
+            } else if (userConnecte.getRole() == Role.SUPER_ADMIN) {
+                // Si c'est le Super Admin qui crée une opération manuelle, il faut s'assurer qu'il a choisi
+                // une agence dans le formulaire frontend, sinon on lui refuse pour ne pas violer le 'nullable = false'
+                if (transaction.getAgence() != null && transaction.getAgence().getId() != null) {
+                    agenceCible = userRepository.findById(transaction.getAgence().getId())
+                            .orElseThrow(() -> new RuntimeException("L'agence spécifiée par le Super Admin n'existe pas"));
+                } else {
+                    return ResponseEntity.badRequest().body("Erreur : En tant que SUPER_ADMIN, vous devez spécifier une agence destinataire pour cette transaction.");
+                }
+            }
+
+            // 3. Sécurité finale : Si aucune agence n'est trouvée, on refuse la création
+            if (agenceCible == null) {
+                return ResponseEntity.badRequest().body("Erreur : Impossible de lier cette transaction à une agence valide.");
+            }
+
+            // 4. Injecter l'agence validée dans l'entité avant la sauvegarde
+            transaction.setAgence(agenceCible);
+
+            // 5. Forcer les valeurs par défaut au cas où le frontend ne les envoie pas
+            if (transaction.getTypeTransaction() == null) {
+                return ResponseEntity.badRequest().body("Erreur : Le type de transaction (ENTREE ou SORTIE) est obligatoire.");
+            }
+            // Normalisation des chaînes de caractères (ex: "entree" -> "ENTREE")
+            transaction.setTypeTransaction(transaction.getTypeTransaction().toUpperCase());
+
+            // 6. Enregistrement via le service
+            FinanceTransaction nouvelleTransaction = financeService.createTransaction(transaction);
+            System.out.println("✅ [FINANCE] Transaction manuelle enregistrée avec succès. ID: " + nouvelleTransaction.getId());
+
+            return ResponseEntity.ok(nouvelleTransaction);
+
+        } catch (Exception e) {
+            System.err.println("❌ [FINANCE ERROR] Échec lors de la création de la transaction : " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body("Erreur lors de l'enregistrement : " + e.getMessage());
+        }
+    }
+    }

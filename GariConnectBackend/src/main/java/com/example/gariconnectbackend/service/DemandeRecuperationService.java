@@ -6,10 +6,7 @@ package com.example.gariconnectbackend.service;
 import com.example.gariconnectbackend.dto.CotationRequest;
 import com.example.gariconnectbackend.dto.DemandeRecuperationRequest;
 import com.example.gariconnectbackend.model.*;
-        import com.example.gariconnectbackend.repository.DemandeRecuperationRepository;
-import com.example.gariconnectbackend.repository.NotificationRepository;
-import com.example.gariconnectbackend.repository.ReservationRepository;
-import com.example.gariconnectbackend.repository.UserRepository;
+import com.example.gariconnectbackend.repository.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,6 +33,8 @@ public class DemandeRecuperationService {
     @Autowired
     private NotificationRepository notificationRepository;
 
+    @Autowired
+    private PaiementRepository paiementRepository; // Assurez-vous que c'est injecté
 
 
 

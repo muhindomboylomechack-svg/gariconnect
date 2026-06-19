@@ -1,19 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-    FaArrowLeft, FaReceipt, FaMoneyBillWave, FaMobileAlt, 
-    FaCheckCircle, FaSpinner, FaCar, FaTicketAlt
+  FaArrowLeft, FaReceipt, FaMoneyBillWave, FaMobileAlt, 
+  FaCheckCircle, FaSpinner, FaCar, FaTicketAlt
 } from 'react-icons/fa';
 
-// Import de l'instance API centralisée
 import api from '../../services/api';
 
 const PaiementDemande = ({ onPaymentSuccess }) => {
-  // Récupération de l'ID de la réservation passé dans l'URL
   const { reservationId } = useParams();
   const navigate = useNavigate();
 
-  // États pour stocker les données récupérées du backend
+  // États des données backend
   const [reservation, setReservation] = useState(null);
   const [demandeRecuperation, setDemandeRecuperation] = useState(null);
   
@@ -28,7 +26,7 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
   const [modePaiement, setModePaiement] = useState('M-PESA');
   const [referenceTransaction, setReferenceTransaction] = useState('');
 
-  // Gestion du Dark Mode Tailwind sur la racine absolue du site
+  // Gestion du Dark Mode Tailwind
   useEffect(() => {
     if (darkMode) {
         document.documentElement.classList.add('dark');
@@ -41,18 +39,16 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
     }
   }, [darkMode]);
 
-  // Chargement automatique des données de la facture
+  // Chargement des données de la facture
   useEffect(() => {
     const chargerDetailsPaiement = async () => {
       try {
         const token = localStorage.getItem('token');
         if (!token) throw new Error("Non connecté");
 
-        // 1. Récupérer les détails de la réservation principale
         const resResponse = await api.get(`/reservations/${reservationId}`);
         setReservation(resResponse.data);
 
-        // 2. Tenter de récupérer la demande de ramassage associée
         try {
             const reqResponse = await api.get(`/recuperations/reservation/${reservationId}`);
             setDemandeRecuperation(reqResponse.data);
@@ -73,7 +69,6 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
     }
   }, [reservationId]);
 
-  // Sécurité : Écran de chargement couvrant tout l'écran
   if (loading && !reservation) {
     return (
       <div className={`fixed inset-0 w-screen h-screen flex items-center justify-center font-black animate-pulse transition-colors duration-500 ${darkMode ? 'bg-slate-950 text-indigo-400' : 'bg-slate-50 text-indigo-600'}`}>
@@ -82,7 +77,6 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
     );
   }
 
-  // Si on n'a pas pu charger la réservation
   if (!loading && !reservation) {
      return (
       <div className="fixed inset-0 w-screen h-screen flex flex-col items-center justify-center p-4 transition-colors duration-500 bg-slate-50 dark:bg-slate-950 text-slate-800 dark:text-slate-200">
@@ -92,7 +86,6 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
      );
   }
 
-  // Calculs financiers dynamiques
   const prixBillet = reservation.trajet?.prix || reservation.montantPaye || 0;
   const isVip = demandeRecuperation !== null && demandeRecuperation !== undefined;
   const supplementRamassage = demandeRecuperation?.prixSupplementaire || 0;
@@ -101,7 +94,6 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
   const handlePaiement = async (e) => {
     e.preventDefault();
     
-    // Validation du numéro de téléphone
     if (modePaiement !== 'CASH' && !referenceTransaction.trim()) {
       setIsError(true);
       setMessage("Veuillez saisir le numéro de téléphone utilisé pour le paiement Mobile Money.");
@@ -113,34 +105,39 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
     setIsError(false);
 
     try {
-      // Construction du payload pour l'endpoint global (Billet + VIP)
-      const payload = {
-        modePaiement: modePaiement === 'CASH' ? 'AGENCE' : modePaiement,
-        referenceTransaction: modePaiement === 'CASH' ? 'CASH_ATTENTE' : referenceTransaction,
-        montantTotal: totalGeneral
-      };
+      if (modePaiement === 'CASH') {
+        // 🟢 PAIEMENT PHYSIQUE : Intention déclarée.
+        await api.post(`/reservations/${reservation.id}/intention-cash`, {
+            montantTotal: totalGeneral
+        });
 
-      // 🟢 CORRECTION ICI : api.put au lieu de api.patch pour correspondre au @PutMapping du backend
-      const response = await api.put(`/reservations/${reservation.id}/finaliser`, payload);
+        setIsError(false);
+        setMessage("💵 Choix enregistré ! Veuillez vous rendre au guichet d'une agence pour payer. Votre réservation sera validée par l'agent de comptoir après réception des fonds.");
+        
+        setTimeout(() => navigate('/client/historique'), 5000);
 
-      setIsError(false);
-      
-      const messageSucces = modePaiement === 'CASH'
-        ? "💵 Demande enregistrée ! Veuillez vous rendre au guichet pour finaliser le paiement cash."
-        : "🎉 Paiement mobile enregistré avec succès ! Votre billet et votre ramassage sont validés.";
-      
-      setMessage(response.data?.message || messageSucces);
-      
-      if (onPaymentSuccess) {
-        onPaymentSuccess(response.data);
       } else {
+        // 🟢 PAIEMENT MOBILE MONEY : Appel vers PaiementController pour tout déclencher
+        const payload = {
+          reservationId: reservation.id,
+          reference: referenceTransaction,
+          montant: totalGeneral,
+          mode: modePaiement
+        };
+        
+        // CORRECTION MAJEURE : On pointe vers le contrôleur de paiement
+        await api.post(`/paiements/encaisser`, payload);
+        
+        setIsError(false);
+        setMessage("🎉 Paiement mobile encaissé avec succès ! Vos reçus ont été générés.");
         setTimeout(() => navigate('/client/historique'), 3000);
       }
+
     } catch (error) {
       setIsError(true);
       setMessage(
         error.response?.data?.message || error.response?.data?.error || 
-        "Une erreur est survenue lors de la communication avec le serveur de paiement."
+        "Une erreur est survenue lors du traitement."
       );
     } finally {
       setIsSubmitting(false);
@@ -159,17 +156,15 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
             <FaReceipt className="text-indigo-500 dark:text-indigo-400" /> Caisse Virtuelle
         </h1>
 
-        {/* Conteneur responsive : Stack sur mobile, Côte à côte sur tablette/desktop */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
           
-          {/* --- CARTE 1 : LE REÇU DÉTAILLÉ (FACTURE) --- */}
+          {/* --- FACTURE --- */}
           <div className={`p-5 sm:p-6 rounded-[2rem] shadow-xl border transition-all duration-500 ${darkMode ? 'bg-slate-900 border-slate-800 shadow-slate-950/50' : 'bg-white border-slate-100 shadow-slate-200/50'}`}>
               <h2 className="text-xs font-black uppercase mb-6 tracking-widest border-b pb-4 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800">
                   Détails de facturation
               </h2>
               
               <div className="space-y-4">
-                  {/* Ligne 1 : Billet Standard */}
                   <div className="flex justify-between items-center">
                       <span className="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
                           <FaTicketAlt className="text-indigo-500 dark:text-indigo-400" /> Billet Standard
@@ -177,7 +172,6 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
                       <span className="font-black text-slate-900 dark:text-white">{prixBillet.toLocaleString()} FC</span>
                   </div>
 
-                  {/* Ligne 2 : Frais VIP (Conditionnelle) */}
                   {isVip && (
                       <div className="flex justify-between items-center p-3 rounded-xl border transition-all duration-500 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30">
                           <span className="flex items-center gap-2 text-sm font-bold text-emerald-700 dark:text-emerald-400">
@@ -190,7 +184,6 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
                   )}
               </div>
 
-              {/* Total à Payer */}
               <div className="mt-6 pt-6 border-t-2 border-dashed flex justify-between items-end border-slate-200 dark:border-slate-700">
                   <span className="text-sm font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">Total</span>
                   <div className="text-right">
@@ -200,13 +193,12 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
               </div>
           </div>
 
-          {/* --- CARTE 2 : LE FORMULAIRE DE PAIEMENT --- */}
+          {/* --- CHOIX DU MODE --- */}
           <form onSubmit={handlePaiement} className={`p-5 sm:p-6 rounded-[2rem] shadow-xl border transition-all duration-500 ${darkMode ? 'bg-slate-900 border-slate-800 shadow-slate-950/50' : 'bg-white border-slate-100 shadow-slate-200/50'}`}>
               <h2 className="text-xs font-black uppercase mb-6 tracking-widest text-slate-400 dark:text-slate-500">
                   Méthode de paiement
               </h2>
 
-              {/* Sélecteur de méthode (Tabs) */}
               <div className="flex p-1 rounded-2xl mb-6 bg-slate-100 dark:bg-slate-950 transition-colors duration-500">
                   <button 
                       type="button"
@@ -220,13 +212,12 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
                       onClick={() => { setModePaiement('CASH'); setReferenceTransaction(''); setIsError(false); }}
                       className={`flex-1 py-3 flex items-center justify-center gap-2 rounded-xl text-xs font-bold transition-all duration-300 ${modePaiement === 'CASH' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
                   >
-                      <FaMoneyBillWave /> Guichet
+                      <FaMoneyBillWave /> Guichet (Cash)
                   </button>
               </div>
 
-              {/* Champs dynamiques */}
               {modePaiement !== 'CASH' ? (
-                  <div className="space-y-4 animate-fadeIn">
+                  <div className="space-y-4">
                       <div>
                           <label className="block text-[10px] font-black uppercase mb-2 text-slate-400 dark:text-slate-500">Réseau</label>
                           <select 
@@ -251,16 +242,15 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
                       </div>
                   </div>
               ) : (
-                  <div className="p-4 border rounded-xl text-center animate-fadeIn transition-all duration-500 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/30">
+                  <div className="p-4 border rounded-xl text-center bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/30">
                       <p className="text-xs font-bold leading-relaxed text-emerald-700 dark:text-emerald-400">
-                          Votre place est réservée. Veuillez vous présenter au guichet de l'agence pour finaliser le règlement en espèces avant l'embarquement.
+                          Vous déclarez vouloir payer en espèces. Présentez-vous à l'agence pour régler votre facture. Un <strong>Agent de comptoir</strong> validera votre ticket dès réception de l'argent.
                       </p>
                   </div>
               )}
 
-              {/* Messages d'erreur ou de succès */}
               {message && (
-                  <div className={`mt-4 p-4 rounded-xl text-sm font-bold text-center animate-fadeIn border transition-all duration-500 ${isError ? 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/30' : 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/30'}`}>
+                  <div className={`mt-4 p-4 rounded-xl text-sm font-bold text-center border transition-all duration-500 ${isError ? 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/30' : 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/30'}`}>
                       {message}
                   </div>
               )}
@@ -271,15 +261,8 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
                   className={`mt-6 w-full py-5 flex items-center justify-center gap-2 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all duration-300 ${isSubmitting || (isVip && supplementRamassage === 0) ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-500/20 dark:shadow-indigo-950/30'}`}
               >
                   {isSubmitting ? <FaSpinner className="animate-spin" /> : <FaCheckCircle />}
-                  {isSubmitting ? "Validation..." : `Payer ${totalGeneral.toLocaleString()} FC`}
+                  {isSubmitting ? "Traitement..." : modePaiement === 'CASH' ? "Confirmer mon passage au guichet" : `Soumettre mon paiement`}
               </button>
-              
-              {/* 🛡️ SÉCURITÉ : Alerte bloquante si le VIP n'a pas été coté par l'agence */}
-              {isVip && supplementRamassage === 0 && (
-                  <p className="text-[10px] font-bold mt-3 text-center text-rose-500 dark:text-rose-400">
-                      Paiement bloqué : L'agence n'a pas encore fixé le tarif kilométrique de votre ramassage.
-                  </p>
-              )}
           </form>
 
         </div>

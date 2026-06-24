@@ -11,7 +11,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-
+import com.example.gariconnectbackend.model.StatutPassagerArret;
 @Repository
 public interface ReservationRepository extends JpaRepository<Reservation, Long> {
     List<Reservation> findByClientId(Long clientId);
@@ -27,10 +27,11 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     @Query("SELECT COUNT(r) FROM Reservation r WHERE r.trajet.agence = :agence AND r.dateReservation >= :date")
     long countByAgenceAndDateAfter(@Param("agence") User agence, @Param("date") LocalDateTime date);
 
-    // SOLUTION OPTIMALE : Requête native compatible MySQL/H2/PostgreSQL
-    // Suppression de "INTERVAL 7 DAY" qui cause souvent l'erreur 400 si mal supporté
+    // Ajoute cette ligne dans ReservationRepository.java (n'oublie pas d'importer StatutPassagerArret)
 
-    // À ajouter à l'intérieur de l'interface ReservationRepository
+    // Dans ReservationRepository.java
+    List<Reservation> findByCourseAssigneeIdAndArretMontageId(Long courseId, Long arretId);
+    long countByArretMontageIdAndStatutEmbarquement(Long arretId, StatutPassagerArret statutEmbarquement);
     List<Reservation> findByClient_EmailOrderByDateReservationDesc(String email);
 
     @Query(value = "SELECT CAST(r.date_reservation AS DATE) as date, COUNT(r.id) as count " +
@@ -50,4 +51,8 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
             "ORDER BY date ASC")
     List<Map<String, Object>> getReservationsStatsJPQL(@Param("agenceId") Long agenceId,
                                                        @Param("sevenDaysAgo") LocalDateTime sevenDaysAgo);
+
+    long countByTrajetIdAndStatutIn(Long id, List<String> confirme);
+
+    List<Reservation> findByArretMontageIdAndStatutEmbarquement(Long id, StatutPassagerArret statutPassagerArret);
 }

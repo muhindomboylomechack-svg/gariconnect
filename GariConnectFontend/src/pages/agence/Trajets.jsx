@@ -15,11 +15,10 @@ const Trajets = () => {
   const [currentId, setCurrentId] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 🟢 L'état utilise maintenant "joursSemaine" comme déclencheur principal au lieu de "dateDepart"
   const [formData, setFormData] = useState({
     depart: '', 
     destination: '', 
-    joursSemaine: '', // Remplacement de la date par le jour de la semaine
+    joursSemaine: '', 
     heureDepart: '',  
     prix: '', 
     vehiculeId: '', 
@@ -47,7 +46,6 @@ const Trajets = () => {
     }
   };
 
-  // 🟢 DÉCLENCHEUR : Récupère les ressources quand le JOUR DE LA SEMAINE change
   useEffect(() => {
     if (formData.joursSemaine) {
       fetchRessourcesParJour(formData.joursSemaine);
@@ -57,18 +55,29 @@ const Trajets = () => {
     }
   }, [formData.joursSemaine]);
 
+  // 🔥 CORRECTION ICI : Appels API isolés pour plus de fiabilité
   const fetchRessourcesParJour = async (jourChoisi) => {
     try {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
       
-      // 🟢 Appel au backend avec le paramètre "jour" pour vérifier la disponibilité
-      const res = await api.get(`/trajets/ressources-disponibles?jour=${jourChoisi}`, { headers });
+      // On lance les requêtes en parallèle pour optimiser la vitesse
+      const [resVehicules, resChauffeurs] = await Promise.all([
+          // Appel direct au contrôleur des véhicules
+          api.get('/vehicules/agence', { headers }).catch(err => {
+              console.warn("Erreur chargement véhicules", err);
+              return { data: [] };
+          }),
+          // Appel direct au contrôleur des chauffeurs
+          api.get('/chauffeurs/mes-chauffeurs', { headers }).catch(err => {
+              console.warn("Erreur chargement chauffeurs", err);
+              return { data: [] };
+          })
+      ]);
       
-      let vDispo = res.data.vehicules || [];
-      let cDispo = res.data.chauffeurs || [];
+      let vDispo = Array.isArray(resVehicules.data) ? resVehicules.data : [];
+      let cDispo = Array.isArray(resChauffeurs.data) ? resChauffeurs.data : [];
 
-      // Astuce UI : En mode "Édition", on rajoute le véhicule et chauffeur actuels dans la liste 
       if (isEditing && currentId) {
           const trajetActuel = trajets.find(t => t.id === currentId);
           if (trajetActuel) {
@@ -105,8 +114,6 @@ const Trajets = () => {
         return;
     }
 
-    // 🟢 Astuce : On génère une date factice (aujourd'hui) pour conserver la compatibilité
-    // avec le format LocalDateTime du backend, en y attachant l'heure choisie.
     const today = new Date().toISOString().split('T')[0];
     const dateIsoPropre = `${today}T${formData.heureDepart}:00`;
 
@@ -234,14 +241,14 @@ const Trajets = () => {
               <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50 dark:border-slate-800">
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                      <FaBus className="text-blue-500"/> {t.vehicule?.plaque_immatriculation || 'Non assigné'}
+                      <FaBus className="text-blue-500"/> {t.vehicule ? `${t.vehicule.plaque_immatriculation} (${t.vehicule.marque})` : 'Non assigné'}
                     </div>
                     <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded w-fit">
                       <FaUsers /> {t.placesDisponibles} places restantes
                     </div>
                 </div>
                 <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 self-start">
-                  <FaUserTie className="text-blue-500"/> {t.chauffeur?.nom || 'Non assigné'}
+                  <FaUserTie className="text-blue-500"/> {t.chauffeur ? `${t.chauffeur.prenom || ''} ${t.chauffeur.nom}` : 'Non assigné'}
                 </div>
               </div>
 
@@ -266,7 +273,6 @@ const Trajets = () => {
 
             <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               
-              {/* 🟢 NOUVEAU : Menu déroulant pour le Jour de la semaine */}
               <FormGroup label="Jours de la semaine" icon={<FaCalendarAlt />}>
                 <select 
                   className="form-input-custom" 
@@ -300,7 +306,9 @@ const Trajets = () => {
                 >
                   <option value="">{formData.joursSemaine ? "Sélectionner véhicule..." : "Sélectionnez d'abord un jour"}</option>
                   {vehicules.map(v => (
-                    <option key={v.id} value={v.id}>{v.plaque_immatriculation} ({v.marque})</option>
+                    <option key={v.id} value={v.id}>
+                      {v.plaque_immatriculation} - {v.marque} {v.modele}
+                    </option>
                   ))}
                 </select>
               </FormGroup>
@@ -314,7 +322,11 @@ const Trajets = () => {
                   required
                 >
                   <option value="">{formData.joursSemaine ? "Sélectionner chauffeur..." : "Sélectionnez d'abord un jour"}</option>
-                  {chauffeurs.map(c => <option key={c.id} value={c.id}>{c.nom}</option>)}
+                  {chauffeurs.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.prenom ? `${c.prenom} ${c.nom}` : c.nom}
+                    </option>
+                  ))}
                 </select>
               </FormGroup>
 

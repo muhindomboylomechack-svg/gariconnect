@@ -19,7 +19,8 @@ public interface CourrierRepository extends JpaRepository<Courrier, Long> {
     List<Courrier> findByAgence_Id(Long agenceId);
     List<Courrier> findByTelExpediteur(String telExpediteur);
 
-
+    @Query("SELECT c FROM Courrier c WHERE c.agence = :agence ORDER BY c.id DESC")
+    List<Courrier> findByAgenceOrigineOrderByIdDesc(@Param("agence") User agence);
 
     // Pour filtrer par agence et par type (Colis vs Courrier)
     List<Courrier> findByAgenceAndType(User agence, String type);

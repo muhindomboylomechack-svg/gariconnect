@@ -202,6 +202,7 @@
 
 package com.example.gariconnectbackend.model;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
@@ -246,19 +247,27 @@ public class Reservation {
     @JsonProperty("code_ticket")
     private String codeTicket;
 
+
+
+    // Double compatibilité à la désérialisation
     @ManyToOne(cascade = CascadeType.MERGE)
     @JoinColumn(name = "user_id")
-    @JsonIgnoreProperties({"reservations", "password"})
+    // 🔥 CORRECTION : On ignore 'hibernateLazyInitializer' pour éviter les crashs de requêtes paresseuses
+    @JsonIgnoreProperties({"reservations", "password", "trajets", "vehicules", "agenceEmployeur", "hibernateLazyInitializer", "handler"})
+    @JsonProperty("client")
+    @JsonAlias("user")
     private User client;
 
     @ManyToOne
     @JoinColumn(name = "trajet_id")
+    // 🔥 CORRECTION : On empêche le trajet de renvoyer sa propre liste de réservations (Boucle infinie)
+    @JsonIgnoreProperties({"reservations", "hibernateLazyInitializer", "handler"})
     private Trajet trajet;
 
     @ManyToOne
     @JoinColumn(name = "vehicule_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private Vehicule vehicule;
-
     // 🛑 CORRECTION : FetchType.EAGER est OBLIGATOIRE pour inclure le surplus VIP dans la réponse JSON de l'agence
     @OneToOne(mappedBy = "reservation", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     @JsonProperty("demande_recuperation")
@@ -285,8 +294,32 @@ public class Reservation {
 
         return prixBase;
     }
+// Dans com.example.gariconnectbackend.model.Reservation.java
 
+    // ... tes propriétés existantes ...
+
+    // 🟢 NOUVEAU : Arrêt où le client attend le bus
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "arret_montage_id")
+    private ArretBus arretMontage;
+
+    // 🟢 NOUVEAU : Arrêt où le client descend
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "arret_descente_id")
+    private ArretBus arretDescente;
+
+    // 🟢 NOUVEAU : Statut spécifique lié à l'embarquement
+    @Enumerated(EnumType.STRING)
+    @Column(name = "statut_embarquement")
+    private StatutPassagerArret statutEmbarquement = StatutPassagerArret.EN_ATTENTE_A_L_ARRET;
+
+    // 🟢 NOUVEAU : Lien vers la course précise du jour (le bus qui vient le chercher)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "course_id")
+    @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
+    private Course courseAssignee;
     // --- Compatibilité JSON Frontend ---
+
     @JsonProperty("client")
     public User getClient() {
         return this.client;

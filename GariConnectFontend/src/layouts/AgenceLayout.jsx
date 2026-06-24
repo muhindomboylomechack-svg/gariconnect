@@ -97,7 +97,9 @@ const AgenceLayout = () => {
     const navLinks = [
         { to: "/agence", label: "Vue d'ensemble", icon: "📊" },
         { to: "/agence/performance", label: "Intelligence", icon: "🧠" },
-        { to: "/agence/ramassages-vip", label: "Ramassages VIP", icon: "📍" }, // 🆕 Bouton ajouté pour l'Interface Cotation Agent
+        { to: "/agence/ramassages-vip", label: "Ramassages VIP", icon: "📍" },
+        // 🛠️ MISE À JOUR DU CHEMIN DE NAVIGATION POUR COÏNCIDER AVEC LA ROUTE DE RÉGULATION
+        { to: "/agence/regulation", label: "Gestion des arrêts", icon: "🚏" }, 
         { to: "/agence/flotte", label: "Ma Flotte", icon: "🚌" },
         { to: "/agence/trajets", label: "Gestion Trajets", icon: "🛣️" },
         { to: "/agence/reservations", label: "Réservations", icon: "🎟️" },

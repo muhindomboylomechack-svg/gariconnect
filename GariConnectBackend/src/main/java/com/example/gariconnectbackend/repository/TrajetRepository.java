@@ -151,6 +151,8 @@ public interface TrajetRepository extends JpaRepository<Trajet, Long> {
     List<Long> findBusyChauffeurIdsByDay(@Param("jour") String jour);
 
     Optional<Trajet> findActiveTrajetByChauffeurId(Long chauffeurId);
+    List<Trajet> findByAgenceId(Long agenceId);
+
 
     Object countByAgenceAndStatut(User agence, String enRoute);
     // Récupérer tous les trajets appartenant à une agence spécifique

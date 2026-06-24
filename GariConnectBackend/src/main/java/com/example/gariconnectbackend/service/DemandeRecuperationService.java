@@ -13,11 +13,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import com.example.gariconnectbackend.model.*;
+import com.example.gariconnectbackend.repository.*;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 
+import java.util.Map;
+import java.util.Optional;
+import java.util.stream.Collectors;
 import com.example.gariconnectbackend.model.*;
 
-import java.util.Optional;
 @Service
 public class DemandeRecuperationService {
 
@@ -36,7 +42,8 @@ public class DemandeRecuperationService {
     @Autowired
     private PaiementRepository paiementRepository; // Assurez-vous que c'est injecté
 
-
+    // 🔥 INJECTION AJOUTÉE POUR VÉRIFIER LE TRAJET DU CHAUFFEUR
+    @Autowired private TrajetRepository trajetRepository;
 
 
     @Transactional
@@ -164,6 +171,99 @@ public class DemandeRecuperationService {
     }
 
 
+    /**
+     * CONSULTATION AGENT : Récupérer l'historique des demandes traitées (Cotées ou Payées)
+     */
+    public List<DemandeRecuperation> obtenirHistoriqueTraitees() {
+        // On récupère les demandes qui ne sont plus en attente de cotation
+        return demandeRepository.findByStatutIn(
+                java.util.Arrays.asList(
+                        StatutRecuperation.EN_ATTENTE_PAIEMENT,
+                        StatutRecuperation.PAYE,
+                        StatutRecuperation.EFFECTUE
+                )
+        );
+    }
+    /**
+     * ❌ SUPPRIMER/ANNULER UNE DEMANDE DE RÉCUPÉRATION
+     */
+    @Transactional
+    public void supprimerDemande(Long id) {
+        DemandeRecuperation demande = demandeRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Demande de ramassage introuvable avec l'ID : " + id));
+
+        // 🔔 Notification au client pour l'informer de l'annulation
+        if (demande.getClient() != null) {
+            String messageClient = String.format(
+                    "❌ Votre demande de ramassage à domicile pour la réservation N°%d a été annulée par l'agence.",
+                    demande.getReservationId()
+            );
+            envoyerNotification(messageClient, demande.getClient());
+        }
+
+        demandeRepository.delete(demande);
+        System.out.println("🗑️ [VIP] Demande de ramassage N°" + id + " supprimée avec succès.");
+    }
+
+    // =========================================================================================
+    // 🔥 ÉTAPE 5 : PRÉPARER LA LISTE DE NAVIGATION POUR LE CHAUFFEUR (Sécurité Améliorée)
+    // =========================================================================================
+    public List<Map<String, Object>> obtenirRamassagesVIPPourChauffeur(Long trajetId, String emailConnecte) {
+        Trajet trajet = trajetRepository.findById(trajetId)
+                .orElseThrow(() -> new RuntimeException("Trajet introuvable"));
+
+        User utilisateurConnecte = userRepository.findByEmail(emailConnecte)
+                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+
+        // Sécurité blindée : On compare les IDs plutôt que les emails pour éviter les bugs de casse
+        if (utilisateurConnecte.getRole() == Role.CHAUFFEUR) {
+            if (trajet.getChauffeur() == null || !trajet.getChauffeur().getId().equals(utilisateurConnecte.getId())) {
+                throw new RuntimeException("Accès refusé : Ce trajet est assigné à un autre chauffeur.");
+            }
+        }
+
+        // 1. Trouver toutes les réservations valides (payées) pour ce trajet
+        List<Reservation> reservationsValides = reservationRepository.findByTrajetId(trajetId).stream()
+                .filter(r -> "PAYE".equals(r.getStatut()) || "CONFIRMEE".equals(r.getStatut()))
+                .collect(Collectors.toList());
+
+        List<Long> reservationIds = reservationsValides.stream()
+                .map(Reservation::getId)
+                .collect(Collectors.toList());
+
+        if (reservationIds.isEmpty()) return new ArrayList<>();
+
+        // 2. Récupérer uniquement les demandes VIP payées associées à ces réservations
+        List<DemandeRecuperation> demandesVIP = demandeRepository.findByReservationIdInAndStatut(
+                reservationIds, StatutRecuperation.PAYE
+        );
+
+        // 3. Formater les données pour l'application du chauffeur (GPS, Contacts, etc.)
+        return demandesVIP.stream().map(demande -> {
+            Reservation res = reservationsValides.stream()
+                    .filter(r -> r.getId().equals(demande.getReservationId()))
+                    .findFirst().orElse(null);
+
+            Map<String, Object> data = new HashMap<>();
+            data.put("demandeId", demande.getId());
+            data.put("reservationId", demande.getReservationId());
+            data.put("codeTicket", res != null ? res.getCodeTicket() : "N/A");
+            data.put("numeroSiege", res != null ? res.getNumeroSiege() : "N/A");
+
+            String nomComplet = demande.getClient().getNom() + " " + (demande.getClient().getPrenom() != null ? demande.getClient().getPrenom() : "");
+            data.put("clientNom", nomComplet);
+            data.put("clientTelephone", demande.getClient().getTelephone());
+
+            // Les coordonnées cruciales pour l'ouverture de Google Maps côté React
+            data.put("latitude", demande.getLatitudeClient());
+            data.put("longitude", demande.getLongitudeClient());
+
+            data.put("adresseTextuelle", demande.getAdresseTextuelle());
+            data.put("pointRepere", demande.getPointRepereAgence());
+
+            return data;
+        }).collect(Collectors.toList());
+    }
 }
 
 

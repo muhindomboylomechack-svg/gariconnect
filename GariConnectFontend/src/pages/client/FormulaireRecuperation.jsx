@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
-import { FaMapMarkerAlt, FaCrosshairs, FaSpinner } from 'react-icons/fa';
+import { FaMapMarkerAlt, FaCrosshairs, FaSpinner, FaExclamationTriangle, FaCheckCircle } from 'react-icons/fa';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
@@ -26,17 +26,16 @@ const MapClickHandler = ({ onMapClick }) => {
   return null;
 };
 
-// 🔄 Sous-composant pour recentrer la carte ET forcer le recalcul de la taille
+// 🔄 Sous-composant pour recentrer la carte
 const MapRecenter = ({ lat, lng }) => {
   const map = useMap();
   
   useEffect(() => {
-    // 🔔 Force Leaflet à recalculer ses dimensions réelles
     const timer = setTimeout(() => {
       map.invalidateSize();
     }, 250); 
     
-    map.setView([lat, lng], map.getZoom(), { animate: true });
+    map.setView([lat, lng], map.getZoom() || 15, { animate: true });
 
     return () => clearTimeout(timer);
   }, [lat, lng, map]);
@@ -44,31 +43,37 @@ const MapRecenter = ({ lat, lng }) => {
   return null;
 };
 
-// Composant de récupération de données de localisation (Purifié/Stupide)
 const FormulaireRecuperation = ({ onDataChange }) => {
   const [adresseTextuelle, setAdresseTextuelle] = useState('');
   const [loadingGps, setLoadingGps] = useState(false);
   const [errorGps, setErrorGps] = useState(null);
-  const [position, setPosition] = useState({ lat: -1.658, lng: 29.220 }); // Centre par défaut (Goma)
+  
+  // Position visuelle initiale de la carte (Goma)
+  const [position, setPosition] = useState({ lat: -1.658, lng: 29.220 }); 
+  
+  // 🔥 SÉCURITÉ CRUCIALE : Reste 'false' tant que le client n'a pas cliqué, dragué ou activé son GPS
+  const [isLocationExplicit, setIsLocationExplicit] = useState(false);
 
-  // Vérification de la présence de la classe 'dark' sur le document HTML pour adapter la carte
   const [isDarkModeActive, setIsDarkModeActive] = useState(
     document.documentElement.classList.contains('dark') || localStorage.getItem('client-theme') === 'dark'
   );
 
-  // Écouteur pour mettre à jour la carte si le thème change de façon dynamique
   useEffect(() => {
     const observer = new MutationObserver(() => {
       setIsDarkModeActive(document.documentElement.classList.contains('dark'));
     });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    
+    // Tente un chargement GPS discret au démarrage
+    selectionnerGpsAutomatique(true);
+
     return () => observer.disconnect();
   }, []);
 
-  // 📍 Détection GPS Native (HTML5)
-  const selectionnerGpsAutomatique = () => {
+  // 📍 Détection GPS Native
+  const selectionnerGpsAutomatique = (isAutoLoad = false) => {
     if (!navigator.geolocation) {
-      setErrorGps("La géolocalisation n'est pas supportée par votre navigateur.");
+      if (!isAutoLoad) setErrorGps("La géolocalisation n'est pas supportée par votre navigateur.");
       return;
     }
     setLoadingGps(true);
@@ -78,10 +83,11 @@ const FormulaireRecuperation = ({ onDataChange }) => {
       (pos) => {
         const currentLat = pos.coords.latitude;
         const currentLng = pos.coords.longitude;
+        
         setPosition({ lat: currentLat, lng: currentLng });
+        setIsLocationExplicit(true); // Emplacement réel validé
         setLoadingGps(false);
         
-        // Remonte les données au parent dès que la géolocalisation réussit
         if (onDataChange) {
           onDataChange({
             latitudeClient: currentLat,
@@ -91,20 +97,23 @@ const FormulaireRecuperation = ({ onDataChange }) => {
         }
       },
       (err) => {
-        setErrorGps("Veuillez autoriser la localisation ou déplacer le marqueur manuellement sur la carte.");
         setLoadingGps(false);
+        if (!isAutoLoad) {
+          setErrorGps("Permission refusée. Ajustez manuellement le marqueur bleu sur la carte.");
+        }
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     );
   };
 
+  // Déplacement manuel du curseur
   const handleMarkerDragEnd = (e) => {
     const marker = e.target;
     if (marker != null) {
       const newPos = marker.getLatLng();
       setPosition({ lat: newPos.lat, lng: newPos.lng });
+      setIsLocationExplicit(true); // L'utilisateur l'a déplacé, la donnée devient légitime
       
-      // Remonte les données au parent dès qu'on lâche le marqueur
       if (onDataChange) {
         onDataChange({
           latitudeClient: newPos.lat,
@@ -115,14 +124,16 @@ const FormulaireRecuperation = ({ onDataChange }) => {
     }
   };
 
-  // Remonte les données au parent lorsqu'on modifie l'adresse textuelle
+  // Modification de l'adresse écrite
   const handleAdresseChange = (e) => {
     const newValue = e.target.value;
     setAdresseTextuelle(newValue);
+    
     if (onDataChange) {
       onDataChange({
-        latitudeClient: position.lat,
-        longitudeClient: position.lng,
+        // 🔥 SI NON EXPLICITE : On envoie 0.0. Le serveur accepte la requête (car non null) et le chauffeur sait qu'il doit ignorer le GPS.
+        latitudeClient: isLocationExplicit ? position.lat : 0.0,
+        longitudeClient: isLocationExplicit ? position.lng : 0.0,
         adresseTextuelle: newValue
       });
     }
@@ -131,16 +142,27 @@ const FormulaireRecuperation = ({ onDataChange }) => {
   return (
     <div className="w-full flex flex-col gap-4 p-1 sm:p-2">
       
-      {/* ÉTAPE 1 : GPS - Alignement responsive automatique */}
+      {/* Bannière de statut de précision de localisation */}
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-emerald-50/40 dark:bg-slate-950/40 p-4 rounded-2xl border border-emerald-500/10 dark:border-slate-800">
-        <span className="text-xs font-bold text-emerald-800 dark:text-emerald-400 text-center sm:text-left">
-          Ajustez votre marqueur sur la carte
-        </span>
+        <div className="flex items-center gap-2">
+          {isLocationExplicit ? (
+            <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400">
+              <FaCheckCircle className="text-sm shrink-0" />
+              <span>Emplacement de ramassage configuré par carte/GPS</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-500">
+              <FaExclamationTriangle className="text-sm shrink-0 animate-pulse" />
+              <span>Le chauffeur se guidera uniquement via votre adresse écrite</span>
+            </div>
+          )}
+        </div>
+        
         <button
           type="button"
-          onClick={selectionnerGpsAutomatique}
+          onClick={() => selectionnerGpsAutomatique(false)}
           disabled={loadingGps}
-          className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white text-[10px] font-black tracking-widest uppercase rounded-xl transition-all disabled:opacity-50 shadow-sm active:scale-95"
+          className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black tracking-widest uppercase rounded-xl transition-all disabled:opacity-50 shadow-sm active:scale-95"
         >
           {loadingGps ? <FaSpinner className="animate-spin text-sm" /> : <FaCrosshairs className="text-sm" />}
           <span>{loadingGps ? "Recherche..." : "Utiliser mon GPS"}</span>
@@ -148,48 +170,56 @@ const FormulaireRecuperation = ({ onDataChange }) => {
       </div>
 
       {errorGps && (
-        <p className="text-[11px] font-medium text-rose-500 bg-rose-50 dark:bg-rose-950/20 p-3 rounded-xl border border-rose-100 dark:border-rose-900/30 text-center leading-relaxed">
+        <p className="text-[11px] font-medium text-rose-500 bg-rose-50 dark:bg-rose-950/20 p-3 rounded-xl border border-rose-100 dark:border-rose-900/30 text-center">
           {errorGps}
         </p>
       )}
 
-      {/* CARTE LEAFLET RESPONSIVE & COMPATIBLE NIGHT MODE */}
+      {/* CARTE LEAFLET */}
       <div className="h-[220px] sm:h-[260px] w-full rounded-2xl overflow-hidden border-2 border-emerald-500/10 dark:border-slate-800 z-0 relative shadow-inner">
         <div className={`w-full h-full ${isDarkModeActive ? 'dark-leaflet-tiles' : ''}`}>
           <MapContainer 
             center={[position.lat, position.lng]} 
             zoom={15} 
             style={{ height: '100%', width: '100%' }} 
-            zoomControl={window.innerWidth > 640} // Désactive les boutons de zoom sur petit écran pour éviter les miss-clicks
+            zoomControl={window.innerWidth > 640}
           >
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            <Marker position={[position.lat, position.lng]} draggable={true} eventHandlers={{ dragend: handleMarkerDragEnd }} />
+            
+            <Marker 
+              position={[position.lat, position.lng]} 
+              draggable={true} 
+              eventHandlers={{ dragend: handleMarkerDragEnd }} 
+            />
+            
             <MapClickHandler onMapClick={(lat, lng) => { 
                 setPosition({ lat, lng }); 
+                setIsLocationExplicit(true);
                 if (onDataChange) {
                     onDataChange({ latitudeClient: lat, longitudeClient: lng, adresseTextuelle: adresseTextuelle });
                 }
             }} />
+            
             <MapRecenter lat={position.lat} lng={position.lng} />
           </MapContainer>
         </div>
       </div>
 
-      {/* ÉTAPE 2 : ADRESSE MANUELLE */}
+      {/* CHAMP ADRESSE TEXTUELLE */}
       <div className="flex flex-col gap-1.5 mt-1">
         <label className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-500 tracking-widest ml-1">
           Adresse détaillée / Repère *
         </label>
         <input 
           type="text"
+          required
           value={adresseTextuelle}
           onChange={handleAdresseChange}
           placeholder="Ex: Av. des Volcans, N° 45 (Près de l'Institut)"
-          className="w-full px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 focus:border-emerald-500 dark:focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 dark:focus:ring-emerald-500/5 outline-none transition-all text-sm font-semibold shadow-sm"
+          className="w-full px-4 py-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-600 focus:border-emerald-500 dark:focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 outline-none transition-all text-sm font-semibold shadow-sm"
         />
       </div>
 
-      {/* Style CSS injecté spécifiquement pour assombrir les tuiles OpenStreetMap en mode sombre */}
       <style>{`
         .dark-leaflet-tiles .leaflet-tile-container img {
           filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%) !important;

@@ -38,8 +38,8 @@ public class TrajetController {
     @Autowired
     private VehiculeRepository vehiculeRepository;
 
-    // 1. Récupérer tous les trajets (public ou client)
-    @GetMapping
+    // 1. Récupérer tous les trajets (Modifié en "/tous" pour éviter l'ambiguïté avec les autres GET)
+    @GetMapping("/tous")
     public List<Trajet> getTousLesTrajets() {
         return trajetRepository.findAll();
     }
@@ -173,6 +173,33 @@ public class TrajetController {
         }
     }
 
+    /**
+     * 🚚 METTRE À JOUR LE STATUT D'UN TRAJET (Utilisé principalement par le Chauffeur)
+     * Écoute la requête PUT sur /api/trajets/{id}/statut?statut=XYZ
+     */
+    @PutMapping("/{id}/statut")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CHAUFFEUR')")
+    public ResponseEntity<?> mettreAJourStatut(@PathVariable Long id, @RequestParam String statut) {
+        try {
+            // 1. Rechercher le trajet existant
+            Trajet trajet = trajetRepository.findById(id)
+                    .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable"));
+
+            // 2. Mettre à jour le statut (conversion en majuscules pour éviter les incohérences)
+            trajet.setStatut(statut.toUpperCase());
+
+            // 3. Sauvegarder les modifications
+            Trajet trajetMisAJour = trajetRepository.save(trajet);
+
+            return ResponseEntity.ok(trajetMisAJour);
+
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("error", "Erreur lors de la mise à jour du statut : " + e.getMessage()));
+        }
+    }
+
     // 4. Supprimer un trajet
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
@@ -246,7 +273,7 @@ public class TrajetController {
     }
 
     // 7. Obtenir tous les trajets d'une agence (Admin connecté ou gestionnaire)
-    @GetMapping("/mes-trajets")
+    @GetMapping
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
     public ResponseEntity<?> getMesTrajets() {
         try {
@@ -299,142 +326,6 @@ public class TrajetController {
             return ResponseEntity.ok(chauffeurs);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Erreur : " + e.getMessage());
-        }
-    }
-
-//    // =====================================================================
-//    // 🔍 OBTENIR LES RESSOURCES DISPONIBLES (SaaS & Anti-Double Assignation)
-//    // =====================================================================
-//    @GetMapping("/ressources-disponibles")
-//    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
-//    public ResponseEntity<?> obtenirRessourcesDisponibles(
-//            @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-//        try {
-//            // 1. Identifier l'utilisateur connecté
-//            String email = SecurityContextHolder.getContext().getAuthentication().getName();
-//            User currentUser = userRepository.findByEmail(email)
-//                    .orElseThrow(() -> new RuntimeException("Utilisateur non authentifié"));
-//
-//            // 2. Déterminer l'ID de l'agence (Logique SaaS stricte)
-//            Long agenceId = (currentUser.getRole() == Role.AGENCY_ADMIN)
-//                    ? currentUser.getId()
-//                    : (currentUser.getAgenceEmployeur() != null ? currentUser.getAgenceEmployeur().getId() : null);
-//
-//            if (agenceId == null) {
-//                return ResponseEntity.badRequest().body(Map.of("error", "Vous n'êtes rattaché à aucune agence."));
-//            }
-//
-//            // 3. Récupérer les identifiants (IDs) occupés à cette date précise
-//            List<Long> busyChauffeurs = trajetRepository.findBusyChauffeurIdsByDate(date);
-//            List<Long> busyVehicules = trajetRepository.findBusyVehiculeIdsByDate(date);
-//
-//            // 4. Récupérer TOUS les chauffeurs et véhicules appartenant STRICTEMENT à cette agence
-//            List<User> tousChauffeursAgence = userRepository.findByRoleAndAgenceEmployeur_Id(Role.CHAUFFEUR, agenceId);
-//            List<Vehicule> tousVehiculesAgence = vehiculeRepository.findByAgence_Id(agenceId);
-//
-//            // 5. Filtrer pour ne garder que les ressources libres
-//            List<User> chauffeursDispos = tousChauffeursAgence.stream()
-//                    .filter(chauffeur -> !busyChauffeurs.contains(chauffeur.getId()))
-//                    .collect(Collectors.toList());
-//
-//            List<Vehicule> vehiculesDispos = tousVehiculesAgence.stream()
-//                    .filter(vehicule -> !busyVehicules.contains(vehicule.getId()))
-//                    .collect(Collectors.toList());
-//
-//            // 6. Renvoyer le résultat combiné au frontend
-//            return ResponseEntity.ok(Map.of(
-//                    "chauffeurs", chauffeursDispos,
-//                    "vehicules", vehiculesDispos
-//            ));
-//
-//        } catch (Exception e) {
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-//                    .body(Map.of("error", "Erreur lors de la récupération des ressources disponibles : " + e.getMessage()));
-//        }
-//    }
-    // =====================================================================
-    // 🔍 OBTENIR LES VÉHICULES ET CHAUFFEURS DISPONIBLES POUR UNE DATE
-    // =====================================================================
-    @GetMapping("/ressources-disponibles")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
-    public ResponseEntity<?> getRessourcesDisponibles(
-            @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-
-        try {
-            // 1. Identifier l'utilisateur connecté via le contexte de sécurité
-            String email = SecurityContextHolder.getContext().getAuthentication().getName();
-            User currentUser = userRepository.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
-
-            // 2. Déterminer l'ID de l'agence (Gère les cas ADMIN et MANAGER)
-            Long agenceId = (currentUser.getRole() == Role.AGENCY_ADMIN)
-                    ? currentUser.getId()
-                    : (currentUser.getAgenceEmployeur() != null ? currentUser.getAgenceEmployeur().getId() : null);
-
-            if (agenceId == null && currentUser.getRole() != Role.SUPER_ADMIN) {
-                return ResponseEntity.badRequest().body(Map.of("error", "Vous n'êtes rattaché à aucune agence."));
-            }
-
-            // 3. Récupérer TOUS les véhicules et chauffeurs appartenant strictement à CETTE agence
-            List<Vehicule> tousVehiculesAgence;
-            List<User> tousChauffeursAgence;
-
-            if (currentUser.getRole() == Role.SUPER_ADMIN) {
-                tousVehiculesAgence = vehiculeRepository.findAll();
-                tousChauffeursAgence = userRepository.findByRole(Role.CHAUFFEUR);
-            } else {
-                tousVehiculesAgence = vehiculeRepository.findByAgence_Id(agenceId);
-                tousChauffeursAgence = userRepository.findByRoleAndAgenceEmployeur_Id(Role.CHAUFFEUR, agenceId);
-            }
-
-            // 4. Identifier les IDs des ressources déjà occupées pour ce jour précis
-            List<Long> busyVehicules = trajetRepository.findBusyVehiculeIdsByDate(date);
-            List<Long> busyChauffeurs = trajetRepository.findBusyChauffeurIdsByDate(date);
-
-            // Optionnel mais recommandé : Inclure les trajets récurrents si vous utilisez "joursSemaine"
-            String jourSemaine = date.getDayOfWeek().getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.FRENCH).toUpperCase();
-            List<Long> recurringBusyVehicules = trajetRepository.findBusyVehiculeIdsByDay(jourSemaine);
-            List<Long> recurringBusyChauffeurs = trajetRepository.findBusyChauffeurIdsByDay(jourSemaine);
-
-            // Fusionner les listes d'occupés (Trajets uniques + Trajets récurrents)
-            Set<Long> finalBusyVehicules = new HashSet<>(busyVehicules);
-            finalBusyVehicules.addAll(recurringBusyVehicules);
-
-            Set<Long> finalBusyChauffeurs = new HashSet<>(busyChauffeurs);
-            finalBusyChauffeurs.addAll(recurringBusyChauffeurs);
-
-            // 5. LE FILTRE FINAL : On prend la flotte de l'agence et on retire ceux qui sont dans la liste des occupés
-            List<Vehicule> vehiculesDispo = tousVehiculesAgence.stream()
-                    .filter(v -> !finalBusyVehicules.contains(v.getId()))
-                    .toList();
-
-            List<User> chauffeursDispo = tousChauffeursAgence.stream()
-                    .filter(c -> !finalBusyChauffeurs.contains(c.getId()))
-                    .toList();
-
-            // 6. Retourner la réponse JSON structurée pour ton Frontend React
-            return ResponseEntity.ok(Map.of(
-                    "vehicules", vehiculesDispo,
-                    "chauffeurs", chauffeursDispo
-            ));
-
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Erreur lors de la récupération des ressources disponibles : " + e.getMessage()));
-        }
-    }
-    // =====================================================================
-    // 🔍 OBTENIR UN SEUL TRAJET PAR SON ID (Doit impérativement être à la fin pour éviter les conflits d'URLs)
-    // =====================================================================
-    @GetMapping("/{id}")
-    public ResponseEntity<?> obtenirTrajetParId(@PathVariable Long id) {
-        try {
-            Trajet trajet = trajetRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("Trajet introuvable avec l'ID : " + id));
-            return ResponseEntity.ok(trajet);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("error", e.getMessage()));
         }
     }
 }

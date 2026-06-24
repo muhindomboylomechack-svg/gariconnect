@@ -44,4 +44,32 @@ public class Courrier {
     private User agence;
 
     private LocalDateTime dateEnvoi = LocalDateTime.now();
+
+    @Column(name = "poids_kg")
+    private Double poidsKg; // Résout getPoidsKg()
+
+    @Column(name = "valeur_estimee")
+    private Double valeurEstimee; // Résout getValeurEstimee()
+
+    @Column(name = "est_fragile")
+    private boolean estFragile; // Résout isEstFragile() avec Lombok (génère automatiquement isEstFragile)
+
+    // =========================================================================
+    // 🤖 NOUVEAU : Ajout des champs pour l'intégration de l'IA
+
+    // Dans Courrier.java
+
+
+
+    // =========================================================================
+
+    @Column(name = "niveau_risque_ia")
+    private String niveauRisqueIA; // Résout setNiveauRisqueIA()
+
+    @Column(name = "prix_suggere_ia")
+    private Double prixSuggereIA; // Résout setPrixSuggereIA()
+
+    // On utilise columnDefinition = "TEXT" car la justification de l'IA peut être longue
+    @Column(name = "justification_ia", columnDefinition = "TEXT")
+    private String justificationIA; // Résout setJustificationIA()
 }

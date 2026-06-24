@@ -73,12 +73,8 @@ public class DemandeRecuperationController {
                 return ResponseEntity.badRequest().body(Map.of("message", "Le point de repère de l'agence ne peut pas être vide."));
             }
 
-            if (request.getDistanceEstimee() == null) {
-                request.setDistanceEstimee(0.0);
-            }
-            if (request.getPrixSupplementaire() == null) {
-                request.setPrixSupplementaire(0.0);
-            }
+            if (request.getDistanceEstimee() == null) request.setDistanceEstimee(0.0);
+            if (request.getPrixSupplementaire() == null) request.setPrixSupplementaire(0.0);
 
             if (request.getDistanceEstimee() < 0 || request.getPrixSupplementaire() < 0) {
                 return ResponseEntity.badRequest().body(Map.of("message", "La distance et le prix doivent être des valeurs positives."));
@@ -91,7 +87,19 @@ public class DemandeRecuperationController {
             return ResponseEntity.badRequest().body(Map.of("message", "Erreur lors du traitement de la cotation : " + e.getMessage()));
         }
     }
+// Dans DemandeRecuperationController.java
 
+    // AGENT/ADMIN : Lister l'historique des demandes traitées
+    @GetMapping({"/recuperations/traitees", "/agences/demandes-recuperation/traitees"})
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> obtenirHistoriqueTraitees() {
+        try {
+            List<DemandeRecuperation> historique = recuperationService.obtenirHistoriqueTraitees();
+            return ResponseEntity.ok(historique);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Erreur lors du chargement de l'historique : " + e.getMessage()));
+        }
+    }
     // SIMULATION / WEBHOOK PAIEMENT : Valider après paiement réussi du surplus
     @PutMapping("/recuperations/{id}/valider-paiement")
     public ResponseEntity<?> validerPaiement(@PathVariable Long id) {
@@ -119,9 +127,6 @@ public class DemandeRecuperationController {
         }
     }
 
-    /**
-     * 🔍 Récupérer une demande de ramassage à partir de l'ID de la réservation
-     */
     @GetMapping("/recuperations/reservation/{reservationId}")
     public ResponseEntity<?> obtenirDemandeParReservation(@PathVariable Long reservationId) {
         try {
@@ -137,4 +142,52 @@ public class DemandeRecuperationController {
                     .body(Map.of("message", "Erreur lors de la recherche de la demande : " + e.getMessage()));
         }
     }
+    /**
+     * ❌ SUPPRIMER UNE DEMANDE DE RAMASSAGE (Action de l'Agent ou du Client)
+     * Gère les requêtes DELETE vers /api/recuperations/{id}
+     */
+    @DeleteMapping({"/recuperations/{id}", "/agences/demandes-recuperation/{id}"})
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CLIENT')")
+    public ResponseEntity<?> supprimerDemande(@PathVariable Long id) {
+        try {
+            recuperationService.supprimerDemande(id);
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "La demande de ramassage a été annulée et supprimée avec succès."
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "success", false,
+                    "message", "Erreur lors de la suppression : " + e.getMessage()
+            ));
+        }
+    }
+
+
+    /**
+     * 🔥 ENDPOINT ÉTAPE 5 : Espace Chauffeur / Dashboard VIP
+     * SOLUTION DÉFINITIVE ANTI-403 : On autorise tout utilisateur connecté,
+     * et on laisse le Service vérifier si c'est bien le bon chauffeur !
+     */
+    @GetMapping("/recuperations/trajet/{trajetId}/vip")
+    @PreAuthorize("isAuthenticated()") // <-- LA CORRECTION EST ICI
+    public ResponseEntity<?> obtenirVIPPourChauffeur(@PathVariable Long trajetId) {
+        try {
+            // 1. Récupération de l'email via le Token
+            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
+
+            // 2. Appel au service (qui contient déjà la sécurité pour vérifier que c'est le bon chauffeur)
+            List<Map<String, Object>> listeVIP = recuperationService.obtenirRamassagesVIPPourChauffeur(trajetId, emailConnecte);
+
+            // 3. Envoi des données à React
+            return ResponseEntity.ok(listeVIP);
+
+        } catch (Exception e) {
+            System.err.println("❌ Erreur accès liste VIP (Trajet " + trajetId + ") : " + e.getMessage());
+            // Si le chauffeur n'a pas le droit, on renvoie une 400 Bad Request lisible pour React, pas un 403 muet
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
 }
+

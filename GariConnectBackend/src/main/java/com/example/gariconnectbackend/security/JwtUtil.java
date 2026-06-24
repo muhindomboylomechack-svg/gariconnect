@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.function.Function;
 
 @Component
-public class JwtUtil { // <-- CORRECTION : Retrait de <Claims> ici pour utiliser la vraie classe importée
+public class JwtUtil {
 
     private String secret = "MaCleSecreteGariConnect2026SuperSecureTresLongue";
 
@@ -39,11 +39,15 @@ public class JwtUtil { // <-- CORRECTION : Retrait de <Claims> ici pour utiliser
     }
 
     private String createToken(Map<String, Object> claims, String subject) {
+        // Calcul pour 30 jours de validité :
+        // 1000 ms * 60 s * 60 min * 24 h * 30 jours
+        long expirationTimeInMs = 1000L * 60 * 60 * 24 * 30;
+
         return Jwts.builder()
                 .setClaims(claims)
                 .setSubject(subject)
                 .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 60 * 10)) // 10 heures
+                .setExpiration(new Date(System.currentTimeMillis() + expirationTimeInMs))
                 .signWith(SignatureAlgorithm.HS256, secret.getBytes())
                 .compact();
     }

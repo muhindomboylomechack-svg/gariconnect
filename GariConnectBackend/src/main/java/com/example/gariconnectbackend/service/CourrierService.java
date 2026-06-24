@@ -249,5 +249,9 @@ public class CourrierService {
     private String genererCodeUnique() {
         return UUID.randomUUID().toString().substring(0, 8).toUpperCase();
     }
+    // 🚀 NOUVEAU : Lister tous les courriers d'une agence
+    public List<Courrier> obtenirMesCourriers(User agence) {
+        return courrierRepository.findByAgenceOrigineOrderByIdDesc(agence);
+    }
 }
 

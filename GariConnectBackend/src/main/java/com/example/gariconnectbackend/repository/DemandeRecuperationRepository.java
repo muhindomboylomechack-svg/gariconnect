@@ -21,4 +21,8 @@ public interface DemandeRecuperationRepository extends JpaRepository<DemandeRecu
     Optional<DemandeRecuperation> findFirstByReservationId(Long reservationId);
     // Lister les demandes d'un client filtrées par statut
     List<DemandeRecuperation> findByClientIdAndStatut(Long clientId, StatutRecuperation statut);
+    List<DemandeRecuperation> findByReservationIdInAndStatut(List<Long> reservationIds, StatutRecuperation statut);
+
+    // Tu peux aussi ajouter une méthode pour récupérer plusieurs statuts :
+    List<DemandeRecuperation> findByStatutIn(List<StatutRecuperation> statuts);
 }

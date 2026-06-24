@@ -13,30 +13,40 @@ const GestionReservations = () => {
   const [ticketToPrint, setTicketToPrint] = useState(null);
   const [nomAgence, setNomAgence] = useState("CHARGEMENT...");
 
+  // 1. Fonction centralisée pour récupérer les données ET mettre à jour l'agence
   const fetchReservations = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
       
-      // MODIFICATION : Appel de l'URL globale des réservations de l'application
       const response = await api.get('/reservations', {
         headers: { Authorization: `Bearer ${token}` }
       });
       
-      // Inspection des données reçues pour le débogage (F12 -> Console)
       console.log("Données reçues du backend :", response.data);
 
-      // Gestion de la structure de données (Tableau direct ou enveloppé dans un objet/pagination)
       let rawData = [];
       if (Array.isArray(response.data)) {
         rawData = response.data;
       } else if (response.data && Array.isArray(response.data.content)) {
-        rawData = response.data.content; // Si pagination Spring
+        rawData = response.data.content; 
       } else if (response.data && Array.isArray(response.data.reservations)) {
         rawData = response.data.reservations;
       }
 
       setReservations(rawData);
+
+      // 🚀 CORRECTION : Mise à jour du nom de l'agence directement ici pour éviter le re-render en boucle
+      const agenceStockee = localStorage.getItem('nomAgence');
+      if (agenceStockee && agenceStockee !== "null" && agenceStockee !== "undefined") {
+        setNomAgence(agenceStockee.toUpperCase());
+      } else if (rawData.length > 0) {
+        const autoName = rawData[0]?.agence?.nom || rawData[0]?.trajet?.agenceNom || "AGENCE BENI";
+        setNomAgence(autoName.toUpperCase());
+      } else {
+        setNomAgence("NOM DE L'AGENCE");
+      }
+
     } catch (error) {
       console.error("Erreur de chargement des réservations dans le manifeste :", error);
     } finally {
@@ -44,28 +54,15 @@ const GestionReservations = () => {
     }
   };
 
-  const fetchAgenceInfo = () => {
-    const agenceStockee = localStorage.getItem('nomAgence');
-    if (agenceStockee && agenceStockee !== "null" && agenceStockee !== "undefined") {
-      setNomAgence(agenceStockee.toUpperCase());
-    } else if (reservations.length > 0) {
-      const autoName = reservations[0]?.agence?.nom || reservations[0]?.trajet?.agenceNom || "AGENCE BENI";
-      setNomAgence(autoName.toUpperCase());
-    } else {
-      setNomAgence("NOM DE L'AGENCE");
-    }
-  };
-
+  // 2. Un seul useEffect strictement vide [] pour le montage du composant
   useEffect(() => {
     fetchReservations();
+    
     const handleAfterPrint = () => setTicketToPrint(null);
     window.addEventListener('afterprint', handleAfterPrint);
+    
     return () => window.removeEventListener('afterprint', handleAfterPrint);
-  }, []);
-
-  useEffect(() => {
-    fetchAgenceInfo();
-  }, [reservations]);
+  }, []); // <--- Verrouillage absolu de la boucle infinie
 
   const handleDelete = async (id) => {
     if (!window.confirm("⚠️ Supprimer définitivement cette réservation ?")) return;
@@ -80,7 +77,6 @@ const GestionReservations = () => {
     }
   };
 
-  // MODIFICATION : Utilisation de l'Optional Chaining (?.) pour éviter les crashs si une donnée est manquante
   const filtered = useMemo(() => {
     return reservations.filter(r => {
       const nomPassager = r?.client?.nom?.toLowerCase() || "";
@@ -90,7 +86,6 @@ const GestionReservations = () => {
     });
   }, [reservations, searchTerm]);
 
-  // AJOUT AJUSTEMENT : Prise en compte de 'PAYE' ou 'CONFIRMEE'
   const stats = useMemo(() => ({
     total: reservations.length,
     confirmees: reservations.filter(r => r?.statut === 'CONFIRMEE' || r?.statut === 'PAYE').length,
@@ -209,7 +204,6 @@ const GestionReservations = () => {
                       <div className="text-[10px] text-blue-500 dark:text-blue-400 font-mono font-bold mt-1 tracking-tighter">REF: {res.codeTicket || 'SANS TICKET'}</div>
                     </td>
                     <td className="px-6 py-4">
-                      {/* AJOUT AJUSTEMENT : Statut Vert pour PAYE ou CONFIRMEE */}
                       <div className={`mx-auto w-fit px-4 py-1.5 rounded-full text-[10px] font-black shadow-sm ${
                         res.statut === 'CONFIRMEE' || res.statut === 'PAYE' 
                           ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' 
@@ -223,7 +217,6 @@ const GestionReservations = () => {
                         <button onClick={() => handleDelete(res.id)} className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-600 dark:hover:bg-red-600 hover:text-white transition-all active:scale-90">
                           <FaTrash size={14} />
                         </button>
-                        {/* AJOUT AJUSTEMENT : Autoriser l'impression si le statut est PAYE ou CONFIRMEE */}
                         {(res.statut === 'CONFIRMEE' || res.statut === 'PAYE') && (
                           <button onClick={() => handlePrintTicket(res)} className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-600 dark:hover:bg-red-600 hover:text-white transition-all active:scale-90">
                             <FaPrint size={14} />

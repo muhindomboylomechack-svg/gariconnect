@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { 
     FaUserCircle, FaHistory, FaChartLine, FaSignOutAlt, 
-    FaHome, FaBars, FaTimes, FaSun, FaMoon, FaBell, FaSync, FaCheckDouble 
+    FaHome, FaBars, FaTimes, FaSun, FaMoon, FaBell, FaSync, FaCheckDouble,
+    FaMapMarkerAlt // <-- NOUVEL IMPORT POUR L'ICÔNE VIP
 } from 'react-icons/fa';
 import { GiSteeringWheel } from 'react-icons/gi'; 
 import { useAuth } from '../context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
-import api from '../services/api'; // Importation de votre instance API
+import api from '../services/api'; 
 
 const ChauffeurLayout = () => {
     const { logout, user } = useAuth();
@@ -93,9 +94,13 @@ const ChauffeurLayout = () => {
         }
     };
 
+    // ==========================================
+    // 🚀 MENU DE NAVIGATION MIS À JOUR
+    // ==========================================
     const menuItems = [
         { path: '/chauffeur', label: 'Tableau de bord', icon: <FaHome /> },
         { path: '/chauffeur/historique', label: 'Mes Courses', icon: <FaHistory /> },
+        { path: '/chauffeur/vip', label: 'Ramassages VIP', icon: <FaMapMarkerAlt /> }, // <-- LE NOUVEAU BOUTON VIP EST ICI
         { path: '/chauffeur/performance', label: 'Performance', icon: <FaChartLine /> },
         { path: '/chauffeur/profil', label: 'Mon Profil', icon: <FaUserCircle /> },
     ];

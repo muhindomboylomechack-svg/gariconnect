@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from '../../services/api'; 
 import { 
-    FaChevronRight, FaBus, FaStar, FaAward, FaQrcode, FaSyncAlt 
+    FaChevronRight, FaBus, FaStar, FaAward, FaQrcode, FaSyncAlt, FaMapMarkerAlt 
 } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 import ScannerTicket from './ScannerTicket'; 
 
 const EspaceChauffeur = () => {
-    // Changement : on utilise un tableau [] au lieu de null
+    const navigate = useNavigate();
+    
     const [trajets, setTrajets] = useState([]);
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -50,16 +52,20 @@ const EspaceChauffeur = () => {
         initData();
     }, [initData]);
 
-    // Fonction pour changer le statut d'un trajet spécifique
+    // 🟢 CORRECTION ICI : Changement du verbe de PATCH à PUT et passage du statut dans la Query String (?statut=)
     const handleUpdateStatus = async (id, nouveauStatut) => {
         try {
-            await api.patch(`/trajets/${id}/statut`, { statut: nouveauStatut });
+            await api.put(`/trajets/${id}/statut?statut=${nouveauStatut}`);
             alert("Statut mis à jour !");
             initData(); // Rechargement pour rafraîchir l'interface
         } catch (err) {
-            alert("Erreur lors de la mise à jour : " + (err.response?.data?.error || "Serveur indisponible"));
+            console.error("Erreur mise à jour statut:", err);
+            alert("Erreur lors de la mise à jour : " + (err.response?.data?.message || err.response?.data?.error || "Serveur indisponible"));
         }
     };
+
+    // Trouver s'il y a un trajet actuellement "EN_ROUTE" pour l'affichage du widget Option 2
+    const trajetActif = trajets.find(t => t.statut === 'EN_ROUTE');
 
     if (loading && !user) return (
         <div className="min-h-screen flex items-center justify-center bg-[#f0f2f5] dark:bg-slate-950">
@@ -68,7 +74,7 @@ const EspaceChauffeur = () => {
     );
 
     return (
-        <div className="min-h-screen bg-[#f0f2f5] dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-10 font-sans transition-colors duration-300">
+        <div className="min-h-screen bg-[#f0f2f5] dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-24 font-sans transition-colors duration-300">
             
             {/* En-tête */}
             <motion.div 
@@ -83,14 +89,49 @@ const EspaceChauffeur = () => {
                         </div>
                         <div>
                             <p className="text-indigo-200 text-[10px] font-black uppercase tracking-[0.3em]">{stats.agence}</p>
-                            <h1 className="text-xl font-black tracking-tight">{user?.nom} {user?.prenom}</h1>
+                            <h1 className="text-xl font-black tracking-tight">Bonjour, {user?.nom} {user?.prenom} !</h1>
                         </div>
                     </div>
+                    <button onClick={initData} className="p-3 bg-white/10 hover:bg-white/20 active:scale-95 transition-all rounded-xl border border-white/10">
+                        <FaSyncAlt size={14} className={loading ? "animate-spin" : ""}/>
+                    </button>
                 </div>
             </motion.div>
 
-            {/* Corps */}
+            {/* Corps de la page */}
             <div className="px-5 -mt-16 space-y-5">
+                
+                {/* 🚀 INTEGRATION OPTION 2 : Widget dynamique de Course en Cours */}
+                <AnimatePresence>
+                    {trajetActif && (
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            exit={{ opacity: 0, scale: 0.95 }}
+                            onClick={() => navigate('/chauffeur/course-actuelle')}
+                            className="p-5 rounded-[2.5rem] bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-xl shadow-emerald-500/20 border border-emerald-400/30 cursor-pointer flex items-center justify-between gap-4 active:scale-[0.99] transition-transform"
+                        >
+                            <div className="flex items-center gap-4 min-w-0">
+                                <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center shrink-0">
+                                    <FaMapMarkerAlt size={20} className="animate-pulse text-white" />
+                                </div>
+                                <div className="min-w-0">
+                                    <span className="inline-block px-2 py-0.5 bg-white/20 rounded-md text-[9px] font-black uppercase tracking-wider mb-1">
+                                        Course active
+                                    </span>
+                                    <h4 className="font-bold text-base truncate">{trajetActif.depart} → {trajetActif.destination}</h4>
+                                    <p className="text-emerald-100 text-xs mt-0.5 flex items-center gap-1">
+                                        Suivi des passagers et arrêts en cours
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center shrink-0">
+                                <FaChevronRight size={14} />
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+
                 <h3 className="font-black text-slate-800 dark:text-slate-200 uppercase text-xs tracking-widest mb-3">Trajets du jour ({trajets.length})</h3>
 
                 <AnimatePresence mode="wait">
@@ -124,12 +165,25 @@ const EspaceChauffeur = () => {
                                     </select>
                                 </div>
 
-                                <button 
-                                    onClick={() => setScanOuvert(true)} 
-                                    className="w-full py-3 bg-slate-900 dark:bg-slate-800 text-white rounded-2xl text-xs font-black flex items-center justify-center gap-2"
-                                >
-                                    <FaQrcode size={14}/> Scanner passager
-                                </button>
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => setScanOuvert(true)} 
+                                        className="flex-1 py-3 bg-slate-900 dark:bg-slate-800 text-white rounded-2xl text-xs font-black flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                                    >
+                                        <FaQrcode size={14}/> Scanner passager
+                                    </button>
+
+                                    {/* Si le trajet individuel est en route, on propose un raccourci d'action direct */}
+                                    {t.statut === 'EN_ROUTE' && (
+                                        <button 
+                                            onClick={() => navigate('/chauffeur/course-actuelle')}
+                                            className="px-4 bg-indigo-600 text-white rounded-2xl text-xs font-black flex items-center justify-center active:scale-95 transition-transform shadow-lg shadow-indigo-600/20"
+                                            title="Ouvrir le suivi de course"
+                                        >
+                                            Suivre
+                                        </button>
+                                    )}
+                                </div>
                             </motion.div>
                         ))
                     )}
@@ -137,13 +191,13 @@ const EspaceChauffeur = () => {
 
                 {/* Stats */}
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 shadow-sm">
+                    <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm">
                         <p className="text-[9px] text-slate-400 uppercase">Évaluation</p>
-                        <div className="flex items-center gap-1"><FaStar className="text-amber-400" size={14}/> {stats.note}</div>
+                        <div className="flex items-center gap-1 font-bold"><FaStar className="text-amber-400" size={14}/> {stats.note}</div>
                     </div>
-                    <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 shadow-sm">
+                    <div className="bg-white dark:bg-slate-900 p-4 rounded-3xl border border-slate-100 dark:border-slate-800 shadow-sm">
                         <p className="text-[9px] text-slate-400 uppercase">Niveau</p>
-                        <div className="flex items-center gap-1"><FaAward className="text-indigo-600" size={14}/> {stats.statut}</div>
+                        <div className="flex items-center gap-1 font-bold"><FaAward className="text-indigo-600 dark:text-indigo-400" size={14}/> {stats.statut}</div>
                     </div>
                 </div>
             </div>

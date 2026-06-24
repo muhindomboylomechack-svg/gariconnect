@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { 
     FaMoon, FaSun, FaTimes, FaChair, 
-    FaCheck, FaMoneyBillWave, FaHome, FaTicketAlt, FaPaperPlane
+    FaCheck, FaMoneyBillWave, FaHome, FaTicketAlt, FaPaperPlane, FaMapMarkerAlt
 } from 'react-icons/fa';
 
 // Importation du composant enfant pour le ramassage à domicile
@@ -19,7 +19,9 @@ const ReservationPage = () => {
     
     // États du Trajet et de l'Interface
     const [trajet, setTrajet] = useState(null);
+    const [arretsDisponibles, setArretsDisponibles] = useState([]); // 📍 Liste de tous les arrêts affichables
     const [selectedSeat, setSelectedSeat] = useState('');
+    const [selectedArret, setSelectedArret] = useState(''); // 📍 Arrêt sélectionné par le client
     const [loading, setLoading] = useState(true);
     const [darkMode, setDarkMode] = useState(localStorage.getItem('client-theme') === 'dark');
     
@@ -46,21 +48,38 @@ const ReservationPage = () => {
         }
     }, [darkMode]);
 
-    // Fonction isolée pour charger ou rafraîchir les données du trajet
-    const fetchTrajet = async () => {
+    // Fonction isolée pour charger les données du trajet ET la liste des arrêts
+    const fetchInitialData = async () => {
         try {
-            // 🟢 CORRECTION : Suppression du "/api" en dur pour éviter la duplication (/api/api/...)
-            const res = await api.get(`/trajets/${id}?t=${Date.now()}`);
-            setTrajet(res.data);
+            // Appels parallèles pour récupérer le trajet ET la liste globale des arrêts (au cas où le trajet n'en a pas d'assignés)
+            const [resTrajet, resArrets] = await Promise.all([
+                api.get(`/trajets/${id}?t=${Date.now()}`),
+                api.get('/arrets').catch(() => ({ data: [] })) // Fallback si la route /arrets n'est pas encore parfaite
+            ]);
             
-            // Présélection automatique de la première place disponible si applicable
-            if (res.data && res.data.placesDisponibles > 0) {
+            setTrajet(resTrajet.data);
+            
+            // 🟢 LOGIQUE DES ARRÊTS : On prend les arrêts du trajet s'il y en a, sinon on prend la liste globale
+            const listeArrets = (resTrajet.data.arrets && resTrajet.data.arrets.length > 0) 
+                ? resTrajet.data.arrets 
+                : (resArrets.data || []);
+            
+            setArretsDisponibles(listeArrets);
+
+            // Présélection du premier arrêt de la liste
+            if (listeArrets.length > 0) {
+                setSelectedArret(listeArrets[0].id.toString());
+            }
+            
+            // Présélection automatique de la première place disponible
+            if (resTrajet.data && resTrajet.data.placesDisponibles > 0) {
                 setSelectedSeat('1');
             } else {
                 setSelectedSeat('');
             }
+
         } catch (err) {
-            console.error("Erreur lors du chargement du trajet :", err);
+            console.error("Erreur lors du chargement des données :", err);
         } finally {
             setLoading(false);
         }
@@ -68,7 +87,7 @@ const ReservationPage = () => {
 
     useEffect(() => {
         if (id) {
-            fetchTrajet();
+            fetchInitialData();
         }
     }, [id]);
 
@@ -94,6 +113,11 @@ const ReservationPage = () => {
         // Sécurité commune : Peu importe le mode, un siège doit être choisi
         if (!selectedSeat) return alert(t('select_seat_error') || "Veuillez choisir un siège.");
 
+        // Sécurité Arrêt : Un arrêt doit être sélectionné si des arrêts sont disponibles en Standard
+        if (!isVip && arretsDisponibles.length > 0 && !selectedArret) {
+            return alert("Veuillez sélectionner un arrêt de bus pour votre montée.");
+        }
+
         if (!isVip) {
             // Mode STANDARD : On passe à l'affichage de la modale de paiement direct
             setShowModal(true);
@@ -111,20 +135,19 @@ const ReservationPage = () => {
     const creerReservationVIP = async () => {
         setIsSubmitting(true);
         try {
-            // 1. Création de la réservation de base avec le format attendu par le backend Spring Boot
+            // 1. Création de la réservation de base
             const reservationPayload = {
                 trajet: { id: parseInt(id) },
-                numeroSiege: parseInt(selectedSeat) 
+                numeroSiege: parseInt(selectedSeat)
+                // Note: En mode VIP, l'arrêt physique n'est pas obligatoire car le chauffeur vient à domicile
             };
 
-            // 🟢 CORRECTION : Suppression du "/api"
             const resReservation = await api.post('/reservations/creer', reservationPayload);
             const nouvelleReservationId = resReservation.data.id;
 
             if (!nouvelleReservationId) throw new Error("Erreur de génération du billet.");
 
-            // 2. Lancement de la demande VIP liée à la réservation venant d'être créée
-            // 🟢 CORRECTION : Suppression du "/api"
+            // 2. Lancement de la demande VIP liée à la réservation
             await api.post('/recuperations/creer', {
                 reservationId: nouvelleReservationId,
                 latitudeClient: parseFloat(recuperationData.latitudeClient) || 0.0,
@@ -139,7 +162,7 @@ const ReservationPage = () => {
             console.error("Erreur cycle VIP :", error);
             const errorMessage = error.response?.data?.error || error.response?.data?.message || "Erreur de connexion.";
             alert("Échec de la demande : " + errorMessage);
-            fetchTrajet(); // Rafraîchit les places en cas d'échec
+            fetchInitialData(); 
         } finally {
             setIsSubmitting(false);
         }
@@ -151,13 +174,14 @@ const ReservationPage = () => {
         
         setIsSubmitting(true);
         try {
-            // 1. Création de la réservation de base
+            // 1. Création de la réservation avec l'arrêt choisi
             const reservationPayload = {
                 trajet: { id: parseInt(id) },
-                numeroSiege: parseInt(selectedSeat)
+                numeroSiege: parseInt(selectedSeat),
+                // 🟢 Envoi de l'arretMontage formaté pour la base de données
+                arretMontage: selectedArret ? { id: parseInt(selectedArret) } : null
             };
             
-            // 🟢 CORRECTION : Suppression du "/api"
             const resReservation = await api.post('/reservations/creer', reservationPayload);
             const reservationId = resReservation.data.id;
 
@@ -165,7 +189,6 @@ const ReservationPage = () => {
             const mode = isCash ? "CASH" : paymentData.modePaiement;
             const ref = isCash ? "CAISSE" : paymentData.referenceTransaction;
 
-            // 🟢 CORRECTION : Suppression du "/api"
             await api.put(`/reservations/${reservationId}/finaliser`, {
                 modePaiement: mode,
                 referenceTransaction: ref
@@ -178,7 +201,7 @@ const ReservationPage = () => {
         } catch (error) {
             const errorMessage = error.response?.data?.error || error.response?.data?.message || "Erreur lors de la procédure.";
             alert("Échec de la réservation : " + errorMessage);
-            fetchTrajet(); // Actualise l'état des places disponibles du véhicule à l'écran
+            fetchInitialData(); 
             setShowModal(false);
         } finally {
             setIsSubmitting(false);
@@ -255,6 +278,28 @@ const ReservationPage = () => {
                                     </button>
                                 </div>
                             </div>
+
+                            {/* 🟢 LISTE DES ARRÊTS DE MONTÉE (TOUJOURS VISIBLE SI DES ARRÊTS EXISTENT) */}
+                            {!isVip && arretsDisponibles.length > 0 && (
+                                <div className="mb-6 md:mb-8">
+                                    <label className={`block text-[10px] font-black uppercase mb-3 tracking-wider transition-colors duration-500 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                        <FaMapMarkerAlt className="inline mr-2 text-indigo-500" size={12}/> Arrêt de montée
+                                    </label>
+                                    <div className="relative">
+                                        <select 
+                                            className={`w-full p-4 rounded-2xl outline-none font-bold text-sm border-2 appearance-none cursor-pointer transition-all duration-500 focus:ring-4 focus:ring-indigo-500/10 ${darkMode ? 'bg-slate-950 text-white border-slate-800 focus:border-indigo-500' : 'bg-slate-50 text-slate-800 border-slate-200 focus:border-indigo-400'}`}
+                                            value={selectedArret}
+                                            onChange={(e) => setSelectedArret(e.target.value)}
+                                        >
+                                            {arretsDisponibles.map((arr) => (
+                                                <option key={arr.id} value={arr.id} className="text-slate-900 dark:text-white bg-white dark:bg-slate-950">
+                                                    {arr.nom} {arr.reperes ? `(${arr.reperes})` : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
 
                             {/* SÉLECTION DE LA PLACE */}
                             <div className="mb-6 md:mb-8">
@@ -347,6 +392,14 @@ const ReservationPage = () => {
                                         <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>Siège Sélectionné</span>
                                         <span className="text-indigo-600 dark:text-indigo-400">N° {selectedSeat}</span>
                                     </div>
+                                    {selectedArret && arretsDisponibles && (
+                                        <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider">
+                                            <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>Arrêt Choisi</span>
+                                            <span className="text-indigo-600 dark:text-indigo-400 truncate max-w-[150px]">
+                                                {arretsDisponibles.find(a => a.id.toString() === selectedArret)?.nom || "Sélectionné"}
+                                            </span>
+                                        </div>
+                                    )}
                                     <div className={`flex justify-between items-center text-xs font-bold uppercase tracking-wider border-t pt-4 ${darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
                                         <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>Total Billet</span>
                                         <span className="text-lg md:text-xl font-black text-slate-900 dark:text-white">

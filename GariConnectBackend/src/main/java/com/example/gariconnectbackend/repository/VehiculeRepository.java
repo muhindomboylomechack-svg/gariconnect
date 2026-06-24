@@ -26,5 +26,5 @@ public interface VehiculeRepository extends JpaRepository<Vehicule, Long> {
     List<Vehicule> findByAgenceAndTrajet_Id(User agence, Long trajetId);
 
     List<Vehicule> findByAgence_Id(Long agenceId);
-    
+
 }

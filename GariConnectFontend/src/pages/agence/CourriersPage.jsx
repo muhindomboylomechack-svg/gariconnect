@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
     FaBox, FaSearch, FaPlus, FaTimes, FaTrash, FaEdit, 
-    FaEnvelopeOpenText, FaWeightHanging,
-    FaCalendarAlt, FaCheckCircle, FaSpinner
+    FaEnvelopeOpenText, FaWeightHanging, FaRobot, FaShieldAlt,
+    FaCalendarAlt, FaCheckCircle, FaSpinner, FaMagic, FaExclamationTriangle, FaBolt
 } from 'react-icons/fa';
-// 1. Import de l'instance API centralisée
 import api from '../../services/api'; 
-// ✅ Importation du nouveau composant d'action
 import StatutActions from '../../component/StatutActions';
 
 const CourriersPage = () => {
@@ -14,6 +12,10 @@ const CourriersPage = () => {
     const [showModal, setShowModal] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');
     
+    // Mode et gestion des étapes (Intégration de l'IA)
+    const [isAiMode, setIsAiMode] = useState(false);
+    const [step, setStep] = useState(1);
+    const [aiReport, setAiReport] = useState(null);
     const [trajets, setTrajets] = useState([]);
     const [courriers, setCourriers] = useState([]); 
     
@@ -21,286 +23,466 @@ const CourriersPage = () => {
     const [formData, setFormData] = useState({
         nomExpediteur: '', telExpediteur: '', nomDestinataire: '',
         telDestinataire: '', description: '', prix: '', trajetId: '',
-        type: 'COLIS' 
+        type: 'COLIS',
+        poidsKg: '', valeurEstimee: '', estFragile: false
     });
-
-    // L'URL en dur API_BASE a été supprimée
 
     useEffect(() => {
         fetchTrajets();
         fetchCourriers();
     }, []);
 
-    // getAuthHeader n'est plus nécessaire car l'instance "api" ajoute le token automatiquement
-
     const fetchTrajets = async () => {
         try {
-            // 2. Utilisation de l'instance "api"
-            const res = await api.get('/trajets/mes-trajets');
-            setTrajets(res.data);
-        } catch (err) { console.error("Erreur trajets:", err); }
+            const res = await api.get('/trajets');
+            setTrajets(res.data || []);
+        } catch (err) {
+            console.error("Erreur lors de la récupération des trajets", err);
+        }
     };
 
     const fetchCourriers = async () => {
         setLoading(true);
         try {
-            const res = await api.get('/agences/courriers');
-            setCourriers(Array.isArray(res.data) ? res.data : []);
-        } catch (err) { 
-            console.error("Erreur courriers:", err);
-            setCourriers([]); 
-        } finally { setLoading(false); }
+            const res = await api.get('/courriers');
+            setCourriers(res.data || []);
+        } catch (err) {
+            console.error("Erreur lors de la récupération des courriers", err);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const handleEdit = (colis) => {
-        setSelectedColis(colis);
+    const handleChange = (e) => {
+        const { name, value, type, checked } = e.target;
         setFormData({
-            nomExpediteur: colis.nomExpediteur || '',
-            telExpediteur: colis.telExpediteur || '',
-            nomDestinataire: colis.nomDestinataire || '',
-            telDestinataire: colis.telDestinataire || '',
-            description: colis.description || '',
-            prix: colis.prix || '',
-            trajetId: colis.trajet?.id || '',
-            type: colis.type || 'COLIS'
+            ...formData,
+            [name]: type === 'checkbox' ? checked : value
+        });
+    };
+
+    const openCreateModal = () => {
+        setSelectedColis(null);
+        setIsAiMode(false);
+        setStep(1);
+        setAiReport(null);
+        setFormData({
+            nomExpediteur: '', telExpediteur: '', nomDestinataire: '',
+            telDestinataire: '', description: '', prix: '', trajetId: '',
+            type: 'COLIS',
+            poidsKg: '', valeurEstimee: '', estFragile: false
         });
         setShowModal(true);
     };
 
-    const handleDelete = async (id) => {
-        if(window.confirm("Supprimer définitivement cet enregistrement ?")) {
-            try {
-                await api.delete(`/agences/courriers/${id}`);
-                fetchCourriers();
-            } catch (err) { alert("Erreur lors de la suppression"); }
+    const openEditModal = (courrier) => {
+        setSelectedColis(courrier);
+        setIsAiMode(false);
+        setStep(1);
+        setAiReport(null);
+        setFormData({
+            nomExpediteur: courrier.nomExpediteur ?? '',
+            telExpediteur: courrier.telExpediteur ?? '',
+            nomDestinataire: courrier.nomDestinataire ?? '',
+            telDestinataire: courrier.telDestinataire ?? '',
+            description: courrier.description ?? '',
+            prix: courrier.prix ?? '',
+            trajetId: courrier.trajet?.id ?? courrier.trajetId ?? '',
+            type: courrier.type ?? 'COLIS',
+            poidsKg: courrier.poidsKg ?? '',
+            valeurEstimee: courrier.valeurEstimee ?? '',
+            estFragile: courrier.estFragile ?? false
+        });
+        setShowModal(true);
+    };
+
+    // Étape 1 de l'IA : Analyse intelligente des risques et tarification
+    const handleAiAnalyze = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        try {
+            const res = await api.post('/courriers/analyser-ia', formData);
+            setAiReport(res.data);
+            setFormData(prev => ({
+                ...prev,
+                prix: res.data.prixSuggereIA ?? prev.prix
+            }));
+            setStep(2);
+        } catch (err) {
+            console.error("Erreur lors de l'analyse IA", err);
+            alert("L'analyse IA a échoué. Saisie classique activée.");
+            setIsAiMode(false);
+        } finally {
+            setLoading(false);
         }
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if(!formData.trajetId) return alert("Veuillez sélectionner un trajet");
-        
         setLoading(true);
         try {
-            const payload = { 
-                ...formData, 
-                trajet: { id: parseInt(formData.trajetId) }, 
-                prix: parseFloat(formData.prix) 
+            // Nettoyage et conversion des types pour Spring Boot / JPA
+            const payload = {
+                nomExpediteur: formData.nomExpediteur,
+                telExpediteur: formData.telExpediteur,
+                nomDestinataire: formData.nomDestinataire,
+                telDestinataire: formData.telDestinataire,
+                description: formData.description,
+                type: formData.type || 'COLIS',
+
+                // Sécurité : Conversion numérique stricte ou null
+                prix: formData.prix ? parseFloat(formData.prix) : 0.0,
+                poidsKg: formData.poidsKg ? parseFloat(formData.poidsKg) : null,
+                valeurEstimee: formData.valeurEstimee ? parseFloat(formData.valeurEstimee) : null,
+                estFragile: formData.estFragile || false,
+
+                // Formatage de la relation Trajet pour JPA
+                trajet: formData.trajetId ? { id: parseInt(formData.trajetId) } : null,
+
+                // Persistance des champs d'évaluation IA
+                niveauRisqueIA: aiReport?.niveauRisqueIA ?? selectedColis?.niveauRisqueIA ?? null,
+                justificationIA: aiReport?.justificationIA ?? selectedColis?.justificationIA ?? null,
+                prixSuggereIA: aiReport?.prixSuggereIA ?? selectedColis?.prixSuggereIA ?? null
             };
-            
+
+            console.log("🚀 Payload envoyé au backend :", payload);
+
             if (selectedColis) {
-                await api.put(`/agences/courriers/${selectedColis.id}`, payload);
+                await api.put(`/courriers/${selectedColis.id}`, payload);
             } else {
-                await api.post('/agences/courriers/envoyer', payload);
+                await api.post('/courriers/envoyer', payload);
             }
-            
-            setShowModal(false);
-            resetForm();
+
             fetchCourriers();
-        } catch (err) { 
-            alert(err.response?.data?.message || "Erreur d'enregistrement"); 
-        } finally { setLoading(false); }
+            setShowModal(false);
+        } catch (err) {
+            console.error("❌ Erreur détaillée :", err.response?.data);
+            alert("Erreur lors de la sauvegarde du colis. Vérifiez la console.");
+        } finally {
+            setLoading(false);
+        }
     };
 
-    const resetForm = () => {
-        setFormData({
-            nomExpediteur: '', telExpediteur: '', nomDestinataire: '',
-            telDestinataire: '', description: '', prix: '', trajetId: '', type: 'COLIS'
-        });
-        setSelectedColis(null);
+    const handleDelete = async (id) => {
+        if (window.confirm("Voulez-vous vraiment supprimer ce courrier/colis ?")) {
+            try {
+                await api.delete(`/courriers/${id}`);
+                fetchCourriers();
+            } catch (err) {
+                console.error("Erreur lors de la suppression", err);
+            }
+        }
     };
 
-    const filteredCourriers = courriers.filter(c => 
-        c.codeRetrait?.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        c.nomDestinataire?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.nomExpediteur?.toLowerCase().includes(searchTerm.toLowerCase())
+    const filteredCourriers = courriers.filter(c =>
+        (c.nomExpediteur?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (c.nomDestinataire?.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (c.description?.toLowerCase().includes(searchTerm.toLowerCase()))
     );
 
     return (
-        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8 transition-colors duration-300">
-            <div className="max-w-7xl mx-auto space-y-6">
-                
-                {/* HEADER */}
-                <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-xl flex flex-col md:flex-row justify-between items-center gap-4 border border-slate-100 dark:border-slate-800">
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-lg rotate-3">
-                            <FaBox size={24} />
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-black text-slate-800 dark:text-white uppercase italic tracking-tighter">Gestion des Envois</h1>
-                            <p className="text-slate-400 text-[10px] font-bold uppercase tracking-[0.2em]">{filteredCourriers.length} enregistrements</p>
-                        </div>
-                    </div>
-                    <button 
-                        onClick={() => { resetForm(); setShowModal(true); }} 
-                        className="bg-slate-900 dark:bg-blue-600 text-white px-8 py-4 rounded-2xl font-black uppercase text-xs tracking-widest hover:scale-105 transition-all shadow-xl flex items-center gap-2"
-                    >
-                        <FaPlus /> Nouvel Envoi
-                    </button>
+        <div className="p-6 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-800 dark:text-slate-100">
+            {/* En-tête */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                <div>
+                    <h1 className="text-3xl font-black tracking-tight flex items-center gap-3">
+                        <FaBox className="text-indigo-600 dark:text-indigo-400" /> Gestion des Courriers & Colis
+                    </h1>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                        Gerez les expéditions de colis, lettres de transport et intégration de tarification par IA.
+                    </p>
                 </div>
-
-                {/* RECHERCHE */}
-                <div className="flex flex-col md:flex-row gap-4 items-center">
-                    <div className="relative flex-1 w-full">
-                        <input 
-                            type="text" 
-                            placeholder="Rechercher un code, un expéditeur..." 
-                            className="w-full pl-14 pr-6 py-4 bg-white dark:bg-slate-900 dark:text-white border-2 border-transparent focus:border-blue-500 rounded-2xl outline-none shadow-sm transition-all font-bold text-sm" 
-                            value={searchTerm} 
-                            onChange={(e) => setSearchTerm(e.target.value)} 
-                        />
-                        <FaSearch className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" />
-                    </div>
-                    <button onClick={fetchCourriers} className="p-4 bg-white dark:bg-slate-900 dark:text-white rounded-2xl shadow-sm hover:bg-slate-50 transition-all">
-                        {loading ? <FaSpinner className="animate-spin text-blue-500" /> : <FaCheckCircle className="text-emerald-500" />}
-                    </button>
-                </div>
-
-                {/* TABLEAU */}
-                <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="bg-slate-50/50 dark:bg-slate-800/50 text-slate-400 text-[10px] uppercase font-black tracking-[0.2em]">
-                                    <th className="px-8 py-6">Code</th>
-                                    <th className="px-8 py-6">Expéditeur & Destinataire</th>
-                                    <th className="px-8 py-6">Type d'envoi & Description</th>
-                                    <th className="px-8 py-6">Statut (Action Agence)</th>
-                                    <th className="px-8 py-6 text-right">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                                {filteredCourriers.map((c) => (
-                                    <tr key={c.id} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/20 transition-all">
-                                        
-                                        <td className="px-8 py-6 font-mono font-black text-blue-600 text-xs uppercase italic">
-                                            {c.codeRetrait || `ID-${c.id}`}
-                                        </td>
-                                        
-                                        <td className="px-8 py-6">
-                                            <div className="text-sm font-black dark:text-white uppercase leading-none mb-1">
-                                                {c.nomExpediteur} <span className="text-blue-500 mx-1">➔</span> {c.nomDestinataire}
-                                            </div>
-                                            <div className="text-[10px] text-slate-500 font-bold flex items-center gap-1 uppercase bg-slate-100 dark:bg-slate-800 w-fit px-2 py-1 rounded mt-2">
-                                                <FaCalendarAlt className="text-red-500" size={10} /> 
-                                                {c.trajet?.depart} ➔ {c.trajet?.destination} 
-                                                <span className="text-blue-600 ml-1">[{c.trajet?.joursSemaine || 'Jour non défini'}]</span>
-                                            </div>
-                                        </td>
-                                        
-                                        <td className="px-8 py-6">
-                                            <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider mb-2 ${
-                                                c.type === 'COURRIER' 
-                                                ? 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 border border-indigo-100 dark:border-indigo-800' 
-                                                : 'bg-orange-50 dark:bg-orange-900/30 text-orange-600 border border-orange-100 dark:border-orange-800'
-                                            }`}>
-                                                {c.type === 'COURRIER' ? <FaEnvelopeOpenText size={12}/> : <FaWeightHanging size={12}/>}
-                                                {c.type}
-                                            </div>
-                                            <div className="text-[11px] text-slate-500 font-medium italic line-clamp-2 max-w-[200px]">
-                                                {c.description || <span className="text-slate-300">Aucune description</span>}
-                                            </div>
-                                        </td>
-                                        
-                                        <td className="px-8 py-6">
-                                            <StatutActions 
-                                                courrierId={c.id} 
-                                                statutActuel={c.statut} 
-                                                onUpdate={fetchCourriers} 
-                                            />
-                                        </td>
-                                        
-                                        <td className="px-8 py-6">
-                                            <div className="flex justify-end gap-2">
-                                                <button onClick={() => handleEdit(c)} className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><FaEdit size={14}/></button>
-                                                <button onClick={() => handleDelete(c.id)} className="p-3 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all"><FaTrash size={14}/></button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                {/* MODAL FORMULAIRE */}
-                {showModal && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-                        <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[2.5rem] p-8 shadow-2xl border border-slate-200 dark:border-slate-800 max-h-[90vh] overflow-y-auto">
-                            <div className="flex justify-between items-center mb-8">
-                                <h2 className="text-2xl font-black dark:text-white italic uppercase tracking-tighter">
-                                    {selectedColis ? "Mise à jour envoi" : "Nouveau Chargement"}
-                                </h2>
-                                <button onClick={() => setShowModal(false)} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-400 hover:text-red-500 transition-colors"><FaTimes size={20}/></button>
-                            </div>
-                            
-                            <form onSubmit={handleSubmit} className="space-y-6">
-                                <div className="grid grid-cols-2 gap-4">
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setFormData({...formData, type: 'COLIS'})} 
-                                        className={`p-5 rounded-2xl border-2 font-black uppercase text-[10px] flex flex-col items-center gap-2 transition-all ${formData.type === 'COLIS' ? 'border-orange-500 bg-orange-50 text-orange-600' : 'border-slate-100 dark:border-slate-800 text-slate-400 opacity-60'}`}
-                                    >
-                                        <FaWeightHanging size={24}/> Colis / Marchandise
-                                    </button>
-                                    <button 
-                                        type="button" 
-                                        onClick={() => setFormData({...formData, type: 'COURRIER'})} 
-                                        className={`p-5 rounded-2xl border-2 font-black uppercase text-[10px] flex flex-col items-center gap-2 transition-all ${formData.type === 'COURRIER' ? 'border-indigo-500 bg-indigo-50 text-indigo-600' : 'border-slate-100 dark:border-slate-800 text-slate-400 opacity-60'}`}
-                                    >
-                                        <FaEnvelopeOpenText size={24}/> Courrier / Enveloppe
-                                    </button>
-                                </div>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 px-2">Infos Expéditeur</label>
-                                        <input placeholder="Nom complet" className="w-full p-4 bg-slate-50 dark:bg-slate-800 dark:text-white rounded-2xl font-bold outline-none border-none focus:ring-2 ring-blue-500" value={formData.nomExpediteur} onChange={e => setFormData({...formData, nomExpediteur: e.target.value})} required />
-                                        <input placeholder="Téléphone" className="w-full p-4 bg-slate-50 dark:bg-slate-800 dark:text-white rounded-2xl font-bold outline-none border-none focus:ring-2 ring-blue-500" value={formData.telExpediteur} onChange={e => setFormData({...formData, telExpediteur: e.target.value})} required />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase text-slate-400 px-2">Infos Destinataire</label>
-                                        <input placeholder="Nom complet" className="w-full p-4 bg-slate-50 dark:bg-slate-800 dark:text-white rounded-2xl font-bold outline-none border-none focus:ring-2 ring-blue-500" value={formData.nomDestinataire} onChange={e => setFormData({...formData, nomDestinataire: e.target.value})} required />
-                                        <input placeholder="Téléphone" className="w-full p-4 bg-slate-50 dark:bg-slate-800 dark:text-white rounded-2xl font-bold outline-none border-none focus:ring-2 ring-blue-500" value={formData.telDestinataire} onChange={e => setFormData({...formData, telDestinataire: e.target.value})} required />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 px-2">Itinéraire & Jour de départ</label>
-                                    <select value={formData.trajetId} className="w-full p-4 bg-slate-50 dark:bg-slate-800 dark:text-white rounded-2xl font-black uppercase text-[11px] outline-none cursor-pointer border-none focus:ring-2 ring-blue-500" onChange={e => setFormData({...formData, trajetId: e.target.value})} required>
-                                        <option value="">-- Sélectionner un trajet --</option>
-                                        {trajets.map(t => (
-                                            <option key={t.id} value={t.id}>
-                                                {t.depart} ➔ {t.destination} [{t.joursSemaine || 'Jour non défini'}]
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase text-slate-400 px-2">Description du contenu</label>
-                                    <textarea 
-                                        placeholder="Ex: Un carton de vêtements, chaussures, documents importants..." 
-                                        className="w-full p-4 bg-slate-50 dark:bg-slate-800 dark:text-white rounded-2xl font-bold outline-none border-none focus:ring-2 ring-blue-500 h-24 resize-none" 
-                                        value={formData.description} 
-                                        onChange={e => setFormData({...formData, description: e.target.value})} 
-                                        required
-                                    />
-                                </div>
-
-                                <div className="bg-slate-900 dark:bg-blue-600 p-1.5 rounded-[1.8rem] flex items-center shadow-lg">
-                                    <span className="px-6 text-white font-black text-[10px] uppercase">Prix (FC)</span>
-                                    <input type="number" className="flex-1 p-4 bg-white dark:bg-slate-900 dark:text-white rounded-[1.4rem] font-black text-right text-lg outline-none" value={formData.prix} onChange={e => setFormData({...formData, prix: e.target.value})} required />
-                                </div>
-
-                                <button type="submit" disabled={loading} className="w-full py-5 bg-blue-600 text-white rounded-[1.5rem] font-black uppercase tracking-[0.2em] hover:scale-[1.02] active:scale-95 transition-all text-xs shadow-xl shadow-blue-500/20 disabled:opacity-50">
-                                    {loading ? "Traitement..." : selectedColis ? "Mettre à jour" : "Confirmer l'envoi"}
-                                </button>
-                            </form>
-                        </div>
-                    </div>
-                )}
+                <button onClick={openCreateModal} className="px-6 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-[1.2rem] shadow-lg shadow-indigo-600/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center gap-2 text-sm uppercase tracking-wider">
+                    <FaPlus /> Enregistrer un Courrier
+                </button>
             </div>
+
+            {/* Barre de recherche */}
+            <div className="mb-6 max-w-md relative">
+                <FaSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                    type="text"
+                    placeholder="Rechercher par expéditeur, destinataire..."
+                    className="w-full pl-12 pr-4 py-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/50 rounded-[1.2rem] text-sm outline-none focus:border-indigo-500 transition-all shadow-sm"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+            </div>
+
+            {/* Grille d'affichage des colis */}
+            {loading && courriers.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-3">
+                    <FaSpinner className="animate-spin text-4xl text-indigo-600" />
+                    <p className="text-sm font-semibold text-slate-500">Chargement des données en cours...</p>
+                </div>
+            ) : filteredCourriers.length === 0 ? (
+                <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/40 rounded-[2rem] p-12 text-center shadow-sm">
+                    <FaEnvelopeOpenText className="mx-auto text-5xl text-slate-300 dark:text-slate-700 mb-4" />
+                    <h3 className="text-lg font-bold mb-1">Aucun courrier trouvé</h3>
+                    <p className="text-sm text-slate-500 max-w-xs mx-auto">Commencez par ajouter un nouveau colis ou liez-les à votre agence connectée.</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    {filteredCourriers.map((courrier) => (
+                        <div key={courrier.id} className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/40 rounded-[2rem] p-6 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden group">
+                            
+                            {/* IA Badge */}
+                            {courrier.niveauRisqueIA && (
+                                <div className={`absolute top-0 right-0 px-4 py-1.5 text-[10px] font-black uppercase tracking-widest rounded-bl-xl flex items-center gap-1.5 text-white ${
+                                    courrier.niveauRisqueIA === 'ELEVE' ? 'bg-rose-500' :
+                                    courrier.niveauRisqueIA === 'MODERE' ? 'bg-amber-500' : 'bg-emerald-500'
+                                }`}>
+                                    <FaRobot /> IA Vérifiée ({courrier.niveauRisqueIA})
+                                </div>
+                            )}
+
+                            <div className="flex gap-4 items-start mb-4">
+                                <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl text-slate-600 dark:text-slate-300">
+                                    <FaBox className="text-2xl" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <span className="text-[10px] font-black px-2.5 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-slate-600 dark:text-slate-400 uppercase tracking-wider">{courrier.type}</span>
+                                    <h4 className="font-bold text-lg mt-1 truncate">{courrier.description || "Sans description"}</h4>
+                                    <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-1">
+                                        <FaCalendarAlt /> Trajet : {courrier.trajet?.depart || "N/A"} → {courrier.trajet?.destination || "N/A"}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 py-3 my-3 border-y border-slate-50 dark:border-slate-800/50 text-xs">
+                                <div>
+                                    <p className="text-slate-400">Expéditeur :</p>
+                                    <p className="font-bold mt-0.5">{courrier.nomExpediteur} ({courrier.telExpediteur})</p>
+                                </div>
+                                <div>
+                                    <p className="text-slate-400">Destinataire :</p>
+                                    <p className="font-bold mt-0.5">{courrier.nomDestinataire} ({courrier.telDestinataire})</p>
+                                </div>
+                            </div>
+
+                            {/* Spécifications physiques */}
+                            {(courrier.poidsKg || courrier.valeurEstimee) && (
+                                <div className="flex gap-4 text-xs bg-slate-50 dark:bg-slate-800/30 p-3 rounded-xl mb-4">
+                                    {courrier.poidsKg && <span className="flex items-center gap-1 font-semibold text-slate-600 dark:text-slate-400"><FaWeightHanging /> {courrier.poidsKg} kg</span>}
+                                    {courrier.valeurEstimee && <span className="font-semibold text-slate-600 dark:text-slate-400">💰 Valeur : {courrier.valeurEstimee} FC</span>}
+                                    {courrier.estFragile && <span className="px-2 py-0.5 bg-rose-50 text-rose-600 dark:bg-rose-950/30 dark:text-rose-400 rounded-md font-bold uppercase tracking-wider text-[9px] flex items-center">Fragile</span>}
+                                </div>
+                            )}
+
+                            {/* Justification de l'IA */}
+                            {courrier.justificationIA && (
+                                <p className="text-[11px] text-slate-400 italic bg-indigo-50/30 dark:bg-indigo-950/10 p-2.5 rounded-xl border border-indigo-100/30 dark:border-indigo-900/20 mb-4 flex items-start gap-1.5">
+                                    <FaMagic className="text-indigo-500 mt-0.5 flex-shrink-0" />
+                                    <span>{courrier.justificationIA}</span>
+                                </p>
+                            )}
+
+                            {/* Actions de gestion du colis & composants d'états */}
+                            <div className="flex justify-between items-center mt-4 pt-2 border-t border-slate-50 dark:border-slate-800/30">
+                                <div className="text-right">
+                                    <p className="text-[10px] text-slate-400 uppercase font-black tracking-wider">Prix de l'envoi</p>
+                                    <p className="text-xl font-black text-indigo-600 dark:text-indigo-400">{courrier.prix?.toLocaleString()} FC</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <StatutActions courrier={courrier} onRefresh={fetchCourriers} />
+                                    <button onClick={() => openEditModal(courrier)} className="p-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 rounded-xl transition-all text-slate-600 dark:text-slate-300" title="Modifier">
+                                        <FaEdit size={14} />
+                                    </button>
+                                    <button onClick={() => handleDelete(courrier.id)} className="p-3 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/30 dark:hover:bg-rose-950/60 rounded-xl transition-all text-rose-600 dark:text-rose-400" title="Supprimer">
+                                        <FaTrash size={14} />
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+                    ))}
+                </div>
+            )}
+
+            {/* Modal de création / modification */}
+            {showModal && (
+                <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto animate-fadeIn">
+                    <div className="bg-white dark:bg-slate-900 rounded-[2.5rem] w-full max-w-2xl overflow-hidden shadow-2xl border border-slate-100 dark:border-slate-800/50 transform transition-all">
+                        
+                        {/* En-tête Modal */}
+                        <div className="p-6 border-b border-slate-100 dark:border-slate-800/60 flex justify-between items-center bg-slate-50/50 dark:bg-slate-900/50">
+                            <div>
+                                <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                                    {selectedColis ? <FaEdit className="text-indigo-500" /> : <FaPlus className="text-indigo-500" />}
+                                    {selectedColis ? "Modifier le Courrier/Colis" : "Enregistrer un Nouveau Courrier/Colis"}
+                                </h3>
+                                <p className="text-xs text-slate-400 mt-0.5">Remplissez les informations d'expédition pour le cloisonnement de l'agence.</p>
+                            </div>
+                            <button onClick={() => setShowModal(false)} className="p-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-400 dark:text-slate-200 rounded-full transition-colors">
+                                <FaTimes size={14} />
+                            </button>
+                        </div>
+
+                        {/* Sélecteur de Mode (Uniquement lors de la création d'un nouveau colis) */}
+                        {!selectedColis && step === 1 && (
+                            <div className="p-6 pb-0 grid grid-cols-2 gap-4">
+                                <button type="button" onClick={() => setIsAiMode(false)} className={`p-4 rounded-2xl border font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
+                                    !isAiMode ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-500 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                }`}>
+                                    <FaBox /> Saisie Manuelle
+                                </button>
+                                <button type="button" onClick={() => setIsAiMode(true)} className={`p-4 rounded-2xl border font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${
+                                    isAiMode ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-600/20 scale-[1.02]' : 'border-slate-100 dark:border-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                                }`}>
+                                    <FaRobot /> Évaluation par IA
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Corps du Formulaire */}
+                        <div className="p-6 max-h-[70vh] overflow-y-auto">
+                            {/* ÉTAPE 1 : Formulaire Général ou Analyse IA */}
+                            {step === 1 && (
+                                <form onSubmit={isAiMode ? handleAiAnalyze : handleSubmit} className="space-y-5">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Nom de l'Expéditeur</label>
+                                            <input type="text" name="nomExpediteur" value={formData.nomExpediteur} onChange={handleChange} required className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/60 rounded-xl text-sm outline-none focus:border-indigo-500" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Téléphone Expéditeur</label>
+                                            <input type="tel" name="telExpediteur" value={formData.telExpediteur} onChange={handleChange} required className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/60 rounded-xl text-sm outline-none focus:border-indigo-500" />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Nom du Destinataire</label>
+                                            <input type="text" name="nomDestinataire" value={formData.nomDestinataire} onChange={handleChange} required className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/60 rounded-xl text-sm outline-none focus:border-indigo-500" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Téléphone Destinataire</label>
+                                            <input type="tel" name="telDestinataire" value={formData.telDestinataire} onChange={handleChange} required className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/60 rounded-xl text-sm outline-none focus:border-indigo-500" />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Type d'expédition</label>
+                                            <select name="type" value={formData.type} onChange={handleChange} className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/60 rounded-xl text-sm outline-none focus:border-indigo-500 font-semibold">
+                                                <option value="COLIS">📦 COLIS (Marchandises/Paquets)</option>
+                                                <option value="COURRIER">✉️ COURRIER (Lettres/Documents)</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Trajet Associé</label>
+                                            <select name="trajetId" value={formData.trajetId} onChange={handleChange} required className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/60 rounded-xl text-sm outline-none focus:border-indigo-500 font-semibold">
+                                                <option value="">-- Sélectionner un trajet --</option>
+                                                {trajets.map(t => (
+                                                    <option key={t.id} value={t.id}>{t.depart} → {t.destination} ({t.prixTrajet} FC)</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Description du contenu</label>
+                                        <textarea name="description" value={formData.description} onChange={handleChange} required rows="2" className="w-full px-4 py-3.5 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/60 rounded-xl text-sm outline-none focus:border-indigo-500 resize-none" placeholder="Ex: Pièces de rechange électroniques, habits..."></textarea>
+                                    </div>
+
+                                    {/* Champs conditionnels ou complémentaires pour l'IA */}
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 space-y-4">
+                                        <div className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
+                                            <FaShieldAlt className="text-indigo-500" /> Spécifications Physiques & Logistiques
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Poids approximatif (Kg)</label>
+                                                <input type="number" step="0.1" name="poidsKg" value={formData.poidsKg} onChange={handleChange} placeholder="Ex: 4.5" className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 rounded-xl text-sm outline-none focus:border-indigo-500" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">Valeur Estimée (FC)</label>
+                                                <input type="number" name="valeurEstimee" value={formData.valeurEstimee} onChange={handleChange} placeholder="Ex: 45000" className="w-full px-4 py-3 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800/60 rounded-xl text-sm outline-none focus:border-indigo-500" />
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3 pt-1">
+                                            <input type="checkbox" name="estFragile" id="estFragile" checked={formData.estFragile} onChange={handleChange} className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500" />
+                                            <label htmlFor="estFragile" className="text-xs font-black uppercase text-slate-600 dark:text-slate-300 cursor-pointer">Ce colis est fragile / délicat</label>
+                                        </div>
+                                    </div>
+
+                                    {/* Champ de tarification directe si Saisie Manuelle ou si Modification */}
+                                    {(!isAiMode || selectedColis) && (
+                                        <div className="pt-2">
+                                            <label className="block text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1.5">Prix Final du Transport (FC)</label>
+                                            <input type="number" name="prix" value={formData.prix} onChange={handleChange} required placeholder="Montant facturé au client" className="w-full px-4 py-4 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/60 rounded-xl text-lg font-black text-right text-indigo-600 dark:text-indigo-400 outline-none focus:border-indigo-500" />
+                                        </div>
+                                    )}
+
+                                    {/* Actions d'envoi Étape 1 */}
+                                    <div className="pt-4 border-t border-slate-100 dark:border-slate-800/60 flex gap-3">
+                                        <button type="button" onClick={() => setShowModal(false)} className="px-6 py-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 font-bold rounded-xl text-xs uppercase tracking-wider transition-colors">Annuler</button>
+                                        <button type="submit" disabled={loading} className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs uppercase tracking-widest transition-all shadow-lg shadow-indigo-600/10 flex items-center justify-center gap-2">
+                                            {loading ? <FaSpinner className="animate-spin" /> : isAiMode ? <><FaBolt /> Lancer l'analyse IA</> : "Valider et Enregistrer"}
+                                        </button>
+                                    </div>
+                                </form>
+                            )}
+
+                            {/* ÉTAPE 2 : Rapport d'analyse de l'IA (Confirmation de Tarification) */}
+                            {step === 2 && aiReport && (
+                                <form onSubmit={handleSubmit} className="space-y-6 animate-fadeIn">
+                                    <div className="p-6 bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 rounded-[1.8rem] space-y-4">
+                                        <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-black uppercase text-xs tracking-wider">
+                                            <FaRobot className="text-xl" /> Analyse Logistique Réussie !
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800/40">
+                                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Niveau de Risque</span>
+                                                <span className={`inline-block px-3 py-1 text-[11px] font-black rounded-full mt-1.5 text-white uppercase tracking-widest ${
+                                                    aiReport.niveauRisqueIA === 'ELEVE' ? 'bg-rose-500' :
+                                                    aiReport.niveauRisqueIA === 'MODERE' ? 'bg-amber-500' : 'bg-emerald-500'
+                                                }`}>
+                                                    {aiReport.niveauRisqueIA || 'MODERE'}
+                                                </span>
+                                            </div>
+                                            <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800/40">
+                                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider block">Prix Suggéré (IA)</span>
+                                                <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 block mt-1">
+                                                    {aiReport.prixSuggereIA?.toLocaleString()} FC
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800/40 text-xs text-slate-500 dark:text-slate-300 leading-relaxed">
+                                            <strong className="text-slate-700 dark:text-slate-200 block mb-1 flex items-center gap-1"><FaExclamationTriangle className="text-amber-500" /> Justification de l'algorithme :</strong>
+                                            <span className="italic">"{aiReport.justificationIA || "Aucune justification fournie."}"</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Saisie ou ajustement manuel du Prix Final avant l'encaissement */}
+                                    <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-100 dark:border-slate-800/60 rounded-2xl flex items-center gap-4">
+                                        <span className="px-6 py-3.5 bg-indigo-600 text-white font-black text-[10px] uppercase rounded-xl tracking-wider">Prix Final (FC)</span>
+                                        <input 
+                                            type="number" 
+                                            className="flex-1 p-4 bg-white dark:bg-slate-900 dark:text-white rounded-[1.4rem] font-black text-right text-lg border border-slate-100 dark:border-slate-800/60 outline-none focus:border-indigo-500" 
+                                            value={formData.prix ?? ""} 
+                                            onChange={e => setFormData({...formData, prix: e.target.value})} 
+                                            required 
+                                        />
+                                    </div>
+
+                                    {/* Actions d'envoi final */}
+                                    <div className="flex gap-4">
+                                        <button type="button" onClick={() => setStep(1)} className="px-8 py-5 bg-slate-100 dark:bg-slate-800 dark:text-white rounded-[1.5rem] font-black uppercase tracking-widest text-xs hover:bg-slate-200 transition-colors">Retour</button>
+                                        <button type="submit" disabled={loading} className="flex-1 py-5 bg-emerald-600 text-white rounded-[1.5rem] font-black uppercase tracking-[0.2em] hover:scale-[1.02] active:scale-95 transition-all text-xs shadow-xl shadow-emerald-500/20 disabled:opacity-50">
+                                            {loading ? "Traitement..." : "Valider et Encaisser"}
+                                        </button>
+                                    </div>
+                                </form>
+                            )}
+                        </div>
+
+                    </div>
+                </div>
+            )}
+
         </div>
     );
 };

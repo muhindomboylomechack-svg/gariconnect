@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 
 // ==========================================
-// 1. CONCONTEXTE & PROTECTION DES ROUTES
+// 1. CONTEXTE & PROTECTION DES ROUTES
 // ==========================================
 import ProtectedRoute from './component/ProtectedRoute'; 
 import { useAuth } from './context/AuthContext';
@@ -45,6 +45,8 @@ import CourriersPage from './pages/agence/CourriersPage';
 import GestionFinance from './pages/agence/GestionFinance';
 import DashboardPerformance from './pages/agence/DashboardPerformance';
 import InterfaceCotationAgent from './pages/agence/InterfaceCotationAgent'; 
+// 🚏 NOUVEL IMPORT : RÉGULATION DES ARRÊTS DE BUS
+import RegulationAgence from './pages/agence/RegulationAgence'; 
 
 // ==========================================
 // 6. PAGES : Espace Chauffeur & Client
@@ -53,6 +55,12 @@ import ChauffeurDashboard from './pages/chauffeur/ChauffeurDashboard';
 import HistoriqueCourses from './pages/chauffeur/HistoriqueCourses'; 
 import PerformanceHistory from './pages/chauffeur/PerformanceHistory'; 
 import ChauffeurProfil from './pages/chauffeur/ChauffeurProfil'; 
+import RamassageVipChauffeur from './pages/chauffeur/RamassageVipChauffeur';
+
+// 📱 NOUVEAUX IMPORTS : INTERFACE CHAUFFEUR MOBILE FIRST
+import CourseActuelle from './pages/chauffeur/CourseActuelle'; // Écran 1 : Prochain arrêt & infos passagers
+import ListeRamassage from './pages/chauffeur/ListeRamassage'; // Écran 2 : Pick-up list avec bouton Embarquer / QR Code
+
 import HomeClient from "./pages/client/Home";
 import MesTickets from "./pages/client/MesTickets"; 
 import History from "./pages/client/History";
@@ -62,7 +70,7 @@ import CheckoutPage from "./pages/client/CheckoutPage";
 import FormulaireEvaluation from "./pages/client/FormulaireEvaluation";
 import ReservationRecuperationPage from "./pages/client/RecuperationReservationPage";
 
-// 🆕 Nouvelle page de paiement dynamique (VIP/Normal) après validation/cotation
+// Nouvelle page de paiement dynamique (VIP/Normal) après validation/cotation
 import PagePaiementReservation from "./pages/client/PagePaiementReservation"; 
 
 /**
@@ -132,6 +140,10 @@ function App() {
           <Route path="trajets" element={<Trajets />} />
           <Route path="reservations" element={<GestionReservations />} />
           <Route path="ramassages-vip" element={<InterfaceCotationAgent />} />
+          
+          {/* 🚀 NOUVELLE ROUTE ROUTER CONNECTÉE AU BOUTON GESTION DES ARRÊTS */}
+          <Route path="regulation" element={<RegulationAgence />} />
+
           <Route path="paiements" element={<GestionPaiements />} />
           <Route path="chauffeurs" element={<GestionChauffeurs />} />
           <Route path="courriers" element={<CourriersPage />} />
@@ -143,13 +155,22 @@ function App() {
         <Route path="/chauffeur" element={<ProtectedRoute allowedRoles={['CHAUFFEUR']}><ChauffeurLayout /></ProtectedRoute>}>
           <Route index element={<ChauffeurDashboard />} />
           <Route path="historique" element={<HistoriqueCourses />} />
+          
+          {/* NOUVELLES ROUTES VIP POUR LE CHAUFFEUR */}
+          <Route path="vip" element={<RamassageVipChauffeur />} />
+          <Route path="vip/:trajetId" element={<RamassageVipChauffeur />} />
+          
+          {/* 📱 NOUVELLES ROUTES : L'INTERFACE CHAUFFEUR MOBILE FIRST */}
+          <Route path="course-actuelle" element={<CourseActuelle />} />
+          <Route path="liste-ramassage" element={<ListeRamassage />} />
+          <Route path="liste-ramassage/:arretId" element={<ListeRamassage />} />
+          
           <Route path="performance" element={<PerformanceHistory />} />
           <Route path="profil" element={<ChauffeurProfil />} />
         </Route>
 
         {/* --- ESPACE 5 : CLIENT --- */}
         <Route path="/client" element={<ProtectedRoute allowedRoles={['CLIENT', 'USER']}><ClientLayout /></ProtectedRoute>}>
-          {/* URL locale : /client -> Accueil (Recherche et choix des places) */}
           <Route index element={<HomeClient />} />
           <Route path="tickets" element={<MesTickets />} />
           <Route path="historique" element={<History />} />

@@ -22,8 +22,9 @@ public class DataInitializer implements CommandLineRunner {
         String adminEmail = "admin@gariconnect.com";
         String adminPassword = "AdminGari2026!";
 
-        // Initialisation automatique et unique du SUPER_ADMIN par le système
-        if (userRepository.findByEmail(adminEmail).isEmpty()) {
+        // 🔥 CORRECTION : Utilisation de existsByEmail() qui est beaucoup plus fiable,
+        // rapide et qui évite les faux négatifs causant la violation de contrainte unique.
+        if (!userRepository.existsByEmail(adminEmail)) {
             User superAdmin = new User();
             superAdmin.setNom("Super Admin");
             superAdmin.setEmail(adminEmail);
@@ -49,6 +50,9 @@ public class DataInitializer implements CommandLineRunner {
             System.out.println("   📧 Email    : " + adminEmail);
             System.out.println("   🔑 Password : " + adminPassword);
             System.out.println("=======================================================================");
+        } else {
+            // Optionnel : Permet de confirmer dans les logs de Render que la sécurité a fonctionné
+            System.out.println(">>> [SYSTEM] Le SUPER_ADMIN existe déjà en base de données. Initialisation ignorée.");
         }
     }
 }

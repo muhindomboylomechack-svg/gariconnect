@@ -80,7 +80,8 @@ const RegulationAgence = ({ isDarkMode: propIsDarkMode }) => {
     useEffect(() => {
         const chargerTrajets = async () => {
             try {
-                const response = await axios.get('http://localhost:8080/api/trajets', getAuthHeaders());
+                // 🛠️ CORRECTION ICI : Remplacement de '/api/trajets' par '/api/trajets/mes-trajets' (ou '/tous')
+                const response = await axios.get('http://localhost:8080/api/trajets/mes-trajets', getAuthHeaders());
                 setTrajets(response.data);
             } catch (err) {
                 console.error("Erreur lors du chargement des trajets", err);

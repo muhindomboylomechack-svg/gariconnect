@@ -102,7 +102,33 @@ public class ArretBusController {
                     .body(Map.of("message", "Erreur calcul statistiques: " + e.getMessage()));
         }
     }
+    // 🚌 5. LISTER LES CLIENTS PHYSIQUEMENT PRÉSENTS À UN ARRÊT
+    @GetMapping("/{id}/clients")
+    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> getClientsAArret(@PathVariable Long id) {
+        try {
+            List<Reservation> clientsEnAttente = reservationRepository.findByArretMontageIdAndStatutEmbarquement(
+                    id,
+                    StatutPassagerArret.EN_ATTENTE_A_L_ARRET
+            );
 
+            // Création d'une structure claire et explicite pour le frontend
+            List<Map<String, Object>> response = clientsEnAttente.stream().map(res -> {
+                Map<String, Object> clientInfo = new java.util.HashMap<>();
+                clientInfo.put("id", res.getId());
+                clientInfo.put("nom", res.getClient() != null ? res.getClient().getNom() : "Inconnu");
+                clientInfo.put("codeTicket", res.getCodeTicket()); // Ajout du code ticket
+                clientInfo.put("numeroSiege", res.getNumeroSiege()); // Ajout du numéro de siège
+                clientInfo.put("statut", res.getStatutEmbarquement());
+                return clientInfo;
+            }).collect(Collectors.toList());
+
+            return ResponseEntity.ok(response);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", e.getMessage()));
+        }
+    }
 
     // 🔍 6. RECHERCHER DES ARRÊTS PAR NOM (Logique SaaS)
 // Correspond à : GET /api/arrets/recherche?nom=Victoire
@@ -250,19 +276,5 @@ public class ArretBusController {
         }
     }
 
-    // 🚌 5. LISTER LES CLIENTS PHYSIQUEMENT PRÉSENTS À UN ARRÊT
-    @GetMapping("/{id}/clients")
-    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
-    public ResponseEntity<?> getClientsAArret(@PathVariable Long id) {
-        try {
-            List<Reservation> clientsEnAttente = reservationRepository.findByArretMontageIdAndStatutEmbarquement(
-                    id,
-                    StatutPassagerArret.EN_ATTENTE_A_L_ARRET
-            );
-            return ResponseEntity.ok(clientsEnAttente);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", e.getMessage()));
-        }
-    }
+
 }

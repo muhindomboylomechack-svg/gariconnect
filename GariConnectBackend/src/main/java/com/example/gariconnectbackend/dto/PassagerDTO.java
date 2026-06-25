@@ -5,7 +5,7 @@ public class PassagerDTO {
     private String telephone;
     private String codeTicket;
 
-    public PassagerDTO(String nom, String telephone, String codeTicket) {
+    public PassagerDTO(String nom, String telephone, String codeTicket, Integer numeroSiege) {
         this.nom = nom;
         this.telephone = telephone;
         this.codeTicket = codeTicket;

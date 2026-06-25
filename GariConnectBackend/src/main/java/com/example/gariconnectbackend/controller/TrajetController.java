@@ -271,9 +271,22 @@ public class TrajetController {
             return ResponseEntity.badRequest().body(e.getMessage());
         }
     }
+    // 1b. Récupérer un trajet spécifique par son ID (Requis par la page de réservation)
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getTrajetById(@PathVariable Long id) {
+        try {
+            Trajet trajet = trajetRepository.findById(id)
+                    .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable avec l'ID : " + id));
+            return ResponseEntity.ok(trajet);
+        } catch (EntityNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Erreur : " + e.getMessage()));
+        }
+    }
 
     // 7. Obtenir tous les trajets d'une agence (Admin connecté ou gestionnaire)
-    @GetMapping
+    @GetMapping("/mes-trajets")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
     public ResponseEntity<?> getMesTrajets() {
         try {
@@ -304,7 +317,6 @@ public class TrajetController {
                     .body(Map.of("error", "Erreur lors de la récupération des trajets : " + e.getMessage()));
         }
     }
-
     // 8. Chauffeurs disponibles de l'agence connectée
     @GetMapping("/chauffeurs-disponibles")
     @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")

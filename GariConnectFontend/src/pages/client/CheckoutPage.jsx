@@ -30,13 +30,13 @@ const CheckoutPage = () => {
                     setSelectedSiege(res.data.numeroSiege.toString());
                 }
                 
-                // 🛠️ CORRECTION ROBUSTE : Vérification et initialisation de l'arrêt
+                // 🛠️ INITIALISATION DE L'ARRÊT SÉLECTIONNÉ
                 if (res.data.arretMontage && res.data.arretMontage.id) {
                     setSelectedArret(res.data.arretMontage.id.toString());
                 } else if (res.data.arretBus && res.data.arretBus.id) {
                     setSelectedArret(res.data.arretBus.id.toString());
                 } else if (res.data.trajet?.arrets && res.data.trajet.arrets.length > 0) {
-                    // Par défaut, on sélectionne le premier arrêt du trajet s'il y en a un
+                    // Par défaut, on sélectionne le premier arrêt disponible sur le trajet
                     setSelectedArret(res.data.trajet.arrets[0].id.toString());
                 }
             } catch (error) {
@@ -58,11 +58,11 @@ const CheckoutPage = () => {
         }
 
         try {
-            // Payload enrichi avec l'arretBusId si applicable
+            // Payload enrichi avec l'arretBusId sélectionné par le client
             await api.patch(`/reservations/${id}/finaliser`, { 
-                siege: parseInt(selectedSiege), 
+                siege: parseInt(selectedSiege, 10), 
                 modePaiement: modePaiement,
-                arretBusId: isVip ? null : parseInt(selectedArret) // Envoyé si réservation standard
+                arretBusId: isVip ? null : parseInt(selectedArret, 10) // Transmis au backend pour mise à jour
             });
             
             if (modePaiement === "CASH") {
@@ -85,8 +85,10 @@ const CheckoutPage = () => {
     );
 
     const agence = reservation.trajet?.agence;
-    // Vérification si c'est un client VIP Domicile (en attente de tarification de sa course personnalisée)
+    // Vérification si c'est un client VIP Domicile
     const isVipMode = reservation.statut === "EN_ATTENTE_COTATION";
+    // Récupération dynamique des arrêts rattachés à ce trajet spécifique
+    const arretsDuTrajet = reservation.trajet?.arrets || [];
 
     return (
         <div className="max-w-5xl mx-auto p-6 space-y-8">
@@ -137,23 +139,22 @@ const CheckoutPage = () => {
                                     <h2 className="text-xl font-bold dark:text-white">Lieu de montée</h2>
                                 </div>
                                 <p className="text-sm text-slate-500 mb-3 italic">
-                                    Sélectionnez votre arrêt de prise en charge
+                                    Sélectionnez votre arrêt de prise en charge parmi ceux desservis par ce trajet
                                 </p>
                                 <select 
                                     className="w-full p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 dark:text-white border-2 border-transparent focus:border-emerald-500 focus:bg-white transition-all font-bold outline-none cursor-pointer"
                                     value={selectedArret}
                                     onChange={(e) => setSelectedArret(e.target.value)}
                                 >
-                                    {/* 🛠️ AJOUT D'UNE OPTION PAR DÉFAUT SI AUCUN ARRÊT N'EST PRÉ-SÉLECTIONNÉ */}
-                                    <option value="">-- Choisir un arrêt --</option>
-                                    {reservation.trajet?.arrets && reservation.trajet.arrets.length > 0 ? (
-                                        reservation.trajet.arrets.map((arret) => (
+                                    <option value="">-- Sélectionner votre arrêt --</option>
+                                    {arretsDuTrajet.length > 0 ? (
+                                        arretsDuTrajet.map((arret) => (
                                             <option key={arret.id} value={arret.id.toString()}>
-                                                {arret.nom} {arret.reperes ? `(${arret.reperes})` : ''}
+                                                🚏 {arret.nom} {arret.reperes ? `(${arret.reperes})` : ''}
                                             </option>
                                         ))
                                     ) : (
-                                        <option value="">Gare Principale (Pas d'arrêts)</option>
+                                        <option value="">Gare Principale (Pas d'arrêts intermédiaires)</option>
                                     )}
                                 </select>
                             </div>

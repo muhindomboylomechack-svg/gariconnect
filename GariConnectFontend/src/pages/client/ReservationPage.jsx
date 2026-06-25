@@ -51,18 +51,18 @@ const ReservationPage = () => {
     // Fonction isolée pour charger les données du trajet ET la liste des arrêts
     const fetchInitialData = async () => {
         try {
-            // Appels parallèles pour récupérer le trajet ET la liste globale des arrêts (au cas où le trajet n'en a pas d'assignés)
+            // 🛠️ MODIFICATION LIGNE 57 : Récupération du trajet et appel de la route par ID trajet
             const [resTrajet, resArrets] = await Promise.all([
                 api.get(`/trajets/${id}?t=${Date.now()}`),
-                api.get('/arrets').catch(() => ({ data: [] })) // Fallback si la route /arrets n'est pas encore parfaite
+                api.get(`/arrets/trajet/${id}`).catch(() => ({ data: [] })) // Appelle les arrêts spécifiques à ce trajet
             ]);
             
             setTrajet(resTrajet.data);
             
-            // 🟢 LOGIQUE DES ARRÊTS : On prend les arrêts du trajet s'il y en a, sinon on prend la liste globale
-            const listeArrets = (resTrajet.data.arrets && resTrajet.data.arrets.length > 0) 
-                ? resTrajet.data.arrets 
-                : (resArrets.data || []);
+            // 🟢 LOGIQUE DES ARRÊTS : On prend en priorité les arrêts retournés par la route par trajet dédiée
+            const listeArrets = (resArrets.data && resArrets.data.length > 0) 
+                ? resArrets.data 
+                : (resTrajet.data.arrets && resTrajet.data.arrets.length > 0 ? resTrajet.data.arrets : []);
             
             setArretsDisponibles(listeArrets);
 
@@ -139,7 +139,7 @@ const ReservationPage = () => {
             const reservationPayload = {
                 trajet: { id: parseInt(id) },
                 numeroSiege: parseInt(selectedSeat)
-                // Note: En mode VIP, l'arrêt physique n'est pas obligatoire car le chauffeur vient à domicile
+                // En mode VIP, l'arrêt physique n'est pas obligatoire car le chauffeur vient à domicile
             };
 
             const resReservation = await api.post('/reservations/creer', reservationPayload);
@@ -279,7 +279,7 @@ const ReservationPage = () => {
                                 </div>
                             </div>
 
-                            {/* 🟢 LISTE DES ARRÊTS DE MONTÉE (TOUJOURS VISIBLE SI DES ARRÊTS EXISTENT) */}
+                            {/* 🟢 LISTE DES ARRÊTS DE MONTÉE FILTRÉS PAR LE TRAJET */}
                             {!isVip && arretsDisponibles.length > 0 && (
                                 <div className="mb-6 md:mb-8">
                                     <label className={`block text-[10px] font-black uppercase mb-3 tracking-wider transition-colors duration-500 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>

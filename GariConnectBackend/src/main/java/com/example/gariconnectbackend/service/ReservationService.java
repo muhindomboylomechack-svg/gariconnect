@@ -319,12 +319,15 @@ public class ReservationService {
     }
 
 
+
     public List<PassagerDTO> obtenirPassagersParTrajet(Long trajetId) {
         return reservationRepository.findByTrajetId(trajetId).stream()
                 .map(res -> new PassagerDTO(
                         res.getClient().getNom(),
                         res.getClient().getTelephone(),
-                        res.getCodeTicket()))
+                        res.getCodeTicket(),
+                        res.getNumeroSiege() // <--- N'oubliez pas d'ajouter ce champ dans votre classe PassagerDTO
+                ))
                 .collect(Collectors.toList());
     }
     /**

@@ -23,7 +23,8 @@ const Home = () => {
     const fetchTrajets = async () => {
         setLoading(true);
         try {
-            const response = await api.get('/trajets');
+            // Modification de l'endpoint de '/trajets' vers '/trajets/tous' pour s'aligner avec l'option A
+            const response = await api.get('/trajets/tous');
             setTrajets(response.data);
         } catch (error) {
             console.error("Erreur de chargement des trajets", error);

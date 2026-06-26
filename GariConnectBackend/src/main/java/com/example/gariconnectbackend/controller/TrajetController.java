@@ -284,47 +284,7 @@ public class TrajetController {
             return ResponseEntity.badRequest().body(Map.of("message", "Erreur : " + e.getMessage()));
         }
     }
-    // 7. Obtenir tous les trajets d'une agence ou d'un chauffeur connecté
-    @GetMapping("/mes-trajets")
-    // ✅ CORRECTION 1 : Ajout de 'CHAUFFEUR' pour autoriser l'accès au rôle Chauffeur
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CHAUFFEUR')")
-    public ResponseEntity<?> getMesTrajets() {
-        try {
-            String email = SecurityContextHolder.getContext().getAuthentication().getName();
-            User currentUser = userRepository.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
 
-            // Cas unique 1 : Si c'est SUPER_ADMIN, il voit tous les trajets de la plateforme GariConnect
-            if (currentUser.getRole() == Role.SUPER_ADMIN) {
-                return ResponseEntity.ok(trajetRepository.findAll());
-            }
-
-            // Cas unique 2 : Si c'est un CHAUFFEUR, il doit uniquement voir ses propres trajets assignés
-            if (currentUser.getRole() == Role.CHAUFFEUR) {
-                List<Trajet> trajetsChauffeur = trajetRepository.findByChauffeurId(currentUser.getId());
-                return ResponseEntity.ok(trajetsChauffeur);
-            }
-
-            // Cas unique 3 : Administration d'Agence (AGENCY_ADMIN ou AGENCY_MANAGER)
-            Long agenceId = (currentUser.getRole() == Role.AGENCY_ADMIN)
-                    ? currentUser.getId()
-                    : (currentUser.getAgenceEmployeur() != null ? currentUser.getAgenceEmployeur().getId() : null);
-
-            if (agenceId == null) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body(Map.of("error", "Vous n'êtes rattaché à aucune agence active."));
-            }
-
-            // Récupération des trajets pour toute l'agence
-            List<Trajet> trajets = trajetRepository.findByAgence_Id(agenceId);
-            return ResponseEntity.ok(trajets);
-
-        } catch (Exception e) {
-            e.printStackTrace(); // Imprime le message d'erreur réel dans votre console IntelliJ / Eclipse
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Erreur lors de la récupération des trajets : " + e.getMessage()));
-        }
-    }
     // 7. Obtenir tous les trajets d'une agence (Admin connecté ou gestionnaire)
     /*@GetMapping("/mes-trajets")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
@@ -380,6 +340,66 @@ public class TrajetController {
             return ResponseEntity.ok(chauffeurs);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Erreur : " + e.getMessage());
+        }
+    }
+    // 7. Obtenir tous les trajets d'une agence (Version sécurisée contre les boucles infinies)
+    @GetMapping("/mes-trajets")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CHAUFFEUR')")
+    public ResponseEntity<?> getMesTrajets() {
+        try {
+            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+            User currentUser = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+
+            List<Trajet> trajetsRaw;
+
+            // 1. Récupération des données selon le rôle
+            if (currentUser.getRole() == Role.SUPER_ADMIN) {
+                trajetsRaw = trajetRepository.findAll();
+            } else {
+                Long agenceId = (currentUser.getRole() == Role.AGENCY_ADMIN)
+                        ? currentUser.getId()
+                        : (currentUser.getAgenceEmployeur() != null ? currentUser.getAgenceEmployeur().getId() : null);
+
+                if (agenceId == null) {
+                    return ResponseEntity.badRequest().body(Map.of("error", "Vous n'êtes rattaché à aucune agence active."));
+                }
+                trajetsRaw = trajetRepository.findByAgence_Id(agenceId);
+            }
+
+            // 2. 🔥 LA CORRECTION : On convertit en Map plate pour casser toute boucle infinie ou problème Lazy Loading
+            List<Map<String, Object>> response = trajetsRaw.stream().map(t -> {
+                Map<String, Object> map = new LinkedHashMap<>();
+                map.put("id", t.getId());
+                map.put("depart", t.getDepart());
+                map.put("destination", t.getDestination());
+                map.put("joursSemaine", t.getJoursSemaine());
+                map.put("dateHeureDepart", t.getDateHeureDepart());
+                map.put("prix", t.getPrix());
+                map.put("placesDisponibles", t.getPlacesDisponibles());
+                map.put("statut", t.getStatut());
+
+                // Informations simplifiées de l'agence pour le frontend
+                if (t.getAgence() != null) {
+                    map.put("agenceId", t.getAgence().getId());
+                    map.put("agenceNom", t.getAgence().getNom());
+                }
+
+                // Informations simplifiées du chauffeur
+                if (t.getChauffeur() != null) {
+                    map.put("chauffeurId", t.getChauffeur().getId());
+                    map.put("chauffeurNom", t.getChauffeur().getNom());
+                }
+
+                return map;
+            }).collect(Collectors.toList());
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            e.printStackTrace(); // Affiche la pile d'erreur rouge dans votre console d'IDE
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Erreur interne : " + e.getMessage()));
         }
     }
 }

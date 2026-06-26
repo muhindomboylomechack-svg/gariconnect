@@ -37,16 +37,24 @@ public class Trajet {
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
 
-    @ManyToOne
-    @JoinColumn(name = "chauffeur_id")
-    @JsonIgnoreProperties({"trajets", "password", "email", "agenceEmployeur"})
-    private User chauffeur;
-
+//    @ManyToOne
+//    @JoinColumn(name = "chauffeur_id")
+//    @JsonIgnoreProperties({"trajets", "password", "email", "agenceEmployeur"})
+//    private User chauffeur;
+//
+//    @ManyToOne
+//    @JoinColumn(name = "agence_id")
+//    @JsonIgnoreProperties({"trajets", "password", "vehicules", "chauffeurs"})
+//    private User agence;
     @ManyToOne
     @JoinColumn(name = "agence_id")
-    @JsonIgnoreProperties({"trajets", "password", "vehicules", "chauffeurs"})
+    @JsonIgnoreProperties({"trajets", "password", "agenceEmployeur"}) // Empêche Jackson de boucler sur ces champs de l'User
     private User agence;
 
+    @ManyToOne
+    @JoinColumn(name = "chauffeur_id")
+    @JsonIgnoreProperties({"trajets", "password", "agenceEmployeur"}) // Empêche également la boucle ici
+    private User chauffeur;
     @ManyToOne
     @JoinColumn(name = "vehicule_id")
     @JsonIgnoreProperties({"trajets", "agence"})

@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
-import axios from 'axios';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+
+// Import de l'instance API centralisée
+import api from '../../services/api';
 
 // --- CONFIGURATION DES ICONES PERSONNALISÉES ---
 // Icône pour l'Arrêt de bus du Client (Bleu/Vert distinctif)
@@ -39,8 +41,8 @@ const ApplicationClient = () => {
     // 1. Charger la réservation active du client connecté
     const chargerReservationActive = async () => {
         try {
-            // Endpoint pour récupérer le ticket/réservation en cours du client connecté
-            const response = await axios.get('http://localhost:8080/api/reservations/active', { headers });
+            // Utilisation de l'instance centralisée api à la place d'axios
+            const response = await api.get('/reservations/active', { headers });
             const data = response.data;
             
             if (data) {
@@ -63,8 +65,8 @@ const ApplicationClient = () => {
     // 2. Charger la position GPS actuelle du bus lié à la course
     const chargerPositionBus = async (courseId, arretClient) => {
         try {
-            // Simule l'appel de l'étape 4 : Récupère la géo-localisation envoyée par le chauffeur
-            const response = await axios.get(`http://localhost:8080/api/courses/${courseId}/position`, { headers })
+            // Utilisation de l'instance centralisée api à la place d'axios
+            const response = await api.get(`/courses/${courseId}/position`, { headers })
                 .catch(() => ({
                     // Fallback de démonstration si l'endpoint n'est pas encore prêt
                     data: { latitude: arretClient.latitude - 0.015, longitude: arretClient.longitude - 0.012 }

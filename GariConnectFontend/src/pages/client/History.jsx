@@ -9,7 +9,8 @@ import {
     FaCar, 
     FaArrowRight, 
     FaSearch, 
-    FaExclamationCircle 
+    FaExclamationCircle,
+    FaUsers 
 } from 'react-icons/fa';
 
 // 🌐 Import de l'instance API centralisée
@@ -32,7 +33,7 @@ const HistoriqueReservations = () => {
                 
                 if (!token) {
                     setErrorMsg("Vous devez être connecté pour voir votre historique.");
-                    setIsLoading(false);
+                    setIsLoading(false); 
                     return;
                 }
 
@@ -64,15 +65,17 @@ const HistoriqueReservations = () => {
         chargerHistorique();
     }, [navigate]);
 
-    // Redirection intelligente vers la bonne page de paiement selon le cas
+    // 💰 Redirection vers la caisse virtuelle de paiement selon le statut
     const gererPaiement = (res, event) => {
-        event.stopPropagation();
+        event.stopPropagation(); // Évite de déclencher d'éventuels événements parents
         
+        console.log("Tentative de paiement pour la réservation :", res.id, "avec le statut :", res.statutPaiement);
+
         if (res.statutPaiement === "ATTENTE_PAIEMENT_SURPLUS") {
             // Redirection vers le formulaire spécifique du surplus de récupération à domicile
             navigate(`/client/reservation-recuperation/${res.id}`);
-        } else if (res.statutPaiement === "ATTENTE_PAIEMENT" || res.statutPaiement === "EN_ATTENTE") {
-            // Redirection vers le formulaire de paiement standard du billet complet
+        } else {
+            // Sécurité : Redirection par défaut vers la page de paiement standard pour débloquer l'utilisateur
             navigate(`/client/paiement-reservation/${res.id}`);
         }
     };
@@ -80,7 +83,12 @@ const HistoriqueReservations = () => {
     // Filtrage des données de la liste
     const reservationsFiltrees = reservations.filter(res => {
         if (filter === 'ATTENTE_PAIEMENT') {
-            return res.statutPaiement === 'ATTENTE_PAIEMENT' || res.statutPaiement === 'EN_ATTENTE' || res.statutPaiement === 'ATTENTE_PAIEMENT_SURPLUS';
+            return (
+                res.statutPaiement !== 'PAYE' && 
+                res.statutPaiement !== 'VALIDEE' && 
+                res.statutPaiement !== 'CONFIRMEE' && 
+                res.statutPaiement !== 'EMBARQUE'
+            );
         }
         if (filter === 'RAMASSAGE') {
             return res.typeReservation === 'VID' || res.typeReservation === 'VIP';
@@ -90,7 +98,15 @@ const HistoriqueReservations = () => {
 
     // Rendu du Badge de Statut de Paiement
     const renderBadgeStatut = (statut) => {
-        switch (statut) {
+        if (!statut) {
+            return (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400">
+                    <FaExclamationCircle size={12} /> En attente
+                </span>
+            );
+        }
+
+        switch (statut.toUpperCase()) {
             case 'PAYE':
             case 'VALIDEE':
             case 'CONFIRMEE':
@@ -108,15 +124,17 @@ const HistoriqueReservations = () => {
                 );
             case 'ATTENTE_PAIEMENT':
             case 'EN_ATTENTE':
+            case 'EN_ATTENTE_DE_PAIEMENT':
                 return (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
                         <FaExclamationCircle size={12} /> Billet non payé
                     </span>
                 );
             default:
+                // Fallback si le backend renvoie une chaîne customisée non listée
                 return (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-50 text-slate-700 dark:bg-slate-950/40 dark:text-slate-400">
-                        {statut}
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
+                        <FaExclamationCircle size={12} /> {statut}
                     </span>
                 );
         }
@@ -197,100 +215,125 @@ const HistoriqueReservations = () => {
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {reservationsFiltrees.map((res) => (
-                            <div 
-                                key={res.id}
-                                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800/50 shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden"
-                            >
-                                {/* Tag distinctif VID / Normal en haut à droite */}
-                                <div className="absolute top-4 right-4 flex items-center gap-2">
-                                    {res.typeReservation === 'VID' || res.typeReservation === 'VIP' ? (
-                                        <span className="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[10px] font-black tracking-widest rounded-lg uppercase shadow-sm flex items-center gap-1">
-                                            <FaCar size={10} /> VID / À Domicile
-                                        </span>
-                                    ) : (
-                                        <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[10px] font-bold tracking-wider rounded-lg uppercase">
-                                            Standard
-                                        </span>
-                                    )}
-                                </div>
+                        {reservationsFiltrees.map((res) => {
+                            const nombrePlaces = res.nombrePlaces || 1;
+                            const totalFacture = res.montantTotal || 0; 
+                            const montantSupplementaire = res.prixSupplementaire || 0;
+                            
+                            // Calcul du prix unitaire par billet
+                            const prixUnitaireBillet = nombrePlaces > 0 ? (totalFacture - montantSupplementaire) / nombrePlaces : 0;
 
-                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                    
-                                    {/* Infos de base du trajet */}
-                                    <div className="space-y-3 flex-1">
-                                        <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold text-indigo-600 dark:text-indigo-400 tracking-wide uppercase">
-                                            <FaCalendarAlt />
-                                            <span>RÉSERVATION N° {res.id}</span>
-                                            <span className="text-slate-300 dark:text-slate-700">•</span>
-                                            <span className="text-slate-400 lowercase font-medium">
-                                                Fait le {res.dateReservation ? new Date(res.dateReservation).toLocaleDateString('fr-FR', {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'}) : 'Date inconnue'}
+                            // Le bouton s'affiche TOUJOURS sauf si c'est explicitement payé ou validé
+                            const afficherBoutonPayer = res.statutPaiement !== 'PAYE' && 
+                                                         res.statutPaiement !== 'VALIDEE' && 
+                                                         res.statutPaiement !== 'CONFIRMEE' && 
+                                                         res.statutPaiement !== 'EMBARQUE';
+
+                            return (
+                                <div 
+                                    key={res.id}
+                                    className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800/50 shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden"
+                                >
+                                    {/* Tag distinctif VID / Normal */}
+                                    <div className="absolute top-4 right-4 flex items-center gap-2">
+                                        {res.typeReservation === 'VID' || res.typeReservation === 'VIP' ? (
+                                            <span className="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[10px] font-black tracking-widest rounded-lg uppercase shadow-sm flex items-center gap-1">
+                                                <FaCar size={10} /> VID / À Domicile
                                             </span>
-                                        </div>
-
-                                        {/* Trajet Départ ➔ Arrivée */}
-                                        <div className="flex items-center gap-3 text-lg font-black text-slate-800 dark:text-white">
-                                            <span>{res.villeDepart}</span>
-                                            <FaArrowRight size={14} className="text-slate-400 mt-0.5" />
-                                            <span>{res.villeArrivee}</span>
-                                            <span className="ml-2 text-sm font-bold px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-slate-600 dark:text-slate-400">
-                                                {res.heureDepart || '--:--'}
+                                        ) : (
+                                            <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[10px] font-bold tracking-wider rounded-lg uppercase">
+                                                Standard
                                             </span>
-                                        </div>
-
-                                        {/* Affichage de l'adresse de ramassage si c'est une option VID */}
-                                        {(res.typeReservation === 'VID' || res.typeReservation === 'VIP') && res.adresseRamassage && (
-                                            <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/40 px-3 py-1.5 rounded-xl w-full max-w-md border border-slate-100 dark:border-indigo-950/20">
-                                                <FaMapMarkerAlt className="text-indigo-500 flex-shrink-0" />
-                                                <span className="truncate"><strong>Ramassage :</strong> {res.adresseRamassage}</span>
-                                            </div>
                                         )}
                                     </div>
 
-                                    {/* Prix & Statut financiers (À droite) */}
-                                    <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-4 pt-4 md:pt-0 border-t md:border-t-0 border-slate-50 dark:border-slate-800/50">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                                         
-                                        {/* Montants calculés d'après le backend */}
-                                        <div className="md:text-right">
-                                            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Montant total du voyage</p>
-                                            <p className="text-xl font-black text-slate-900 dark:text-white">
-                                                {/* 🛠️ Somme exacte cumulée et sécurisée */}
-                                                {((res.montantTotal || 0) + (res.prixSupplementaire || 0)).toLocaleString('fr-FR')}{' '}
-                                                <span className="text-xs font-bold text-slate-500">FC</span>
-                                            </p>
-                                            
-                                            {/* Détails transparents de la tarification */}
-                                            {res.prixSupplementaire > 0 && (
-                                                <div className="mt-1 text-[11px] space-y-0.5 font-semibold text-slate-500 dark:text-slate-400">
-                                                    <p>Billet : {(res.montantTotal || 0).toLocaleString('fr-FR')} FC</p>
-                                                    <p className={res.statutPaiement === 'ATTENTE_PAIEMENT_SURPLUS' ? "text-amber-600 dark:text-amber-400 font-bold animate-pulse" : "text-emerald-600 dark:text-emerald-400"}>
-                                                        Frais de ramassage : {(res.prixSupplementaire).toLocaleString('fr-FR')} FC
-                                                        {res.statutPaiement === 'ATTENTE_PAIEMENT_SURPLUS' ? " (En attente)" : " (Payé)"}
-                                                    </p>
+                                        {/* Infos du trajet */}
+                                        <div className="space-y-3 flex-1">
+                                            <div className="flex flex-wrap items-center gap-2 text-xs font-extrabold text-indigo-600 dark:text-indigo-400 tracking-wide uppercase">
+                                                <FaCalendarAlt />
+                                                <span>RÉSERVATION N° {res.id}</span>
+                                                <span className="text-slate-300 dark:text-slate-700">•</span>
+                                                <span className="text-slate-400 lowercase font-medium">
+                                                    Fait le {res.dateReservation ? new Date(res.dateReservation).toLocaleDateString('fr-FR', {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'}) : 'Date inconnue'}
+                                                </span>
+                                            </div>
+
+                                            {/* Trajet */}
+                                            <div className="flex items-center gap-3 text-lg font-black text-slate-800 dark:text-white">
+                                                <span>{res.villeDepart}</span>
+                                                <FaArrowRight size={14} className="text-slate-400 mt-0.5" />
+                                                <span>{res.villeArrivee}</span>
+                                                <span className="ml-2 text-sm font-bold px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-slate-600 dark:text-slate-400">
+                                                    {res.heureDepart || '--:--'}
+                                                </span>
+                                            </div>
+
+                                            {/* Places */}
+                                            <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-slate-600 dark:text-slate-300 font-semibold">
+                                                <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 rounded-xl">
+                                                    <FaUsers size={12} />
+                                                    {nombrePlaces} {nombrePlaces > 1 ? 'places réservées' : 'place réservée'}
+                                                </span>
+                                                {res.numeroSiege && (
+                                                    <span className="text-slate-400">
+                                                        Siège(s) : <strong className="text-slate-700 dark:text-slate-200">{res.numeroSiege}</strong>
+                                                    </span>
+                                                )}
+                                            </div>
+
+                                            {/* Adresse de ramassage */}
+                                            {(res.typeReservation === 'VID' || res.typeReservation === 'VIP') && res.adresseRamassage && (
+                                                <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/40 px-3 py-1.5 rounded-xl w-full max-w-md border border-slate-100 dark:border-indigo-950/20">
+                                                    <FaMapMarkerAlt className="text-indigo-500 flex-shrink-0" />
+                                                    <span className="truncate"><strong>Ramassage :</strong> {res.adresseRamassage}</span>
                                                 </div>
                                             )}
                                         </div>
 
-                                        {/* Actions et Badges */}
-                                        <div className="flex items-center gap-3">
-                                            {renderBadgeStatut(res.statutPaiement)}
+                                        {/* Prix & Statut financiers */}
+                                        <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-4 pt-4 md:pt-0 border-t md:border-t-0 border-slate-50 dark:border-slate-800/50">
+                                            
+                                            <div className="md:text-right">
+                                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Montant total du voyage</p>
+                                                <p className="text-xl font-black text-slate-900 dark:text-white">
+                                                    {totalFacture.toLocaleString('fr-FR')}{' '}
+                                                    <span className="text-xs font-bold text-slate-500">FC</span>
+                                                </p>
+                                                
+                                                <div className="mt-1 text-[11px] space-y-0.5 font-semibold text-slate-500 dark:text-slate-400">
+                                                    <p>Billets ({nombrePlaces}x) : {(prixUnitaireBillet * nombrePlaces).toLocaleString('fr-FR')} FC</p>
+                                                    {montantSupplementaire > 0 && (
+                                                        <p className={res.statutPaiement === 'ATTENTE_PAIEMENT_SURPLUS' ? "text-amber-600 dark:text-amber-400 font-bold animate-pulse" : "text-emerald-600 dark:text-emerald-400"}>
+                                                            Frais de ramassage : {montantSupplementaire.toLocaleString('fr-FR')} FC
+                                                            {res.statutPaiement === 'ATTENTE_PAIEMENT_SURPLUS' ? " (En attente)" : " (Payé)"}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
 
-                                            {/* Affichage conditionnel du bouton Payer */}
-                                            {res.statutPaiement !== 'PAYE' && res.statutPaiement !== 'VALIDEE' && res.statutPaiement !== 'CONFIRMEE' && res.statutPaiement !== 'EMBARQUE' && (
-                                                <button
-                                                    onClick={(e) => gererPaiement(res, e)}
-                                                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-indigo-100 dark:shadow-none cursor-pointer border-0"
-                                                >
-                                                    <FaCreditCard size={12} />
-                                                    <span>Payer</span>
-                                                </button>
-                                            )}
+                                            {/* Actions et Badges */}
+                                            <div className="flex items-center gap-3">
+                                                {renderBadgeStatut(res.statutPaiement)}
+
+                                                {/* Bouton Payer débloqué */}
+                                                {afficherBoutonPayer && (
+                                                    <button
+                                                        onClick={(e) => gererPaiement(res, e)}
+                                                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-indigo-100 dark:shadow-none cursor-pointer border-0"
+                                                    >
+                                                        <FaCreditCard size={12} />
+                                                        <span>Payer</span>
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
 
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 )}
             </div>

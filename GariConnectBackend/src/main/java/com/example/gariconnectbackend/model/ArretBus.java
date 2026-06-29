@@ -39,4 +39,10 @@ public class ArretBus {
     @ManyToMany(mappedBy = "arrets")
     @JsonIgnore
     private List<Trajet> trajets;
+
+    // 🛠️ AJOUT : Indicateur pour savoir s'il s'agit de l'arrêt principal (ex: Gare principale)
+    @Column(nullable = false)
+    private boolean estPrincipal = false;
+
+
 }

@@ -1,4 +1,5 @@
 package com.example.gariconnectbackend.dto;
+
 import lombok.Data;
 import java.time.LocalDateTime;
 
@@ -11,7 +12,8 @@ public class HistoriqueVoyageDTO {
     private String heureDepart;
     private Double montantTotal;
     private String statutPaiement; // PAYE, ATTENTE_PAIEMENT, ATTENTE_PAIEMENT_SURPLUS
-    private String typeReservation; // NORMAL ou VID
-    private String adresseRamassage; // null si NORMAL
-    private Double prixSupplementaire; // 0 si NORMAL
+    private String typeReservation; // STANDARD ou VIP
+    private String adresseRamassage; // null si STANDARD
+    private Double prixSupplementaire; // 0 si STANDARD
+    private Integer nombrePlaces; // 🟢 Ajouté pour remonter la quantité de sièges réservés
 }

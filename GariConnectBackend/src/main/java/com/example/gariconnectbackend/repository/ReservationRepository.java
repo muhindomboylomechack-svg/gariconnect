@@ -55,4 +55,6 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     long countByTrajetIdAndStatutIn(Long id, List<String> confirme);
 
     List<Reservation> findByArretMontageIdAndStatutEmbarquement(Long id, StatutPassagerArret statutPassagerArret);
+
+    long countByTrajetId(Long id);
 }

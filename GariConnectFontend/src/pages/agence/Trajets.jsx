@@ -24,18 +24,21 @@ const Trajets = () => {
     vehiculeId: '', 
     chauffeurId: '', 
     statut: 'PROGRAMME', 
-    placesDisponibles: ''
+    placesDisponibles: '',
+    agenceId: '' // Support de la sélection de l'agence si SUPER_ADMIN
   });
 
   useEffect(() => { 
     fetchTrajets(); 
   }, []);
 
+  // 🟢 CORRECTION : Remplacement de '/trajets/mes-trajets' par '/trajets' 
+  // La logique multi-tenant et le filtrage par agence sont appliqués directement sur la racine GET du backend.
   const fetchTrajets = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const res = await api.get('/trajets/mes-trajets', {
+      const res = await api.get('/trajets', {
           headers: { Authorization: `Bearer ${token}` }
       });
       setTrajets(res.data);
@@ -55,21 +58,21 @@ const Trajets = () => {
     }
   }, [formData.joursSemaine]);
 
-  // 🔥 CORRECTION ICI : Appels API isolés pour plus de fiabilité
+  // Appels API isolés et filtrés par agence (géré par le Token au niveau du Backend)
   const fetchRessourcesParJour = async (jourChoisi) => {
     try {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
       
-      // On lance les requêtes en parallèle pour optimiser la vitesse
+      // Requêtes en parallèle pour optimiser la vitesse
       const [resVehicules, resChauffeurs] = await Promise.all([
-          // Appel direct au contrôleur des véhicules
+          // Appel direct au contrôleur des véhicules de l'agence connectée
           api.get('/vehicules/agence', { headers }).catch(err => {
               console.warn("Erreur chargement véhicules", err);
               return { data: [] };
           }),
-          // Appel direct au contrôleur des chauffeurs
-          api.get('/chauffeurs/mes-chauffeurs', { headers }).catch(err => {
+          // Appel au contrôleur des chauffeurs filtrés pour l'agence connectée
+          api.get('/trajets/chauffeurs-disponibles', { headers }).catch(err => {
               console.warn("Erreur chargement chauffeurs", err);
               return { data: [] };
           })
@@ -117,6 +120,9 @@ const Trajets = () => {
     const today = new Date().toISOString().split('T')[0];
     const dateIsoPropre = `${today}T${formData.heureDepart}:00`;
 
+    // Détection simplifiée du rôle pour injecter l'objet Agence requis si SUPER_ADMIN
+    const userRole = localStorage.getItem('role') || localStorage.getItem('user_role'); 
+
     const payload = {
       depart: formData.depart,
       destination: formData.destination,
@@ -125,9 +131,15 @@ const Trajets = () => {
       prix: parseFloat(formData.prix),
       statut: formData.statut,
       placesDisponibles: parseInt(formData.placesDisponibles),
+      // Format d'objet relationnel strict attendu par Spring Boot / JPA 
       vehicule: { id: parseInt(formData.vehiculeId) },
       chauffeur: { id: parseInt(formData.chauffeurId) }
     };
+
+    // Si l'utilisateur connecté est SUPER_ADMIN, on passe obligatoirement l'agence sélectionnée
+    if (userRole === 'SUPER_ADMIN' && formData.agenceId) {
+      payload.agence = { id: parseInt(formData.agenceId) };
+    }
 
     try {
       const token = localStorage.getItem('token');
@@ -161,7 +173,8 @@ const Trajets = () => {
       vehiculeId: trajet.vehicule?.id || '',
       chauffeurId: trajet.chauffeur?.id || '',
       statut: trajet.statut || 'PROGRAMME',
-      placesDisponibles: trajet.placesDisponibles || ''
+      placesDisponibles: trajet.placesDisponibles || '',
+      agenceId: trajet.agence?.id || ''
     });
     setCurrentId(trajet.id);
     setIsEditing(true);
@@ -192,12 +205,12 @@ const Trajets = () => {
             </div>
             Planning GariConnect
           </h1>
-          <p className="text-slate-400 font-bold text-xs mt-1 italic uppercase">Gestion des rotations véhicules et chauffeurs</p>
+          <p className="text-slate-400 font-bold text-xs mt-1 italic uppercase">Gestion des rotations véhicules et chauffeurs (Multi-Agences)</p>
         </div>
         <button 
           onClick={() => { 
             setIsEditing(false); 
-            setFormData({depart:'', destination:'', joursSemaine:'', heureDepart:'', prix:'', vehiculeId:'', chauffeurId:'', statut:'PROGRAMME', placesDisponibles: ''}); 
+            setFormData({depart:'', destination:'', joursSemaine:'', heureDepart:'', prix:'', vehiculeId:'', chauffeurId:'', statut:'PROGRAMME', placesDisponibles: '', agenceId: ''}); 
             setShowModal(true); 
           }}
           className="bg-blue-600 text-white px-6 py-4 rounded-2xl font-black shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2"

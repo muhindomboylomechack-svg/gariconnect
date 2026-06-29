@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import axios from 'axios';
+// Import de l'instance API centralisée
+import api from '../../services/api';
 
 const RegulationAgence = ({ isDarkMode: propIsDarkMode }) => {
-    // 1. Gestion du thème synchronisée (Prop externe ou localStorage de la Navbar)
+    // 1. Gestion du thème synchronisée
     const [isDarkMode, setIsDarkMode] = useState(() => {
         if (propIsDarkMode !== undefined) return propIsDarkMode;
         return localStorage.getItem('theme') === 'dark';
@@ -14,24 +15,17 @@ const RegulationAgence = ({ isDarkMode: propIsDarkMode }) => {
         }
     }, [propIsDarkMode]);
 
-    // Écoute également les changements du localStorage provoqués par la Navbar (inter-onglets et intra-page)
     useEffect(() => {
         const handleThemeChange = () => {
             setIsDarkMode(localStorage.getItem('theme') === 'dark');
         };
 
-        // Événement standard pour les autres onglets
         window.addEventListener('storage', handleThemeChange);
-        
-        // Événement personnalisé au cas où votre Navbar émet un CustomEvent, 
-        // ou interception des clics globaux sur le bouton de thème pour forcer la réévaluation instantanée
         window.addEventListener('themeChange', handleThemeChange);
-        document.addEventListener('click', handleThemeChange);
 
         return () => {
             window.removeEventListener('storage', handleThemeChange);
             window.removeEventListener('themeChange', handleThemeChange);
-            document.removeEventListener('click', handleThemeChange);
         };
     }, []);
 
@@ -46,49 +40,24 @@ const RegulationAgence = ({ isDarkMode: propIsDarkMode }) => {
     
     // États UI
     const [loading, setLoading] = useState(false);
-    const [isSearchingLoc, setIsSearchingLoc] = useState(false); // État pour la recherche API
-    const [ongletActif, setOngletActif] = useState('liste'); // 'liste' ou 'creer'
+    const [isSearchingLoc, setIsSearchingLoc] = useState(false); 
+    const [ongletActif, setOngletActif] = useState('liste'); // 'liste', 'creer', ou 'modifier'
 
-    // Formulaire Nouveau arrêt
-    const [nouveauArret, setNouveauArret] = useState({ nom: '', latitude: '0.0', longitude: '0.0' });
-
-    // Récupération des en-têtes d'authentification JWT
-    const getAuthHeaders = useCallback(() => {
-        const token = localStorage.getItem('token');
-        return {
-            headers: { Authorization: `Bearer ${token}` }
-        };
-    }, []);
-
-    // Configuration des couleurs selon le mode
-    const theme = {
-        background: isDarkMode ? '#0f172a' : '#f1f5f9',
-        surface: isDarkMode ? '#1e293b' : '#ffffff',
-        surfaceSecondary: isDarkMode ? '#334155' : '#f8fafc',
-        text: isDarkMode ? '#f8fafc' : '#0f172a',
-        textMuted: isDarkMode ? '#94a3b8' : '#64748b',
-        border: isDarkMode ? '#475569' : '#e2e8f0',
-        accent: isDarkMode ? '#3b82f6' : '#1e40af',
-        accentHover: isDarkMode ? '#2563eb' : '#1d4ed8',
-        inputBg: isDarkMode ? '#1e293b' : '#ffffff',
-        tableHeaderBg: isDarkMode ? '#1e293b' : '#e2e8f0',
-        rowHover: isDarkMode ? '#334155' : '#f1f5f9',
-        selectedRow: isDarkMode ? '#1e3a8a' : '#dbeafe'
-    };
+    // Formulaire partagé (Création & Modification)
+    const [formData, setFormData] = useState({ nom: '', latitude: '0.0', longitude: '0.0' });
 
     // 1. Charger la liste des trajets disponibles au démarrage
     useEffect(() => {
         const chargerTrajets = async () => {
             try {
-                // 🛠️ CORRECTION ICI : Remplacement de '/api/trajets' par '/api/trajets/mes-trajets' (ou '/tous')
-                const response = await axios.get('http://localhost:8080/api/trajets/mes-trajets', getAuthHeaders());
-                setTrajets(response.data);
+                const response = await api.get('/trajets/mes-trajets');
+                setTrajets(response.data || []);
             } catch (err) {
                 console.error("Erreur lors du chargement des trajets", err);
             }
         };
         chargerTrajets();
-    }, [getAuthHeaders]);
+    }, []);
 
     // 2. Charger les arrêts et leurs statistiques pour le trajet sélectionné
     const chargerStatsArrets = useCallback(async () => {
@@ -97,27 +66,25 @@ const RegulationAgence = ({ isDarkMode: propIsDarkMode }) => {
             return;
         }
         try {
-            const url = `http://localhost:8080/api/arrets/statistiques?trajetId=${trajetSelectionneId}`;
-            const response = await axios.get(url, getAuthHeaders());
+            const response = await api.get(`/arrets/statistiques?trajetId=${trajetSelectionneId}`);
             
             if (Array.isArray(response.data)) {
                 setArrets(response.data);
                 
-                if (arretSelectionne) {
-                    const arretMisAJour = response.data.find(a => a.id === arretSelectionne.id);
-                    if (arretMisAJour) setArretSelectionne(arretMisAJour);
-                }
+                setArretSelectionne(prevArret => {
+                    if (!prevArret) return null;
+                    const arretMisAJour = response.data.find(a => a.id === prevArret.id);
+                    return arretMisAJour || prevArret;
+                });
             } else {
-                console.warn("L'API n'a pas renvoyé un tableau d'arrêts :", response.data);
                 setArrets([]);
             }
         } catch (err) {
             console.error("Erreur de chargement des arrêts", err);
             setArrets([]); 
         }
-    }, [trajetSelectionneId, arretSelectionne, getAuthHeaders]);
+    }, [trajetSelectionneId]);
 
-    // Déclencheur du rafraîchissement
     useEffect(() => {
         chargerStatsArrets();
         const interval = setInterval(chargerStatsArrets, 8000);
@@ -127,9 +94,10 @@ const RegulationAgence = ({ isDarkMode: propIsDarkMode }) => {
     // 3. Cliquer sur un arrêt pour voir ses clients
     const handleSelectArret = async (arret) => {
         setArretSelectionne(arret);
+        setOngletActif('liste'); // Revenir à la vue des clients par défaut
         setLoading(true);
         try {
-            const response = await axios.get(`http://localhost:8080/api/arrets/${arret.id}/clients`, getAuthHeaders());
+            const response = await api.get(`/arrets/${arret.id}/clients`);
             setClientsEnAttente(response.data || []);
             
             if (window.innerWidth < 1024) {
@@ -145,22 +113,18 @@ const RegulationAgence = ({ isDarkMode: propIsDarkMode }) => {
 
     // 📍 4. API OPENSTREETMAP : Rechercher les coordonnées d'après le nom saisi
     const rechercherCoordonnees = async () => {
-        if (!nouveauArret.nom) {
+        if (!formData.nom) {
             alert("Veuillez d'abord saisir le nom de l'arrêt à chercher.");
             return;
         }
         setIsSearchingLoc(true);
         try {
-            const response = await axios.get(`https://nominatim.openstreetmap.org/search`, {
-                params: {
-                    q: nouveauArret.nom,
-                    format: 'json',
-                    limit: 1
-                }
+            const response = await api.get(`https://nominatim.openstreetmap.org/search`, {
+                params: { q: formData.nom, format: 'json', limit: 1 }
             });
             if (response.data && response.data.length > 0) {
                 const { lat, lon } = response.data[0];
-                setNouveauArret(prev => ({
+                setFormData(prev => ({
                     ...prev,
                     latitude: parseFloat(lat).toFixed(6),
                     longitude: parseFloat(lon).toFixed(6)
@@ -180,36 +144,70 @@ const RegulationAgence = ({ isDarkMode: propIsDarkMode }) => {
     const handleCreerArret = async (e) => {
         e.preventDefault();
         
-        if (!trajetSelectionneId) {
-            alert("Veuillez sélectionner un trajet avant d'ajouter un arrêt.");
-            return;
-        }
-        if (!nouveauArret.nom) {
-            alert("Le nom de l'arrêt est obligatoire.");
-            return;
-        }
+        if (!trajetSelectionneId) return alert("Veuillez sélectionner un trajet avant d'ajouter un arrêt.");
+        if (!formData.nom) return alert("Le nom de l'arrêt est obligatoire.");
+        
         try {
             const payload = {
-                nom: nouveauArret.nom,
-                latitude: parseFloat(nouveauArret.latitude || 0),
-                longitude: parseFloat(nouveauArret.longitude || 0),
+                nom: formData.nom,
+                latitude: parseFloat(formData.latitude || 0),
+                longitude: parseFloat(formData.longitude || 0),
                 trajetId: parseInt(trajetSelectionneId, 10)
             };
-            await axios.post('http://localhost:8080/api/arrets', payload, getAuthHeaders());
+            await api.post('/arrets', payload);
             alert("Arrêt ajouté avec succès !");
             
-            setNouveauArret({ nom: '', latitude: '0.0', longitude: '0.0' });
+            setFormData({ nom: '', latitude: '0.0', longitude: '0.0' });
             setOngletActif('liste');
             await chargerStatsArrets();
-            
         } catch (err) {
-            console.error("Erreur de création de l'arrêt:", err.response?.data || err.message);
+            console.error("Erreur de création:", err);
+            alert(err.response?.data?.message || "Impossible d'enregistrer l'arrêt.");
+        }
+    };
+
+    // 6. Soumettre la modification d'un arrêt existant
+    const handleModifierArret = async (e) => {
+        e.preventDefault();
+        if (!arretSelectionne) return;
+
+        try {
+            const payload = {
+                nom: formData.nom,
+                latitude: parseFloat(formData.latitude || 0),
+                longitude: parseFloat(formData.longitude || 0),
+                estPrincipal: arretSelectionne.estPrincipal || false
+            };
+            await api.put(`/arrets/${arretSelectionne.id}`, payload);
+            alert("Arrêt modifié avec succès ! Les passagers concernés seront notifiés.");
             
-            if (err.response && err.response.data && err.response.data.message) {
-                 alert(`Erreur: ${err.response.data.message}`);
-            } else {
-                 alert("Impossible d'enregistrer l'arrêt. Veuillez vérifier vos autorisations.");
-            }
+            setOngletActif('liste');
+            await chargerStatsArrets();
+        } catch (err) {
+            console.error("Erreur de modification:", err);
+            alert(err.response?.data?.message || "Impossible de modifier l'arrêt.");
+        }
+    };
+
+    // 7. Supprimer un arrêt existant
+    const handleSupprimerArret = async () => {
+        if (!arretSelectionne) return;
+        
+        const confirmation = window.confirm(`ATTENTION : Vous êtes sur le point de supprimer l'arrêt "${arretSelectionne.nom}".\n\nS'il y a des passagers en attente, ils recevront une notification SMS d'urgence pour les prévenir.\n\nVoulez-vous vraiment continuer ?`);
+        
+        if (!confirmation) return;
+
+        try {
+            await api.delete(`/arrets/${arretSelectionne.id}`);
+            alert("Arrêt supprimé définitivement. Les notifications ont été envoyées si nécessaire.");
+            
+            setArretSelectionne(null);
+            setOngletActif('liste');
+            setClientsEnAttente([]);
+            await chargerStatsArrets();
+        } catch (err) {
+            console.error("Erreur de suppression:", err);
+            alert(err.response?.data?.message || "Impossible de supprimer l'arrêt.");
         }
     };
 
@@ -232,6 +230,7 @@ const RegulationAgence = ({ isDarkMode: propIsDarkMode }) => {
                                     setArretSelectionne(null);
                                     setClientsEnAttente([]);
                                     setArrets([]);
+                                    setOngletActif('liste');
                                 }}
                                 className="custom-select"
                             >
@@ -245,15 +244,58 @@ const RegulationAgence = ({ isDarkMode: propIsDarkMode }) => {
                     <div className="content-card">
                         <div className="table-header-flex">
                             <h3>Arrêts sur la ligne</h3>
-                            {trajetSelectionneId && (
+                            
+                            {/* AFFICHAGE CONDITIONNEL DES BOUTONS D'ACTION */}
+                            {trajetSelectionneId && !arretSelectionne && (
                                 <button 
-                                    onClick={() => setOngletActif(ongletActif === 'creer' ? 'liste' : 'creer')}
+                                    onClick={() => {
+                                        setOngletActif(ongletActif === 'creer' ? 'liste' : 'creer');
+                                        setFormData({ nom: '', latitude: '0.0', longitude: '0.0' });
+                                    }}
                                     className={`btn-action ${ongletActif === 'creer' ? 'btn-danger' : 'btn-primary'}`}
                                 >
                                     {ongletActif === 'creer' ? 'Fermer' : '➕ Ajouter un arrêt'}
                                 </button>
                             )}
+
+                            {trajetSelectionneId && arretSelectionne && (
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                    <button 
+                                        onClick={() => {
+                                            setOngletActif('modifier');
+                                            setFormData({
+                                                nom: arretSelectionne.nom || '',
+                                                latitude: arretSelectionne.latitude || '0.0',
+                                                longitude: arretSelectionne.longitude || '0.0'
+                                            });
+                                        }}
+                                        className="btn-action btn-secondary"
+                                        title="Modifier cet arrêt"
+                                    >
+                                        ✏️ Modifier
+                                    </button>
+                                    <button 
+                                        onClick={handleSupprimerArret}
+                                        className="btn-action btn-danger"
+                                        title="Supprimer cet arrêt"
+                                    >
+                                        🗑️ Supprimer
+                                    </button>
+                                    <button 
+                                        onClick={() => {
+                                            setArretSelectionne(null);
+                                            setOngletActif('liste');
+                                        }}
+                                        className="btn-action"
+                                        style={{ backgroundColor: 'var(--bg-input)', color: 'var(--text-main)', border: '1px solid var(--border-color)' }}
+                                        title="Désélectionner"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            )}
                         </div>
+
                         {!trajetSelectionneId ? (
                             <div className="empty-state-inline">
                                 <p>Veuillez sélectionner un trajet ci-dessus pour charger les arrêts.</p>
@@ -300,20 +342,22 @@ const RegulationAgence = ({ isDarkMode: propIsDarkMode }) => {
                     </div>
                 </div>
 
-                {/* --- PANNEAU DE DROITE : FORMULAIRE DE CRÉATION OU TABLEAU DES CLIENTS --- */}
+                {/* --- PANNEAU DE DROITE : FORMULAIRE DE CRÉATION/MODIFICATION OU TABLEAU DES CLIENTS --- */}
                 <div id="details-panel" className="panel right-panel">
-                    {ongletActif === 'creer' ? (
+                    {ongletActif === 'creer' || ongletActif === 'modifier' ? (
                         <div className="content-card content-card-full">
-                            <h3 className="panel-title">➕ Ajouter un nouvel arrêt</h3>
-                            <form onSubmit={handleCreerArret} className="modern-form">
+                            <h3 className="panel-title">
+                                {ongletActif === 'creer' ? '➕ Ajouter un nouvel arrêt' : '✏️ Modifier l\'arrêt'}
+                            </h3>
+                            <form onSubmit={ongletActif === 'creer' ? handleCreerArret : handleModifierArret} className="modern-form">
                                 <div className="form-group">
                                     <label className="form-label">Nom de la Station / Arrêt :</label>
                                     <div style={{ display: 'flex', gap: '8px' }}>
                                         <input 
                                             type="text" 
                                             placeholder="Ex: Arrêt Rond-point Victoire" 
-                                            value={nouveauArret.nom}
-                                            onChange={(e) => setNouveauArret({ ...nouveauArret, nom: e.target.value })}
+                                            value={formData.nom}
+                                            onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
                                             className="modern-input"
                                             style={{ flex: 1 }}
                                             required
@@ -334,8 +378,8 @@ const RegulationAgence = ({ isDarkMode: propIsDarkMode }) => {
                                         <label className="form-label label-muted">Latitude :</label>
                                         <input 
                                             type="text" 
-                                            value={nouveauArret.latitude}
-                                            onChange={(e) => setNouveauArret({ ...nouveauArret, latitude: e.target.value })}
+                                            value={formData.latitude}
+                                            onChange={(e) => setFormData({ ...formData, latitude: e.target.value })}
                                             className="modern-input"
                                         />
                                     </div>
@@ -343,14 +387,14 @@ const RegulationAgence = ({ isDarkMode: propIsDarkMode }) => {
                                         <label className="form-label label-muted">Longitude :</label>
                                         <input 
                                             type="text" 
-                                            value={nouveauArret.longitude}
-                                            onChange={(e) => setNouveauArret({ ...nouveauArret, longitude: e.target.value })}
+                                            value={formData.longitude}
+                                            onChange={(e) => setFormData({ ...formData, longitude: e.target.value })}
                                             className="modern-input"
                                         />
                                     </div>
                                 </div>
                                 <button type="submit" className="btn-submit">
-                                    Enregistrer la station
+                                    {ongletActif === 'creer' ? 'Enregistrer la station' : 'Mettre à jour la station'}
                                 </button>
                             </form>
                         </div>

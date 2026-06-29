@@ -178,7 +178,7 @@ function App() {
           <Route path="reservation/:id" element={<ReservationPage />} />
           <Route path="evaluer/:id" element={<FormulaireEvaluation />} />
           
-          {/* ⚡ NOUVELLE LOGIQUE : Route de paiement unifiée et dynamique par ID de réservation */}
+          {/* ⚡ LOGIQUE DE PAIEMENT UNIFIÉE DEJA PRESENTE ET FONCTIONNELLE */}
           <Route path="paiement-reservation/:reservationId" element={<PagePaiementReservation />} />
           
           {/* Étape intermédiare - Flux A : Réservation classique */}

@@ -9,8 +9,6 @@ const isProduction = import.meta.env.PROD || window.location.hostname.includes('
 
 /**
  * 2. Configuration des URLs de base
- * - Si isProduction est vrai : On utilise l'URL Render.
- * - Sinon : On utilise localhost pour ton développement local.
  */
 export const API_URL = isProduction 
   ? 'https://gariconnectbackend.onrender.com' 
@@ -20,7 +18,6 @@ export const API_URL = isProduction
  * 3. Création de l'instance Axios
  */
 const api = axios.create({
-  // baseURL est construite dynamiquement
   baseURL: `${API_URL}/api`,
   timeout: 10000, 
 });
@@ -46,34 +43,31 @@ api.interceptors.request.use(
 );
 
 /**
- * 5. ✅ AJOUT : Intercepteur pour les Réponses (Sécurité et déconnexion automatique)
- * Cet intercepteur attrape toutes les erreurs renvoyées par le serveur.
- * Si le serveur renvoie une 401, on nettoie le localStorage et on redirige.
+ * 5. Intercepteur pour les Réponses (Sécurité et déconnexion automatique)
  */
 api.interceptors.response.use(
   (response) => {
-    // Si la requête réussit, on passe simplement la réponse
     return response;
   },
   (error) => {
-    // Si le serveur renvoie une erreur (401, 403, 500, etc.)
     if (error.response) {
       const status = error.response.status;
 
       // Si l'erreur est 401 (Non Autorisé / Session expirée / Utilisateur supprimé)
       if (status === 401) {
-        console.warn("Session expirée ou compte invalide (Erreur 401). Déconnexion automatique...");
+        console.warn("Session expirée ou compte invalide (Erreur 401). Déconnexion...");
         
-        // On nettoie le localStorage pour effacer les traces de l'ancienne session
+        // Nettoyage complet
         localStorage.removeItem('token');
         localStorage.removeItem('user'); 
 
-        // Redirection forcée vers la page de connexion
-        window.location.href = '/login';
+        // ✅ CORRECTION : Éviter la boucle infinie si on est DÉJÀ sur la page login
+        if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+        }
       }
     }
 
-    // On retourne l'erreur pour que les composants (ex: CourriersPage) puissent quand même la gérer si besoin
     return Promise.reject(error);
   }
 );

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   FaArrowLeft, FaReceipt, FaMoneyBillWave, FaMobileAlt, 
-  FaCheckCircle, FaSpinner, FaCar, FaTicketAlt
+  FaCheckCircle, FaSpinner, FaCar, FaTicketAlt, FaUsers
 } from 'react-icons/fa';
 
 import api from '../../services/api';
@@ -25,6 +25,9 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
   // États du formulaire
   const [modePaiement, setModePaiement] = useState('M-PESA');
   const [referenceTransaction, setReferenceTransaction] = useState('');
+  
+  // État pour gérer le nombre de places
+  const [nombrePlaces, setNombrePlaces] = useState(1);
 
   // Gestion du Dark Mode Tailwind
   useEffect(() => {
@@ -46,14 +49,26 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
         const token = localStorage.getItem('token');
         if (!token) throw new Error("Non connecté");
 
+        // 1. Charger la réservation principale
         const resResponse = await api.get(`/reservations/${reservationId}`);
         setReservation(resResponse.data);
+        
+        if (resResponse.data.nombrePlaces) {
+            setNombrePlaces(resResponse.data.nombrePlaces);
+        }
 
+        // 2. Tenter de charger le surplus de récupération
         try {
             const reqResponse = await api.get(`/recuperations/reservation/${reservationId}`);
-            setDemandeRecuperation(reqResponse.data);
+            // Sécurité : on s'assure que la donnée reçue n'est pas vide
+            if (reqResponse.data && Object.keys(reqResponse.data).length > 0) {
+                setDemandeRecuperation(reqResponse.data);
+            } else {
+                setDemandeRecuperation(null);
+            }
         } catch (reqError) {
             console.log("Trajet standard (Aucune demande VIP associée).");
+            setDemandeRecuperation(null);
         }
 
       } catch (error) {
@@ -86,10 +101,15 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
      );
   }
 
-  const prixBillet = reservation.trajet?.prix || reservation.montantPaye || 0;
-  const isVip = demandeRecuperation !== null && demandeRecuperation !== undefined;
-  const supplementRamassage = demandeRecuperation?.prixSupplementaire || 0;
-  const totalGeneral = prixBillet + supplementRamassage;
+  // 🟢 LA CORRECTION EST ICI : On vérifie STRICTEMENT le type de réservation depuis la base de données
+  const isVip = reservation?.typeReservation === 'VIP' || reservation?.typeReservation === 'VID';
+
+  // Calcul dynamique basé sur le nombre de places
+  const prixUnitaire = reservation.trajet?.prix || reservation.montantTotal || reservation.montantPaye || 0;
+  const totalBillets = prixUnitaire * nombrePlaces;
+  
+  const supplementRamassage = isVip && demandeRecuperation ? (demandeRecuperation.prixSupplementaire || 0) : 0; 
+  const totalGeneral = totalBillets + supplementRamassage;
 
   const handlePaiement = async (e) => {
     e.preventDefault();
@@ -106,26 +126,24 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
 
     try {
       if (modePaiement === 'CASH') {
-        // 🟢 PAIEMENT PHYSIQUE : Intention déclarée.
         await api.post(`/reservations/${reservation.id}/intention-cash`, {
-            montantTotal: totalGeneral
+            montantTotal: totalGeneral,
+            nombrePlaces: nombrePlaces
         });
 
         setIsError(false);
         setMessage("💵 Choix enregistré ! Veuillez vous rendre au guichet d'une agence pour payer. Votre réservation sera validée par l'agent de comptoir après réception des fonds.");
-        
         setTimeout(() => navigate('/client/historique'), 5000);
 
       } else {
-        // 🟢 PAIEMENT MOBILE MONEY : Appel vers PaiementController pour tout déclencher
         const payload = {
           reservationId: reservation.id,
           reference: referenceTransaction,
           montant: totalGeneral,
-          mode: modePaiement
+          mode: modePaiement,
+          nombrePlaces: nombrePlaces 
         };
         
-        // CORRECTION MAJEURE : On pointe vers le contrôleur de paiement
         await api.post(`/paiements/encaisser`, payload);
         
         setIsError(false);
@@ -165,13 +183,34 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
               </h2>
               
               <div className="space-y-4">
-                  <div className="flex justify-between items-center">
+                  {/* Sélection du nombre de places */}
+                  <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-100 dark:border-slate-700/50">
                       <span className="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
-                          <FaTicketAlt className="text-indigo-500 dark:text-indigo-400" /> Billet Standard
+                          <FaUsers className="text-indigo-500 dark:text-indigo-400" /> Nombre de places
                       </span>
-                      <span className="font-black text-slate-900 dark:text-white">{prixBillet.toLocaleString()} FC</span>
+                      <div className="flex items-center gap-3 bg-white dark:bg-slate-900 rounded-lg p-1 shadow-sm border border-slate-200 dark:border-slate-700">
+                          <button 
+                              type="button" 
+                              onClick={() => setNombrePlaces(Math.max(1, nombrePlaces - 1))} 
+                              className="w-8 h-8 flex items-center justify-center rounded-md text-slate-700 dark:text-slate-300 font-black hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          >-</button>
+                          <span className="font-black text-slate-900 dark:text-white w-4 text-center">{nombrePlaces}</span>
+                          <button 
+                              type="button" 
+                              onClick={() => setNombrePlaces(nombrePlaces + 1)} 
+                              className="w-8 h-8 flex items-center justify-center rounded-md text-slate-700 dark:text-slate-300 font-black hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                          >+</button>
+                      </div>
                   </div>
 
+                  <div className="flex justify-between items-center">
+                      <span className="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
+                          <FaTicketAlt className="text-indigo-500 dark:text-indigo-400" /> Billet Standard <span className="text-xs text-slate-400 font-normal">({prixUnitaire} FC)</span>
+                      </span>
+                      <span className="font-black text-slate-900 dark:text-white">{totalBillets.toLocaleString()} FC</span>
+                  </div>
+
+                  {/* Bloc VIP : Strictement affiché que si la réservation est du type VIP/VID */}
                   {isVip && (
                       <div className="flex justify-between items-center p-3 rounded-xl border transition-all duration-500 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30">
                           <span className="flex items-center gap-2 text-sm font-bold text-emerald-700 dark:text-emerald-400">

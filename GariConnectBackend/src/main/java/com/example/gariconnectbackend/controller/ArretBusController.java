@@ -102,6 +102,7 @@ public class ArretBusController {
                     .body(Map.of("message", "Erreur calcul statistiques: " + e.getMessage()));
         }
     }
+
     // 🚌 5. LISTER LES CLIENTS PHYSIQUEMENT PRÉSENTS À UN ARRÊT
     @GetMapping("/{id}/clients")
     @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
@@ -112,14 +113,24 @@ public class ArretBusController {
                     StatutPassagerArret.EN_ATTENTE_A_L_ARRET
             );
 
-            // Création d'une structure claire et explicite pour le frontend
+            // Création d'une structure qui respecte ce que votre frontend attend
             List<Map<String, Object>> response = clientsEnAttente.stream().map(res -> {
                 Map<String, Object> clientInfo = new java.util.HashMap<>();
                 clientInfo.put("id", res.getId());
-                clientInfo.put("nom", res.getClient() != null ? res.getClient().getNom() : "Inconnu");
-                clientInfo.put("codeTicket", res.getCodeTicket()); // Ajout du code ticket
-                clientInfo.put("numeroSiege", res.getNumeroSiege()); // Ajout du numéro de siège
-                clientInfo.put("statut", res.getStatutEmbarquement());
+                clientInfo.put("codeTicket", res.getCodeTicket());
+                clientInfo.put("numeroSiege", res.getNumeroSiege());
+                clientInfo.put("statutEmbarquement", res.getStatutEmbarquement());
+
+                // 🛠️ Restauration de l'objet "client" pour que le frontend puisse faire "item.client.nom"
+                Map<String, Object> clientData = new java.util.HashMap<>();
+                if (res.getClient() != null) {
+                    clientData.put("nom", res.getClient().getNom());
+                    clientData.put("telephone", res.getClient().getTelephone());
+                } else {
+                    clientData.put("nom", "Inconnu");
+                }
+                clientInfo.put("client", clientData);
+
                 return clientInfo;
             }).collect(Collectors.toList());
 
@@ -129,7 +140,6 @@ public class ArretBusController {
                     .body(Map.of("message", e.getMessage()));
         }
     }
-
     // 🔍 6. RECHERCHER DES ARRÊTS PAR NOM (Logique SaaS)
 // Correspond à : GET /api/arrets/recherche?nom=Victoire
     @GetMapping("/recherche")
@@ -256,25 +266,128 @@ public class ArretBusController {
     }
 
 
-    // ❌ 4. SUPPRIMER UN ARRÊT
+
+    // 🔄 6. MODIFIER UN ARRÊT (AVEC NOTIFICATION DES CLIENTS)
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> modifierArret(@PathVariable Long id, @RequestBody ArretBus arretDetails) {
+        return arretBusRepository.findById(id).map(arret -> {
+            String ancienNom = arret.getNom();
+
+            // Mise à jour des champs
+            arret.setNom(arretDetails.getNom());
+            arret.setEstPrincipal(arretDetails.isEstPrincipal());
+            // Ajoutez d'autres champs si nécessaire (ex: ordre, trajet, etc.)
+
+            ArretBus arretMisAJour = arretBusRepository.save(arret);
+
+            // Récupérer les clients qui ont réservé à cet arrêt (statut EN_ATTENTE_A_L_ARRET)
+            List<Reservation> clientsImpactes = reservationRepository.findByArretMontageIdAndStatutEmbarquement(
+                    id,
+                    StatutPassagerArret.EN_ATTENTE_A_L_ARRET
+            );
+
+            // Alerter les clients si la liste n'est pas vide
+            if (!clientsImpactes.isEmpty()) {
+                notifierClientsModification(clientsImpactes, ancienNom, arretMisAJour.getNom());
+            }
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Arrêt modifié avec succès",
+                    "clientsNotifies", clientsImpactes.size(),
+                    "arret", arretMisAJour
+            ));
+        }).orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Arrêt non trouvé")));
+    }
+
+
+
+    // ❌ 7. SUPPRIMER UN ARRÊT (AVEC NOTIFICATION DES CLIENTS)
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
     public ResponseEntity<?> supprimerArret(@PathVariable Long id) {
         try {
-            ArretBus arret = arretBusRepository.findById(id)
-                    .orElseThrow(() -> new RuntimeException("Arrêt introuvable"));
+            return arretBusRepository.findById(id).map(arret -> {
 
-            User agence = getAuthenticatedAgence();
-            if (!arret.getAgence().getId().equals(agence.getId())) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Accès refusé"));
-            }
+                // 1. Récupérer les clients qui allaient monter à cet arrêt
+                List<Reservation> clientsImpactes = reservationRepository.findByArretMontageIdAndStatutEmbarquement(
+                        id,
+                        StatutPassagerArret.EN_ATTENTE_A_L_ARRET
+                );
 
-            arretBusRepository.delete(arret);
-            return ResponseEntity.ok(Map.of("message", "Arrêt supprimé avec succès"));
+                // 2. Notifier les clients AVANT de supprimer ou de détacher l'arrêt
+                if (!clientsImpactes.isEmpty()) {
+                    notifierClientsSuppression(clientsImpactes, arret.getNom());
+
+                    // Mettre à jour le statut des réservations impactées en détachant l'arrêt
+                    clientsImpactes.forEach(res -> {
+                        res.setArretMontage(null); // On détache l'arrêt supprimé
+                        reservationRepository.save(res);
+                    });
+                }
+
+                // 3. 🛠️ CORRECTION : Nettoyer les relations dans la table de jointure avec les Trajets (@ManyToMany)
+                // On récupère tous les trajets qui utilisent cet arrêt pour les dissocier
+                List<Trajet> trajetsAssocies = trajetRepository.findAll().stream()
+                        .filter(trajet -> trajet.getArrets() != null && trajet.getArrets().contains(arret))
+                        .collect(Collectors.toList());
+
+                for (Trajet trajet : trajetsAssocies) {
+                    trajet.getArrets().remove(arret);
+                    trajetRepository.save(trajet); // Met à jour la table de jointure
+                }
+
+                // 4. Supprimer définitivement l'arrêt physique en base de données
+                arretBusRepository.delete(arret);
+
+                return ResponseEntity.ok(Map.of(
+                        "message", "Arrêt supprimé avec succès et détaché des trajets",
+                        "clientsNotifies", clientsImpactes.size()
+                ));
+            }).orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Arrêt non trouvé")));
+
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+            // Affiche l'erreur exacte dans le terminal Spring Boot pour le débuggage
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Impossible de supprimer l'arrêt. Erreur d'intégrité : " + e.getMessage()
+            ));
+        }
+    }
+    // Méthode d'alerte pour la MODIFICATION
+    private void notifierClientsModification(List<Reservation> reservations, String ancienNom, String nouveauNom) {
+        for (Reservation res : reservations) {
+            if (res.getClient() != null && res.getClient().getTelephone() != null) {
+                String telephone = res.getClient().getTelephone();
+                String nomClient = res.getClient().getNom();
+
+                String message = String.format(
+                        "Cher(e) %s, votre arrêt d'embarquement '%s' a été modifié. Le nouveau nom est désormais '%s'. Veuillez vous y référer pour votre voyage (Ticket: %s).",
+                        nomClient, ancienNom, nouveauNom, res.getCodeTicket()
+                );
+
+                // 📝 LOG DANS LA CONSOLE (À remplacer par votre service SMS/WhatsApp/Email)
+                System.out.println("[NOTIFICATION SMS envoyé à " + telephone + "] : " + message);
+            }
         }
     }
 
+    // Méthode d'alerte pour la SUPPRESSION
+    private void notifierClientsSuppression(List<Reservation> reservations, String nomArret) {
+        for (Reservation res : reservations) {
+            if (res.getClient() != null && res.getClient().getTelephone() != null) {
+                String telephone = res.getClient().getTelephone();
+                String nomClient = res.getClient().getNom();
+
+                String message = String.format(
+                        "IMPORTANT - Cher(e) %s, l'arrêt d'embarquement '%s' a été supprimé par l'agence. Veuillez contacter le service client d'urgence pour réajuster votre point de ramassage (Ticket: %s).",
+                        nomClient, nomArret, res.getCodeTicket()
+                );
+
+                // 📝 LOG DANS LA CONSOLE
+                System.out.println("[NOTIFICATION SMS D'URGENCE envoyé à " + telephone + "] : " + message);
+            }
+        }
+    }
 
 }

@@ -1,10 +1,10 @@
 package com.example.gariconnectbackend.controller;
 
-import com.example.gariconnectbackend.model.Reservation;
-import com.example.gariconnectbackend.model.User;
+import com.example.gariconnectbackend.model.*;
 import com.example.gariconnectbackend.repository.*;
 import com.example.gariconnectbackend.service.ReservationService;
 import com.example.gariconnectbackend.dto.PassagerDTO;
+import com.example.gariconnectbackend.dto.HistoriqueVoyageDTO;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -13,20 +13,10 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
-        import java.time.LocalDateTime;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-
-import com.example.gariconnectbackend.model.DemandeRecuperation;
-import com.example.gariconnectbackend.repository.*;
-
-import com.example.gariconnectbackend.dto.HistoriqueVoyageDTO;
-
-
-import org.springframework.web.bind.annotation.*;
-
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/reservations")
@@ -43,37 +33,160 @@ public class ReservationController {
     private UserRepository userRepository;
 
     @Autowired
-    private CommissionDetteRepository commissionRepo;
-
-    @Autowired
     private TrajetRepository trajetRepository;
+
     @Autowired
     private DemandeRecuperationRepository demandeRecuperationRepository;
 
-
-
-
+    /**
+     * 🟢 1. CRÉATION DE LA RÉSERVATION (STANDARD OU VIP)
+     */
     @PostMapping("/creer")
-    public ResponseEntity<?> creerReservation(@RequestBody Reservation reservation) {
+    public ResponseEntity<?> creerReservation(@RequestBody Map<String, Object> payload) {
         try {
-            var auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getName())) {
-                String emailConnecte = auth.getName();
-                User clientConnecte = userRepository.findByEmail(emailConnecte)
-                        .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+            Map<String, Object> trajetMap = (Map<String, Object>) payload.get("trajet");
+            if (trajetMap == null || trajetMap.get("id") == null) {
+                return ResponseEntity.badRequest().body(Map.of("erreur", "L'ID du trajet est obligatoire."));
+            }
+            Long trajetId = Long.valueOf(trajetMap.get("id").toString());
 
-                reservation.setClient(clientConnecte);
-            } else {
-                throw new RuntimeException("Vous devez être connecté pour effectuer une réservation.");
+            Trajet trajet = trajetRepository.findById(trajetId)
+                    .orElseThrow(() -> new RuntimeException("Trajet introuvable"));
+
+            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+            User client = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Client non trouvé"));
+
+            int nombrePlaces = payload.containsKey("nombrePlaces") && payload.get("nombrePlaces") != null
+                    ? Integer.parseInt(payload.get("nombrePlaces").toString())
+                    : 1;
+
+            if (trajet.getPlacesDisponibles() < nombrePlaces) {
+                return ResponseEntity.badRequest().body(Map.of("erreur", "Désolé, il ne reste que " + trajet.getPlacesDisponibles() + " place(s) disponible(s)."));
             }
 
-            Reservation nouvelleReservation = reservationService.creerReservation(reservation);
-            return ResponseEntity.status(HttpStatus.CREATED).body(nouvelleReservation);
+            Reservation reservation = new Reservation();
+            reservation.setTrajet(trajet);
+            reservation.setClient(client);
+            reservation.setDateReservation(LocalDateTime.now());
+            reservation.setNombrePlaces(nombrePlaces);
+
+            reservation.setStatut("EN_ATTENTE_DE_PAIEMENT");
+            reservation.setEstPaye(false);
+            reservation.setMontantPaye(0.0);
+
+            reservation.setCodeTicket("TICK-" + System.currentTimeMillis());
+
+            String typeRes = payload.containsKey("typeReservation") ? payload.get("typeReservation").toString() : "STANDARD";
+            reservation.setTypeReservation(typeRes);
+
+            if (payload.containsKey("numeroSiege") && payload.get("numeroSiege") != null) {
+                reservation.setNumeroSiege(Integer.valueOf(payload.get("numeroSiege").toString()));
+            } else {
+                reservation.setNumeroSiege(1);
+            }
+
+            trajet.setPlacesDisponibles(trajet.getPlacesDisponibles() - nombrePlaces);
+            trajetRepository.save(trajet);
+
+            double prixUnitaire = trajet.getPrix() != null ? trajet.getPrix() : 0.0;
+            double prixTotalBillet = prixUnitaire * nombrePlaces;
+            reservation.setMontantCommission(prixTotalBillet * 0.10);
+            reservation.setPartAgence(prixTotalBillet * 0.90);
+
+            Reservation savedReservation = reservationRepository.save(reservation);
+
+            if ("VIP".equalsIgnoreCase(typeRes)) {
+                DemandeRecuperation demande = new DemandeRecuperation();
+                demande.setReservation(savedReservation);
+
+                demande.setClient(client);
+                demande.setReservationId(savedReservation.getId());
+
+                String adresse = (payload.containsKey("adresseRecuperation") && payload.get("adresseRecuperation") != null)
+                        ? payload.get("adresseRecuperation").toString()
+                        : "Adresse non spécifiée";
+                demande.setAdresseTextuelle(adresse);
+
+                Double cout = 0.0;
+                if (payload.containsKey("coutRecuperation") && payload.get("coutRecuperation") != null) {
+                    cout = Double.valueOf(payload.get("coutRecuperation").toString());
+                }
+                demande.setPrixSupplementaire(cout);
+
+                Double lat = 0.0;
+                Double lon = 0.0;
+                if (payload.containsKey("latitude") && payload.get("latitude") != null) {
+                    lat = Double.valueOf(payload.get("latitude").toString());
+                }
+                if (payload.containsKey("longitude") && payload.get("longitude") != null) {
+                    lon = Double.valueOf(payload.get("longitude").toString());
+                }
+                demande.setLatitudeClient(lat);
+                demande.setLongitudeClient(lon);
+
+                demande.setStatut(StatutRecuperation.EN_ATTENTE_COTATION);
+
+                demandeRecuperationRepository.save(demande);
+                savedReservation.setDemandeRecuperation(demande);
+            }
+
+            return ResponseEntity.ok(savedReservation);
 
         } catch (Exception e) {
-            System.err.println("❌ ERREUR CRÉATION RÉSERVATION : " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("error", e.getMessage()));
+            e.printStackTrace();
+            return ResponseEntity.badRequest().body(Map.of("erreur", e.getMessage()));
+        }
+    }
+
+    /**
+     * 💵 2. ENCAISSER LE PAIEMENT
+     */
+    @PutMapping("/{id}/encaisser")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> encaisserAuGuichet(@PathVariable Long id) {
+        try {
+            Reservation reservation = reservationRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Réservation introuvable"));
+
+            reservation.setStatut("PAYE");
+            reservation.setEstPaye(true);
+            reservation.setMontantPaye(reservation.getMontantTotal());
+
+            reservationRepository.save(reservation);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "💰 Argent encaissé avec succès par l'agent. Le statut est maintenant : PAYE.",
+                    "reservation", reservation
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Erreur lors de l'encaissement : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 💵 3. INTENTION DE PAYER EN CASH
+     */
+    @PostMapping("/{id}/intention-cash")
+    @PreAuthorize("hasRole('CLIENT')")
+    public ResponseEntity<?> enregistrerIntentionCash(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
+        try {
+            Reservation reservation = reservationRepository.findById(id)
+                    .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Réservation introuvable"));
+
+            if (payload.containsKey("modePaiement")) {
+                reservation.setModePaiement(payload.get("modePaiement").toString());
+                reservationRepository.save(reservation);
+            }
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Votre intention de paiement en espèces a été enregistrée. Le statut reste en attente de paiement."
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Erreur : " + e.getMessage()));
         }
     }
 
@@ -81,7 +194,7 @@ public class ReservationController {
     public ResponseEntity<?> annulerReservation(@PathVariable Long id) {
         try {
             reservationService.annulerReservation(id);
-            return ResponseEntity.ok(Map.of("message", "Réservation annulée et notifiée avec succès"));
+            return ResponseEntity.ok(Map.of("message", "Réservation annulée avec succès"));
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
         }
@@ -136,11 +249,7 @@ public class ReservationController {
                     .filter(res -> "CONFIRMEE".equals(res.getStatut()))
                     .filter(res -> {
                         String statutTrajet = res.getTrajet().getStatut();
-
-                        if ("EN_ROUTE".equals(statutTrajet)) {
-                            return true;
-                        }
-
+                        if ("EN_ROUTE".equals(statutTrajet)) return true;
                         if ("TERMINE".equals(statutTrajet)) {
                             LocalDateTime dateReference = res.getTrajet().getUpdatedAt();
                             return (dateReference == null) || dateReference.isAfter(limite48h);
@@ -150,9 +259,7 @@ public class ReservationController {
                     .findFirst()
                     .orElse(null);
 
-            return voyageEligible != null
-                    ? ResponseEntity.ok(voyageEligible)
-                    : ResponseEntity.noContent().build();
+            return voyageEligible != null ? ResponseEntity.ok(voyageEligible) : ResponseEntity.noContent().build();
 
         } catch (Exception e) {
             return ResponseEntity.status(500).body(Map.of("error", e.getMessage()));
@@ -193,7 +300,7 @@ public class ReservationController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Ce ticket n'est pas pour votre véhicule.");
         }
 
-        if ("ATTENTE_PAIEMENT".equals(res.getStatut())) {
+        if ("ATTENTE_PAIEMENT".equals(res.getStatut()) || "EN_ATTENTE_DE_PAIEMENT".equals(res.getStatut())) {
             return ResponseEntity.status(HttpStatus.PAYMENT_REQUIRED)
                     .body("Le paiement n'a pas été confirmé. Le passager doit d'abord payer à l'agence.");
         }
@@ -205,11 +312,7 @@ public class ReservationController {
         res.setStatut("EMBARQUE");
         reservationRepository.save(res);
 
-        return ResponseEntity.ok(Map.of(
-                "message", "Accès autorisé !",
-                "nomPassager", res.getClient().getNom(),
-                "siege", res.getNumeroSiege()
-        ));
+        return ResponseEntity.ok(Map.of("message", "Accès autorisé !", "nomPassager", res.getClient().getNom(), "siege", res.getNumeroSiege()));
     }
 
     @PostMapping("/scanner-ticket")
@@ -220,168 +323,55 @@ public class ReservationController {
                     .orElseThrow(() -> new RuntimeException("Ticket introuvable"));
 
             if ("EMBARQUE".equals(res.getStatut())) {
-                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                        .body("Ce ticket a déjà été scanné et le passager est déjà en voiture.");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Ce ticket a déjà été scanné.");
             }
 
             res.setStatut("EMBARQUE");
             reservationRepository.save(res);
 
-            String messageNotification = "Bonjour " + res.getClient().getNom() +
-                    ", votre ticket " + res.getCodeTicket() + " a été scanné avec succès. Bon voyage à bord ! 🚀";
+            String msg = "Bonjour " + res.getClient().getNom() + ", votre ticket " + res.getCodeTicket() + " a été scanné avec succès. Bon voyage ! 🚀";
+            reservationService.notifierLeClient(res.getClient(), msg);
 
-            reservationService.notifierLeClient(res.getClient(), messageNotification);
-
-            return ResponseEntity.ok(Map.of(
-                    "message", "Embarquement validé avec succès ! Le passager est maintenant enregistré 'En voiture'.",
-                    "statut", "EMBARQUE",
-                    "client", res.getClient().getNom(),
-                    "siege", res.getNumeroSiege()
-            ));
+            return ResponseEntity.ok(Map.of("message", "Embarquement validé !", "statut", "EMBARQUE", "client", res.getClient().getNom()));
 
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", e.getMessage()));
         }
     }
 
-
+    /**
+     * 🔍 HISTORIQUE DES VOYAGES DU CLIENT CONNECTÉ
+     * Proprement délégué au ReservationService
+     */
     @GetMapping("/mon-historique")
     public ResponseEntity<?> getMonHistorique() {
         try {
             var auth = SecurityContextHolder.getContext().getAuthentication();
-
             if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
-                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                        .body("Accès refusé : Token JWT manquant, expiré ou invalide.");
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Accès refusé token invalide.");
             }
 
             String emailConnecte = auth.getName();
-            User client = userRepository.findByEmail(emailConnecte)
-                    .orElseThrow(() -> new RuntimeException("Client non trouvé avec l'email : " + emailConnecte));
 
-            List<Reservation> reservations = reservationRepository.findByClientId(client.getId());
-
-            List<HistoriqueVoyageDTO> historique = reservations.stream().map(res -> {
-                HistoriqueVoyageDTO dto = new HistoriqueVoyageDTO();
-                dto.setId(res.getId());
-                dto.setDateReservation(res.getDateReservation());
-                dto.setStatutPaiement(res.getStatut());
-
-                // 💸 CORRECTION DU MONTANT TOTAL :
-                // Si montantPaye est à 0 ou null (non encore payé), on prend le prix de base de la réservation/trajet
-                double prixDeBase = 0.0;
-                if (res.getMontantPaye() != null && res.getMontantPaye() > 0) {
-                    prixDeBase = res.getMontantPaye();
-                } else if (res.getTrajet() != null && res.getTrajet().getPrix() != null) {
-                    prixDeBase = res.getTrajet().getPrix();
-                }
-                dto.setMontantTotal(prixDeBase);
-
-                if (res.getTrajet() != null) {
-                    dto.setVilleDepart(res.getTrajet().getDepart());
-                    dto.setVilleArrivee(res.getTrajet().getDestination());
-                    dto.setHeureDepart(res.getTrajet().getDateHeureDepart() != null ? res.getTrajet().getDateHeureDepart().toString() : "N/A");
-                } else {
-                    dto.setVilleDepart("N/A");
-                    dto.setVilleArrivee("N/A");
-                    dto.setHeureDepart("N/A");
-                }
-
-                Optional<DemandeRecuperation> demandeOpt = demandeRecuperationRepository.findFirstByReservationId(res.getId());
-                if (demandeOpt.isPresent()) {
-                    DemandeRecuperation dm = demandeOpt.get();
-                    dto.setTypeReservation("VID"); // Aligné avec ton filtre React 'VID' / 'VIP'
-                    dto.setAdresseRamassage(dm.getAdresseTextuelle());
-                    dto.setPrixSupplementaire(dm.getPrixSupplementaire() != null ? dm.getPrixSupplementaire() : 0.0);
-                } else {
-                    dto.setTypeReservation("NORMAL");
-                    dto.setAdresseRamassage(null);
-                    dto.setPrixSupplementaire(0.0);
-                }
-
-                return dto;
-            }).collect(Collectors.toList());
+            // Délégation au service pour récupérer l'historique mappé avec le nombre de places
+            List<HistoriqueVoyageDTO> historique = reservationService.obtenirHistoriqueClient(emailConnecte);
 
             return ResponseEntity.ok(historique);
 
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Erreur interne du serveur lors du chargement de l'historique : " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("erreur", "Erreur : " + e.getMessage()));
         }
     }
-    /**
-     * 🏁 FINALISER UNE RÉSERVATION (Paiement Global)
-     * Gère les requêtes PUT envoyées par React depuis la page de paiement
-     */
+
     @PutMapping("/{id}/finaliser")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CLIENT', 'USER')")
     public ResponseEntity<?> finaliserReservation(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> payload) {
         try {
             Reservation reservationMiseAJour = reservationService.finaliserPaiementGlobal(id, payload);
-
-            return ResponseEntity.ok(Map.of(
-                    "message", "Réservation finalisée et payée avec succès.",
-                    "reservation", reservationMiseAJour
-            ));
+            return ResponseEntity.ok(Map.of("message", "Réservation finalisée.", "reservation", reservationMiseAJour));
         } catch (Exception e) {
-            System.err.println("❌ Erreur lors de la finalisation : " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Erreur lors de la finalisation : " + e.getMessage()));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Erreur : " + e.getMessage()));
         }
     }
 
-    /**
-     * 💵 ENCAISSER LE PAIEMENT PHYSIQUE AU GUICHET (Côté Agence)
-     * Gère les requêtes PUT ou POST vers /api/reservations/{id}/encaisser
-     */
-    @PutMapping("/{id}/encaisser")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
-    public ResponseEntity<?> encaisserAuGuichet(@PathVariable Long id, @RequestBody(required = false) Map<String, Object> payload) {
-        try {
-            // On utilise la logique globale sécurisée existante pour passer le statut à PAYE
-            Reservation reservationMiseAJour = reservationService.finaliserPaiementGlobal(id, payload);
-
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "💰 Argent encaissé avec succès. Le statut de la réservation est maintenant : PAYE.",
-                    "reservation", reservationMiseAJour
-            ));
-        } catch (Exception e) {
-            System.err.println("❌ Erreur lors de l'encaissement au guichet : " + e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Erreur lors de l'encaissement : " + e.getMessage()));
-        }
-    }
-
-    /**
-     * 💵 ENREGISTRER L'INTENTION DE PAIEMENT EN CASH (Côté Client)
-     * Cet endpoint accepte la déclaration du client sans toucher au statut de la réservation.
-     * Seul l'AGENCY_MANAGER pourra changer le statut lors du paiement physique.
-     */
-    @PostMapping("/{id}/intention-cash")
-    @PreAuthorize("hasRole('CLIENT')")
-    public ResponseEntity<?> enregistrerIntentionCash(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
-        try {
-            // 1. Vérifier si la réservation existe
-            Reservation reservation = reservationRepository.findById(id)
-                    .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Réservation introuvable"));
-
-            // 2. Optionnel : Log ou persistence de l'intention dans un historique si nécessaire
-            System.out.println("💵 [INTENTION CASH] Le client " + reservation.getClient().getNom()
-                    + " a déclaré vouloir payer la réservation N°" + id + " au guichet.");
-
-            // 3. Retourner une réponse positive au client SANS modifier le statut de la réservation
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "Votre choix de paiement en espèces a été enregistré. Veuillez vous présenter au guichet de l'agence pour régler votre facture."
-            ));
-        } catch (jakarta.persistence.EntityNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                    .body(Map.of("error", e.getMessage()));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("error", "Erreur lors de l'enregistrement de l'intention : " + e.getMessage()));
-        }
-    }
 }

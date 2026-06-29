@@ -4,8 +4,9 @@ import api from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
 import { 
-    FaMoon, FaSun, FaTimes, FaChair, 
-    FaCheck, FaMoneyBillWave, FaHome, FaTicketAlt, FaPaperPlane, FaMapMarkerAlt
+    FaMoon, FaSun, FaTimes, FaUsers, 
+    FaCheck, FaMoneyBillWave, FaHome, FaTicketAlt, FaPaperPlane, FaMapMarkerAlt,
+    FaMinus, FaPlus
 } from 'react-icons/fa';
 
 // Importation du composant enfant pour le ramassage à domicile
@@ -20,7 +21,7 @@ const ReservationPage = () => {
     // États du Trajet et de l'Interface
     const [trajet, setTrajet] = useState(null);
     const [arretsDisponibles, setArretsDisponibles] = useState([]); // 📍 Liste de tous les arrêts affichables
-    const [selectedSeat, setSelectedSeat] = useState('');
+    const [nombrePlaces, setNombrePlaces] = useState(1); // 🟢 Gère la quantité de places par incrémentation
     const [selectedArret, setSelectedArret] = useState(''); // 📍 Arrêt sélectionné par le client
     const [loading, setLoading] = useState(true);
     const [darkMode, setDarkMode] = useState(localStorage.getItem('client-theme') === 'dark');
@@ -51,7 +52,6 @@ const ReservationPage = () => {
     // Fonction isolée pour charger les données du trajet ET la liste des arrêts
     const fetchInitialData = async () => {
         try {
-            // 🛠️ MODIFICATION LIGNE 57 : Récupération du trajet et appel de la route par ID trajet
             const [resTrajet, resArrets] = await Promise.all([
                 api.get(`/trajets/${id}?t=${Date.now()}`),
                 api.get(`/arrets/trajet/${id}`).catch(() => ({ data: [] })) // Appelle les arrêts spécifiques à ce trajet
@@ -59,29 +59,29 @@ const ReservationPage = () => {
             
             setTrajet(resTrajet.data);
             
-            // 🟢 LOGIQUE DES ARRÊTS : On prend en priorité les arrêts retournés par la route par trajet dédiée
-            const listeArrets = (resArrets.data && resArrets.data.length > 0) 
+            // LOGIQUE DES ARRÊTS : On prend en priorité les arrêts retournés par la route par trajet dédiée
+            const listArrets = (resArrets.data && resArrets.data.length > 0) 
                 ? resArrets.data 
                 : (resTrajet.data.arrets && resTrajet.data.arrets.length > 0 ? resTrajet.data.arrets : []);
             
-            setArretsDisponibles(listeArrets);
+            setArretsDisponibles(listArrets);
 
             // Présélection du premier arrêt de la liste
-            if (listeArrets.length > 0) {
-                setSelectedArret(listeArrets[0].id.toString());
+            if (listArrets.length > 0) {
+                setSelectedArret(listArrets[0].id.toString());
             }
             
-            // Présélection automatique de la première place disponible
+            // 🟢 Présélection initiale de 1 place s'il y a de la disponibilité
             if (resTrajet.data && resTrajet.data.placesDisponibles > 0) {
-                setSelectedSeat('1');
+                setNombrePlaces(1);
             } else {
-                setSelectedSeat('');
+                setNombrePlaces(0);
             }
 
         } catch (err) {
             console.error("Erreur lors du chargement des données :", err);
         } finally {
-            setLoading(false);
+            loading && setLoading(false);
         }
     };
 
@@ -97,6 +97,20 @@ const ReservationPage = () => {
         localStorage.setItem('client-theme', newMode ? 'dark' : 'light');
     };
 
+    // 🟢 Fonctions de gestion de l'incrémentation
+    const incrementPlaces = () => {
+        const maxPlaces = trajet?.placesDisponibles ? Math.min(trajet.placesDisponibles, 10) : 10;
+        if (nombrePlaces < maxPlaces) {
+            setNombrePlaces(prev => prev + 1);
+        }
+    };
+
+    const decrementPlaces = () => {
+        if (nombrePlaces > 1) {
+            setNombrePlaces(prev => prev - 1);
+        }
+    };
+
     // ====================================================================
     // SOUMISSION METIER : ENCHAÎNEMENT DES ACTIONS 
     // ====================================================================
@@ -110,8 +124,10 @@ const ReservationPage = () => {
             return alert("Désolé, ce trajet vient d'être complété entre-temps.");
         }
 
-        // Sécurité commune : Peu importe le mode, un siège doit être choisi
-        if (!selectedSeat) return alert(t('select_seat_error') || "Veuillez choisir un siège.");
+        // Sécurité : La quantité doit être valide
+        if (nombrePlaces <= 0 || nombrePlaces > trajet?.placesDisponibles) {
+            return alert("Veuillez choisir une quantité de places valide.");
+        }
 
         // Sécurité Arrêt : Un arrêt doit être sélectionné si des arrêts sont disponibles en Standard
         if (!isVip && arretsDisponibles.length > 0 && !selectedArret) {
@@ -131,76 +147,89 @@ const ReservationPage = () => {
         }
     };
 
-    // ACTION 2-VIP : Création de la réservation + Demande VIP (SANS PAIEMENT IMMEDIAT)
+    // ACTION 2-VIP : Création de la réservation + VRAIES COORDONNÉES GPS VIA UNE SEULE ROUTE BACKEND
     const creerReservationVIP = async () => {
         setIsSubmitting(true);
         try {
-            // 1. Création de la réservation de base
             const reservationPayload = {
                 trajet: { id: parseInt(id) },
-                numeroSiege: parseInt(selectedSeat)
-                // En mode VIP, l'arrêt physique n'est pas obligatoire car le chauffeur vient à domicile
+                nombrePlaces: parseInt(nombrePlaces),
+                typeReservation: "VIP",
+                estPaye: false,
+                
+                adresseRecuperation: recuperationData.adresseTextuelle,
+                latitude: parseFloat(recuperationData.latitudeClient) || 0.0,
+                longitude: parseFloat(recuperationData.longitudeClient) || 0.0,
+                coutRecuperation: parseFloat(recuperationData.coutRecuperation) || 0.0
             };
 
             const resReservation = await api.post('/reservations/creer', reservationPayload);
-            const nouvelleReservationId = resReservation.data.id;
 
-            if (!nouvelleReservationId) throw new Error("Erreur de génération du billet.");
+            if (!resReservation.data || !resReservation.data.id) {
+                throw new Error("Erreur de génération de la réservation VIP.");
+            }
 
-            // 2. Lancement de la demande VIP liée à la réservation
-            await api.post('/recuperations/creer', {
-                reservationId: nouvelleReservationId,
-                latitudeClient: parseFloat(recuperationData.latitudeClient) || 0.0,
-                longitudeClient: parseFloat(recuperationData.longitudeClient) || 0.0,
-                adresseTextuelle: recuperationData.adresseTextuelle
-            });
-
-            alert("Succès ! Votre place a été bloquée et votre demande de ramassage a été envoyée. L'agence va calculer votre tarif kilométrique.");
+            alert("Succès ! Vos places ont été bloquées (En attente de paiement) et vos coordonnées de récupération GPS ont bien été enregistrées. Le chauffeur verra votre position lors de sa course.");
             navigate('/client/historique');
 
         } catch (error) {
             console.error("Erreur cycle VIP :", error);
-            const errorMessage = error.response?.data?.error || error.response?.data?.message || "Erreur de connexion.";
-            alert("Échec de la demande : " + errorMessage);
+            const errorMessage = error.response?.data?.erreur || error.response?.data?.message || "Erreur de connexion avec le serveur.";
+            alert("Échec de la demande VIP : " + errorMessage);
             fetchInitialData(); 
         } finally {
             setIsSubmitting(false);
         }
     };
 
-    // ACTION 2-STANDARD : Finalisation du paiement (Déclenché depuis la Modale)
+    // ACTION 2-STANDARD : Finalisation ou Déclaration d'intention de paiement Cash
     const handleFinalizePaymentStandard = async (isCash = false) => {
-        if (!isCash && !paymentData.referenceTransaction) return alert(t('transaction_id_error') || "L'ID de transaction est requis.");
+        if (!isCash && !paymentData.referenceTransaction) {
+            return alert(t('transaction_id_error') || "L'ID de transaction est requis.");
+        }
         
         setIsSubmitting(true);
         try {
-            // 1. Création de la réservation avec l'arrêt choisi
             const reservationPayload = {
                 trajet: { id: parseInt(id) },
-                numeroSiege: parseInt(selectedSeat),
-                // 🟢 Envoi de l'arretMontage formaté pour la base de données
-                arretMontage: selectedArret ? { id: parseInt(selectedArret) } : null
+                nombrePlaces: parseInt(nombrePlaces),
+                typeReservation: "STANDARD",
+                estPaye: false 
             };
+            
+            if (selectedArret) {
+                 reservationPayload.arretMontage = { id: parseInt(selectedArret) };
+            }
             
             const resReservation = await api.post('/reservations/creer', reservationPayload);
             const reservationId = resReservation.data.id;
 
-            // 2. Finalisation classique par Mobile Money ou Cash
-            const mode = isCash ? "CASH" : paymentData.modePaiement;
-            const ref = isCash ? "CAISSE" : paymentData.referenceTransaction;
-
-            await api.put(`/reservations/${reservationId}/finaliser`, {
-                modePaiement: mode,
-                referenceTransaction: ref
-            });
+            if (isCash) {
+                await api.post(`/reservations/${reservationId}/intention-cash`, {
+                    modePaiement: "CASH"
+                });
+                alert("Réservation enregistrée avec succès ! Vos places ont été bloquées. Veuillez vous présenter au guichet de l'agence pour régler en espèces.");
+            } else {
+                await api.put(`/reservations/${reservationId}/finaliser`, {
+                    modePaiement: paymentData.modePaiement,
+                    referenceTransaction: paymentData.referenceTransaction
+                });
+                alert("Réservation validée et confirmée avec succès !");
+            }
             
-            alert(isCash ? "Réservation en attente (Paiement physique à valider à l'agence)" : "Réservation validée et confirmée avec succès !");
             setShowModal(false);
             navigate('/client/historique'); 
             
         } catch (error) {
-            const errorMessage = error.response?.data?.error || error.response?.data?.message || "Erreur lors de la procédure.";
-            alert("Échec de la réservation : " + errorMessage);
+            console.error("Détails de l'erreur:", error.response);
+            const errorMessage = error.response?.data?.error || error.response?.data?.message || error.response?.data || "Erreur lors de la procédure.";
+            
+            let alertMsg = errorMessage;
+            if (typeof errorMessage === 'object') {
+                 alertMsg = JSON.stringify(errorMessage);
+            }
+            
+            alert("Échec de la réservation : " + alertMsg);
             fetchInitialData(); 
             setShowModal(false);
         } finally {
@@ -221,11 +250,12 @@ const ReservationPage = () => {
     );
     
     const isFull = !trajet.placesDisponibles || trajet.placesDisponibles <= 0;
+    const prixUnitaire = trajet?.prix || 0;
+    const prixTotalBillet = prixUnitaire * nombrePlaces;
 
     return (
         <div className={`min-h-screen w-full transition-colors duration-500 flex flex-col items-center justify-center py-6 px-4 md:py-12 ${darkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
             
-            {/* Bouton Theme dark/light */}
             <button 
                 onClick={toggleTheme} 
                 className={`fixed top-4 right-4 md:top-6 md:right-6 p-3 md:p-4 rounded-2xl shadow-lg border z-10 transition-all active:scale-[0.95] ${darkMode ? 'bg-slate-900 border-slate-800 text-yellow-400 hover:bg-slate-800' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-100'}`}
@@ -233,13 +263,10 @@ const ReservationPage = () => {
                 {darkMode ? <FaSun size={20}/> : <FaMoon size={20}/>}
             </button>
 
-            {/* Conteneur principal Responsive adaptif */}
             <div className={`w-full max-w-md md:max-w-2xl lg:max-w-4xl rounded-[2rem] md:rounded-[3rem] shadow-2xl overflow-hidden border transition-all duration-500 ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
                 
-                {/* Structure en Grille Responsive */}
                 <div className="lg:grid lg:grid-cols-12 min-h-[500px]">
                     
-                    {/* Header Ticket */}
                     <div className="bg-indigo-600 p-6 md:p-10 text-white text-center flex flex-col justify-center items-center lg:col-span-4 transition-colors duration-500">
                         <span className="text-[10px] font-black uppercase bg-black/20 px-4 py-1 rounded-full mb-3 inline-block tracking-wider">
                             {trajet?.agence?.nom || "Agence Partenaire"}
@@ -248,15 +275,13 @@ const ReservationPage = () => {
                         <p className="text-indigo-100 mt-2 text-sm md:text-base font-medium break-words w-full px-2">
                             {trajet?.depart} ➔ {trajet?.destination}
                         </p>
-                        <span className="text-xs font-bold mt-4 bg-white/20 px-3 py-1 rounded-lg">
+                        <span className={`text-xs font-bold mt-4 px-3 py-1 rounded-lg ${isFull ? 'bg-red-500/80' : 'bg-white/20'}`}>
                             🎫 {trajet?.placesDisponibles} places restantes
                         </span>
                     </div>
 
-                    {/* Section Formulaires / Actions */}
                     <div className="p-6 md:p-10 lg:col-span-8 flex flex-col justify-between">
                         <div>
-                            {/* CHOIX DU TYPE DE VOYAGE (STANDARD VS VIP) */}
                             <div className="mb-6 md:mb-8">
                                 <label className={`block text-[10px] font-black uppercase mb-3 tracking-wider transition-colors duration-500 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                                     Type de voyage
@@ -279,7 +304,6 @@ const ReservationPage = () => {
                                 </div>
                             </div>
 
-                            {/* 🟢 LISTE DES ARRÊTS DE MONTÉE FILTRÉS PAR LE TRAJET */}
                             {!isVip && arretsDisponibles.length > 0 && (
                                 <div className="mb-6 md:mb-8">
                                     <label className={`block text-[10px] font-black uppercase mb-3 tracking-wider transition-colors duration-500 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -301,33 +325,47 @@ const ReservationPage = () => {
                                 </div>
                             )}
 
-                            {/* SÉLECTION DE LA PLACE */}
+                            {/* 🟢 BLOC MODIFIÉ : COMPTEUR SÉLECTEUR DE QUANTITÉ DE PLACES */}
                             <div className="mb-6 md:mb-8">
                                 <label className={`block text-[10px] font-black uppercase mb-3 tracking-wider transition-colors duration-500 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                                    <FaChair className="inline mr-2 text-indigo-500" size={12}/> Sélection de la place
+                                    <FaUsers className="inline mr-2 text-indigo-500" size={12}/> Nombre de places à réserver
                                 </label>
                                 {isFull ? (
                                     <div className="w-full p-4 rounded-2xl bg-red-500/10 text-red-500 font-black text-sm text-center tracking-widest border border-red-500/20 animate-pulse">
                                         COMPLET
                                     </div>
                                 ) : (
-                                    <div className="relative">
-                                        <select 
-                                            className={`w-full p-4 rounded-2xl outline-none font-black text-lg md:text-xl text-center border-2 appearance-none cursor-pointer transition-all duration-500 focus:ring-4 focus:ring-indigo-500/10 ${darkMode ? 'bg-slate-950 text-white border-slate-800 focus:border-indigo-500' : 'bg-slate-50 text-slate-800 border-slate-200 focus:border-indigo-400'}`}
-                                            value={selectedSeat}
-                                            onChange={(e) => setSelectedSeat(e.target.value)}
+                                    <div className={`flex items-center justify-between p-2 rounded-2xl border-2 transition-all duration-500 ${darkMode ? 'bg-slate-950 border-slate-800' : 'bg-slate-50 border-slate-200'}`}>
+                                        <button
+                                            type="button"
+                                            onClick={decrementPlaces}
+                                            disabled={nombrePlaces <= 1}
+                                            className={`p-4 rounded-xl flex items-center justify-center transition-all ${nombrePlaces <= 1 ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-500 active:scale-95'}`}
                                         >
-                                            {[...Array(trajet.placesDisponibles).keys()].map(i => (
-                                                <option key={i + 1} value={i + 1} className="text-slate-900 dark:text-white bg-white dark:bg-slate-950 font-bold">
-                                                    Réserver {i + 1} {i + 1 > 1 ? 'places' : 'place'}
-                                                </option>
-                                            ))}
-                                        </select>
+                                            <FaMinus size={14} />
+                                        </button>
+                                        
+                                        <div className="text-center">
+                                            <span className="text-xl md:text-2xl font-black block">
+                                                {nombrePlaces}
+                                            </span>
+                                            <span className="text-[10px] uppercase font-bold text-slate-400">
+                                                {nombrePlaces > 1 ? 'Places sélectionnées' : 'Place sélectionnée'}
+                                            </span>
+                                        </div>
+
+                                        <button
+                                            type="button"
+                                            onClick={incrementPlaces}
+                                            disabled={nombrePlaces >= Math.min(trajet.placesDisponibles, 10)}
+                                            className={`p-4 rounded-xl flex items-center justify-center transition-all ${nombrePlaces >= Math.min(trajet.placesDisponibles, 10) ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-500 active:scale-95'}`}
+                                        >
+                                            <FaPlus size={14} />
+                                        </button>
                                     </div>
                                 )}
                             </div>
 
-                            {/* FORMULAIRE CONDITIONNEL DU RAMASSAGE VIP */}
                             {isVip && (
                                 <div className={`mb-6 md:mb-8 p-4 md:p-6 border-2 rounded-2xl transition-all duration-500 w-full overflow-hidden ${darkMode ? 'border-emerald-500/20 bg-emerald-500/5' : 'border-emerald-500/30 bg-emerald-50/30'}`}>
                                     <h3 className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 mb-4 tracking-wider flex items-center gap-2">
@@ -339,11 +377,13 @@ const ReservationPage = () => {
                                 </div>
                             )}
 
-                            {/* AFFICHAGE DU PRIX TOTAL DU BILLET */}
                             <div className={`p-5 md:p-6 rounded-3xl border-2 mb-6 text-center transition-all duration-500 ${darkMode ? 'bg-indigo-950/20 border-indigo-900/40' : 'bg-indigo-50/50 border-indigo-100'}`}>
-                                <p className={`text-[10px] font-black uppercase mb-1 tracking-wider ${darkMode ? 'text-indigo-400' : 'text-indigo-500'}`}>Montant du Billet</p>
+                                <p className={`text-[10px] font-black uppercase mb-1 tracking-wider ${darkMode ? 'text-indigo-400' : 'text-indigo-500'}`}>Total Billet(s)</p>
                                 <p className="text-2xl md:text-3xl font-black text-indigo-600 dark:text-indigo-400">
-                                    {trajet?.prix?.toLocaleString()} <span className="text-sm font-bold">FC</span>
+                                    {prixTotalBillet.toLocaleString()} <span className="text-sm font-bold">FC</span>
+                                </p>
+                                <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase">
+                                    ({prixUnitaire.toLocaleString()} FC x {nombrePlaces})
                                 </p>
                                 {isVip && (
                                     <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-2 animate-pulse">
@@ -353,11 +393,10 @@ const ReservationPage = () => {
                             </div>
                         </div>
 
-                        {/* BOUTON D'ACTION DYNAMIQUE */}
                         <button 
                             onClick={handleInitialSubmit}
-                            disabled={isFull || isSubmitting || !selectedSeat}
-                            className={`w-full font-black py-4 md:py-5 rounded-2xl uppercase text-xs transition-all shadow-lg flex items-center justify-center gap-2 tracking-wider active:scale-[0.99] ${isFull || !selectedSeat ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed shadow-none' : (isVip ? 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-600/20')}`}
+                            disabled={isFull || isSubmitting || nombrePlaces <= 0}
+                            className={`w-full font-black py-4 md:py-5 rounded-2xl uppercase text-xs transition-all shadow-lg flex items-center justify-center gap-2 tracking-wider active:scale-[0.99] ${isFull || nombrePlaces <= 0 ? 'bg-slate-200 text-slate-400 dark:bg-slate-800 dark:text-slate-600 cursor-not-allowed shadow-none' : (isVip ? 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-600/20' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-indigo-600/20')}`}
                         >
                             {isSubmitting ? "Traitement..." : (isVip ? <><FaPaperPlane /> Envoyer demande de ramassage VIP</> : "Procéder au paiement")}
                         </button>
@@ -366,12 +405,11 @@ const ReservationPage = () => {
                 </div>
             </div>
 
-            {/* FENÊTRE DIALOGUE (MODAL) DU PAIEMENT MOBILE MONEY */}
+            {/* MODAL DU PAIEMENT */}
             {showModal && !isVip && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
                     <div className={`w-full max-w-sm rounded-[2rem] md:rounded-[2.5rem] p-6 md:p-8 relative shadow-2xl transition-all duration-500 border ${darkMode ? 'bg-slate-900 text-white border-slate-800' : 'bg-white text-slate-900 border-slate-100'}`}>
                         
-                        {/* Bouton de fermeture */}
                         <button 
                             onClick={() => setShowModal(false)} 
                             className="absolute top-4 right-4 text-slate-400 hover:text-red-500 transition-colors p-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -379,7 +417,6 @@ const ReservationPage = () => {
                             <FaTimes size={20}/>
                         </button>
 
-                        {/* Étape Écran 1 : Résumé des montants */}
                         {paymentStep === 1 ? (
                             <div className="text-center py-2">
                                 <h3 className="text-xl font-black mb-4 md:mb-6 tracking-tight">Résumé</h3>
@@ -389,8 +426,8 @@ const ReservationPage = () => {
                                         <span className="text-indigo-600 dark:text-indigo-400">Standard</span>
                                     </div>
                                     <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider">
-                                        <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>Siège Sélectionné</span>
-                                        <span className="text-indigo-600 dark:text-indigo-400">N° {selectedSeat}</span>
+                                        <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>Places choisies</span>
+                                        <span className="text-indigo-600 dark:text-indigo-400">{nombrePlaces}</span>
                                     </div>
                                     {selectedArret && arretsDisponibles && (
                                         <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider">
@@ -401,9 +438,9 @@ const ReservationPage = () => {
                                         </div>
                                     )}
                                     <div className={`flex justify-between items-center text-xs font-bold uppercase tracking-wider border-t pt-4 ${darkMode ? 'border-slate-800' : 'border-slate-200'}`}>
-                                        <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>Total Billet</span>
+                                        <span className={darkMode ? 'text-slate-400' : 'text-slate-500'}>Total à payer</span>
                                         <span className="text-lg md:text-xl font-black text-slate-900 dark:text-white">
-                                            {trajet?.prix?.toLocaleString()} FC
+                                            {prixTotalBillet.toLocaleString()} FC
                                         </span>
                                     </div>
                                 </div>
@@ -415,7 +452,6 @@ const ReservationPage = () => {
                                 </button>
                             </div>
                         ) : (
-                            /* Étape Écran 2 : Sélection de la passerelle de règlement */
                             <div className="space-y-4 md:space-y-5 py-2">
                                 <h3 className="text-xl font-black text-center mb-2 tracking-tight">Paiement</h3>
                                 

@@ -1,6 +1,8 @@
 package com.example.gariconnectbackend.service;
 
 import com.example.gariconnectbackend.model.Courrier;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -9,24 +11,39 @@ import org.springframework.http.*;
 @Service
 public class IntelligenceArtificielleService {
 
-
-    @Value("${gemini.api.key:}") // Les deux-points ":" évitent le crash si la clé est absente
+    @Value("${gemini.api.key:}")
     private String geminiApiKey;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    // Taux du jour indicatif (Ajustable ou connectable à une API de taux si nécessaire)
+    private static final double TAUX_DU_JOUR = 2800.0;
+
     public void evaluerRisqueEtPrix(Courrier colis) {
         try {
-            // 1. Préparation du Prompt (La consigne pour Gemini)
+            // 1. Préparation du Prompt Multidevise avec Demande de Justifications et Raisons Établies
             String prompt = String.format(
-                    "Tu es un expert en logistique pour une agence de transport au Congo. " +
-                            "Évalue le risque et le prix de transport pour ce colis : Poids: %s Kg, Valeur: %s FC, Fragile: %b, Description: %s. " +
-                            "Réponds UNIQUEMENT avec ce format exact séparé par des barres verticales (|) : " +
-                            "NIVEAU_DE_RISQUE (FAIBLE, MODERE ou ELEVE) | PRIX_EN_FC | JUSTIFICATION_COURTE",
-                    colis.getPoidsKg(), colis.getValeurEstimee(), colis.isEstFragile(), colis.getDescription()
+                    "Tu es un expert en tarification et logistique routière pour GariConnect en République Démocratique du Congo (RDC).\n" +
+                            "Évalue de manière critique le risque de transport et suggère un prix de taxation optimal pour ce colis :\n" +
+                            "- Description : %s\n" +
+                            "- Poids : %s Kg\n" +
+                            "- Valeur déclarée : %s (Évalue si c'est en Francs Congolais ou Dollars Américains selon le montant)\n" +
+                            "- Est fragile ? : %b\n\n" +
+                            "Instructions impératives :\n" +
+                            "1. Détermine le niveau de risque parmi : FAIBLE, MODERE, ELEVE.\n" +
+                            "2. Suggère un prix de taxation réaliste et optimal en Dollars Américains (USD).\n" +
+                            "3. Donne également son équivalent exact en Francs Congolais (FC) en appliquant strictement le taux du jour actuel qui est de 1 USD = %.0f FC.\n" +
+                            "4. Rédige une justification détaillée en donnant explicitement les RAISONS qui soutiennent ton analyse (ex: corrélation entre le poids et l'usure du véhicule, risques liés à la fragilité sur les routes en province, valeur marchande nécessitant une assurance ou des mesures de sécurité contre le vol).\n\n" +
+                            "Format de réponse exigé (Réponds UNIQUEMENT sous cette forme, sur une seule ligne continue, les 4 éléments séparés strictement par des barres verticales) :\n" +
+                            "NIVEAU_DE_RISQUE | PRIX_EN_USD | PRIX_EN_FC | JUSTIFICATION_ET_RAISONS_LOGISTIQUES",
+                    colis.getDescription(), colis.getPoidsKg(), colis.getValeurEstimee(), colis.isEstFragile(), TAUX_DU_JOUR
             );
 
-            // 2. Préparation de la requête HTTP pour l'API Gemini 1.5 Flash
+            // 2. Préparation et envoi de la requête HTTP vers l'API Gemini 1.5 Flash
             String url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + geminiApiKey;
 
-            String requestBody = "{ \"contents\": [{ \"parts\": [{\"text\": \"" + prompt + "\"}] }] }";
+            String jsonPrompt = prompt.replace("\\", "\\\\").replace("\"", "\\\"");
+            String requestBody = "{ \"contents\": [{ \"parts\": [{\"text\": \"" + jsonPrompt + "\"}] }] }";
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
@@ -35,35 +52,72 @@ public class IntelligenceArtificielleService {
             RestTemplate restTemplate = new RestTemplate();
             ResponseEntity<String> response = restTemplate.postForEntity(url, entity, String.class);
 
-            // 3. Traitement de la réponse de l'IA
-            // (La réponse réelle demande un parsing JSON avec ObjectMapper ou Jackson,
-            // ici simplifié conceptuellement pour extraire le texte généré)
+            // 3. Extraction et parsing JSON sécurisé
             String texteGenere = extraireTexteDeLaReponseGemini(response.getBody());
 
-            String[] parts = texteGenere.split("\\|");
+            if (texteGenere != null && texteGenere.contains("|")) {
+                String[] parts = texteGenere.split("\\|");
 
-            if(parts.length >= 3) {
-                colis.setNiveauRisqueIA(parts[0].trim());
-                colis.setPrixSuggereIA(Double.parseDouble(parts[1].replaceAll("[^0-9.]", ""))); // Nettoie le texte pour garder que les chiffres
-                colis.setJustificationIA(parts[2].trim());
+                if (parts.length >= 4) {
+                    // Composant 1 : Risque
+                    colis.setNiveauRisqueIA(parts[0].trim().toUpperCase());
+
+                    // Composant 2 & 3 : Prix en USD et son équivalent en FC
+                    String usdNettoye = parts[1].replaceAll("[^0-9.]", "").trim();
+                    String fcNettoye = parts[2].replaceAll("[^0-9.]", "").trim();
+
+                    double prixUSD = Double.parseDouble(usdNettoye);
+                    double prixFC = Double.parseDouble(fcNettoye);
+
+                    // Par défaut, on stocke la valeur en FC dans le champ prixSuggereIA (ou selon ta préférence de devise pivot)
+                    colis.setPrixSuggereIA(prixFC);
+
+                    // Composant 4 : Raisons qui soutiennent l'analyse logistique
+                    String raisonsLogistiques = parts[3].trim();
+
+                    // On encapsule la double tarification clairement au début de la justification pour l'affichage Frontend
+                    String justificationComplete = String.format(
+                            "[Tarification : %.2f USD / Equiv: %.0f FC au taux de %.0f] - Raisons de l'analyse : %s",
+                            prixUSD, prixFC, TAUX_DU_JOUR, raisonsLogistiques
+                    );
+
+                    colis.setJustificationIA(justificationComplete);
+                }
             }
 
         } catch (Exception e) {
-            System.err.println("Erreur API Gemini : " + e.getMessage());
-            // Fallback (Solution de secours si pas d'internet)
+            System.err.println("❌ Erreur API Gemini : " + e.getMessage());
+            // Fallback de sécurité (Hors-ligne / Quota dépassé)
             colis.setNiveauRisqueIA("MODERE");
-            colis.setPrixSuggereIA(5000.0);
-            colis.setJustificationIA("Évaluation IA temporairement indisponible. Prix par défaut appliqué.");
+            double fallbackUSD = 3.0;
+            double fallbackFC = fallbackUSD * TAUX_DU_JOUR;
+            colis.setPrixSuggereIA(fallbackFC);
+            colis.setJustificationIA(String.format(
+                    "[Tarification Secours : %.2f USD / %.0f FC] - Service d'analyse indisponible. Motifs : Problème d'accès à l'API Gemini.",
+                    fallbackUSD, fallbackFC
+            ));
         }
     }
 
-    // Méthode utilitaire pour parser la réponse JSON de Gemini
     private String extraireTexteDeLaReponseGemini(String jsonResponse) {
-        // En vrai, utiliser un ObjectMapper (Jackson) pour lire:
-        // candidates[0].content.parts[0].text
-        // Exemple brut et simplifié :
-        int start = jsonResponse.indexOf("\"text\": \"") + 9;
-        int end = jsonResponse.indexOf("\"", start);
-        return jsonResponse.substring(start, end).replace("\\n", "");
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(jsonResponse);
+
+            // Navigation sécurisée dans l'arbre JSON de Gemini 1.5
+            JsonNode textNode = root.path("candidates")
+                    .path(0)
+                    .path("content")
+                    .path("parts")
+                    .path(0)
+                    .path("text");
+
+            if (!textNode.isMissingNode()) {
+                return textNode.asText();
+            }
+        } catch (Exception e) {
+            System.err.println("Erreur lors du parsing JSON : " + e.getMessage());
+        }
+        return "";
     }
 }

@@ -1,213 +1,11 @@
-//package com.example.gariconnectbackend.model;
-//
-//import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-//import com.fasterxml.jackson.annotation.JsonProperty;
-//import com.fasterxml.jackson.annotation.JsonAlias;
-//import jakarta.persistence.*;
-//import lombok.*;
-//import java.time.LocalDateTime;
-//import jakarta.persistence.Transient;
-//@Entity
-//@Table(name = "reservations")
-//@Getter @Setter
-//@NoArgsConstructor @AllArgsConstructor
-//public class Reservation {
-//
-//    @Id
-//    @GeneratedValue(strategy = GenerationType.IDENTITY)
-//    private Long id;
-//
-//    @Column(name = "date_reservation")
-//    @JsonProperty("date_reservation")
-//    private LocalDateTime dateReservation;
-//
-//    @Column(name = "numero_siege")
-//    @JsonProperty("numero_siege")
-//    private Integer numeroSiege;
-//
-//    private String statut;
-//    private Double montantPaye;
-//
-//    // --- DÉTAILS FINANCIERS ---
-//    private Double montantCommission; // Part Admin
-//    private Double partAgence;        // Part Agence
-//
-//    // --- SÉCURITÉ & TICKETS ---
-//    @Column(name = "code_ticket")
-//    @JsonProperty("code_ticket")
-//    private String codeTicket;
-//
-//    // Double compatibilité à la désérialisation (accepte 'client' ou 'user' du frontend)
-//    @ManyToOne(cascade = CascadeType.MERGE)
-//    @JoinColumn(name = "user_id")
-//    @JsonIgnoreProperties({"reservations", "password", "trajets", "vehicules", "agenceEmployeur"})
-//    @JsonProperty("client")
-//    @JsonAlias("user")
-//    private User client;
-//
-//    @ManyToOne
-//    @JoinColumn(name = "trajet_id")
-//    private Trajet trajet;
-//
-//    @ManyToOne
-//    @JoinColumn(name = "vehicule_id")
-//    private Vehicule vehicule;
-//    // --- MODE DE PAIEMENT ---
-//    @Column(name = "mode_paiement")
-//    @com.fasterxml.jackson.annotation.JsonProperty("mode_paiement")
-//    private String modePaiement;
-//    // =========================================================================
-//    // GETTERS ET SETTERS MANUELS (Surcharge et compatibilité)
-//    // =========================================================================
-//// --- CALCUL DYNAMIQUE POUR L'AGENCE ET LES RAPPORTS ---
-//    @Transient // Ne crée pas de colonne en BDD
-//    @JsonProperty("montantTotalAvecSurplus")
-//    public Double getMontantTotalAvecSurplus() {
-//        double total = 0.0;
-//
-//        // 1. On prend la base du prix du billet
-//        if (this.montantPaye != null && this.montantPaye > 0) {
-//            total += this.montantPaye;
-//        } else if (this.getTrajet() != null && this.getTrajet().getPrix() != null) {
-//            total += this.getTrajet().getPrix();
-//        }
-//
-//        return total;
-//    }
-//    // --- LIAISON AVEC LA RÉCUPÉRATION À DOMICILE ---
-//    @OneToOne(mappedBy = "reservation", cascade = CascadeType.MERGE, fetch = FetchType.EAGER)
-//    @com.fasterxml.jackson.annotation.JsonIgnoreProperties("reservation") // Évite les boucles infinies de sérialisation
-//    private DemandeRecuperation demandeRecuperation;
-//
-//    // --- CALCUL DYNAMIQUE DU TOTAL POUR LE FRONTEND ---
-//    @Transient // Indique à JPA de ne pas chercher ce champ dans la table de la BDD
-//    @JsonProperty("montant_total")
-//    public Double getMontantTotal() {
-//        Double total = (this.montantPaye != null) ? this.montantPaye : 0.0;
-//
-//        // Si une demande de récupération existe, on ajoute ses frais au total
-//        if (this.demandeRecuperation != null && this.demandeRecuperation.getPrixSupplementaire() != null) {
-//            total += this.demandeRecuperation.getPrixSupplementaire();
-//        }
-//
-//        return total;
-//    }
-//    public Long getId() {
-//        return id;
-//    }
-//
-//    public void setId(Long id) {
-//        this.id = id;
-//    }
-//
-//    public LocalDateTime getDateReservation() {
-//        return dateReservation;
-//    }
-//
-//    public void setDateReservation(LocalDateTime dateReservation) {
-//        this.dateReservation = dateReservation;
-//    }
-//
-//    public Integer getNumeroSiege() {
-//        return numeroSiege;
-//    }
-//
-//    public void setNumeroSiege(Integer numeroSiege) {
-//        this.numeroSiege = numeroSiege;
-//    }
-//
-//    public String getStatut() {
-//        return statut;
-//    }
-//
-//    public void setStatut(String statut) {
-//        this.statut = statut;
-//    }
-//
-//    public Double getMontantPaye() {
-//        return montantPaye;
-//    }
-//
-//    public void setMontantPaye(Double montantPaye) {
-//        this.montantPaye = montantPaye;
-//    }
-//
-//    public Double getMontantCommission() {
-//        return montantCommission;
-//    }
-//
-//    public void setMontantCommission(Double montantCommission) {
-//        this.montantCommission = montantCommission;
-//    }
-//
-//    public Double getPartAgence() {
-//        return partAgence;
-//    }
-//
-//    public void setPartAgence(Double partAgence) {
-//        this.partAgence = partAgence;
-//    }
-//
-//    public String getCodeTicket() {
-//        return codeTicket;
-//    }
-//
-//    public void setCodeTicket(String codeTicket) {
-//        this.codeTicket = codeTicket;
-//    }
-//
-//
-//    public void setClient(User client) {
-//        this.client = client;
-//    }
-//
-//    // --- Double compatibilité à la sérialisation JSON ---
-//    // Cela force Jackson à générer une clé "client" dans le JSON
-//    @JsonProperty("client")
-//    public User getClient() {
-//        return this.client;
-//    }
-//
-//    // Cela force Jackson à générer AUSSI une clé "user" dupliquée dans le JSON
-//    @JsonProperty("user")
-//    public User getUser() {
-//        return this.client;
-//    }
-//
-//    @JsonProperty("user")
-//    public void setUser(User user) {
-//        this.client = user;
-//    }
-//
-//    public Trajet getTrajet() {
-//        return trajet;
-//    }
-//
-//    public void setTrajet(Trajet trajet) {
-//        this.trajet = trajet;
-//    }
-//
-//    public Vehicule getVehicule() {
-//        return vehicule;
-//    }
-//
-//    public void setVehicule(Vehicule vehicule) {
-//        this.vehicule = vehicule;
-//    }
-//    public void setReferencePaiement(String caisse) {
-//    }
-//
-//
-//}
-
 package com.example.gariconnectbackend.model;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
-        import lombok.*;
-        import java.time.LocalDateTime;
+import lombok.*;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "reservations")
@@ -235,7 +33,8 @@ public class Reservation {
     @JsonIgnoreProperties("reservation")
     private Paiement paiement;
 
-    private String statut;
+    private String typeReservation; // Stockera "STANDARD" ou "VIP"
+    private String statut;          // "EN_ATTENTE_DE_PAIEMENT", "PAYE", etc.
     private Double montantPaye;
 
     // --- DÉTAILS FINANCIERS ---
@@ -247,20 +46,20 @@ public class Reservation {
     @JsonProperty("code_ticket")
     private String codeTicket;
 
-
-
     // Double compatibilité à la désérialisation
     @ManyToOne(cascade = CascadeType.MERGE)
     @JoinColumn(name = "user_id")
-    // 🔥 CORRECTION : On ignore 'hibernateLazyInitializer' pour éviter les crashs de requêtes paresseuses
     @JsonIgnoreProperties({"reservations", "password", "trajets", "vehicules", "agenceEmployeur", "hibernateLazyInitializer", "handler"})
     @JsonProperty("client")
     @JsonAlias("user")
     private User client;
 
+    private String referenceTransaction;
+    private String modePaiement;
+    private Boolean estPaye;
+
     @ManyToOne
     @JoinColumn(name = "trajet_id")
-    // 🔥 CORRECTION : On empêche le trajet de renvoyer sa propre liste de réservations (Boucle infinie)
     @JsonIgnoreProperties({"reservations", "hibernateLazyInitializer", "handler"})
     private Trajet trajet;
 
@@ -268,58 +67,83 @@ public class Reservation {
     @JoinColumn(name = "vehicule_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private Vehicule vehicule;
-    // 🛑 CORRECTION : FetchType.EAGER est OBLIGATOIRE pour inclure le surplus VIP dans la réponse JSON de l'agence
+
+    // 🛑 RELATION VIP : Gère la récupération à domicile
     @OneToOne(mappedBy = "reservation", cascade = CascadeType.ALL, fetch = FetchType.EAGER)
     @JsonProperty("demande_recuperation")
     @JsonIgnoreProperties("reservation")
     private DemandeRecuperation demandeRecuperation;
+    // À AJOUTER : Le nombre de places réservées par le client
+    @Column(name = "nombre_places", columnDefinition = "integer default 1")
+    private Integer nombrePlaces = 1;
 
-    // 💵 CALCUL DYNAMIQUE DU MONTANT TOTAL (Billet + VIP)
+    // ... vos autres champs ...
+
+    // 💵 CALCUL DYNAMIQUE DU MONTANT TOTAL (Mis à jour)
     @Transient
     @JsonProperty("montant_total")
     public Double getMontantTotal() {
         Double prixBase = 0.0;
 
-        // 1. Prix de base : Si déjà payé ou partiellement payé, sinon prix officiel du trajet
+        // Sécurité : au moins 1 place si non spécifié
+        int places = (this.nombrePlaces != null && this.nombrePlaces > 0) ? this.nombrePlaces : 1;
+
         if (this.montantPaye != null && this.montantPaye > 0) {
             prixBase = this.montantPaye;
         } else if (this.trajet != null && this.trajet.getPrix() != null) {
-            prixBase = this.trajet.getPrix();
+            // MULTIPLICATION DU PRIX PAR LE NOMBRE DE PLACES
+            prixBase = this.trajet.getPrix() * places;
         }
 
-        // 2. Ajout du supplément de récupération (VIP)
         if (this.demandeRecuperation != null && this.demandeRecuperation.getPrixSupplementaire() != null) {
             prixBase += this.demandeRecuperation.getPrixSupplementaire();
         }
 
         return prixBase;
     }
-// Dans com.example.gariconnectbackend.model.Reservation.java
+//    // 💵 CALCUL DYNAMIQUE DU MONTANT TOTAL (Billet + VIP si applicable)
+//    @Transient
+//    @JsonProperty("montant_total")
+//    public Double getMontantTotal() {
+//        Double prixBase = 0.0;
+//
+//        // 1. Prix de base : Si déjà payé ou partiellement payé, sinon prix officiel du trajet
+//        if (this.montantPaye != null && this.montantPaye > 0) {
+//            prixBase = this.montantPaye;
+//        } else if (this.trajet != null && this.trajet.getPrix() != null) {
+//            prixBase = this.trajet.getPrix();
+//        }
+//
+//        // 2. Ajout du supplément de récupération (VIP)
+//        if (this.demandeRecuperation != null && this.demandeRecuperation.getPrixSupplementaire() != null) {
+//            prixBase += this.demandeRecuperation.getPrixSupplementaire();
+//        }
+//
+//        return prixBase;
+//    }
 
-    // ... tes propriétés existantes ...
-
-    // 🟢 NOUVEAU : Arrêt où le client attend le bus
+    // 🟢 Arrêt où le client attend le bus
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "arret_montage_id")
     private ArretBus arretMontage;
 
-    // 🟢 NOUVEAU : Arrêt où le client descend
+    // 🟢 Arrêt où le client descend
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "arret_descente_id")
     private ArretBus arretDescente;
 
-    // 🟢 NOUVEAU : Statut spécifique lié à l'embarquement
+    // 🟢 Statut spécifique lié à l'embarquement
     @Enumerated(EnumType.STRING)
     @Column(name = "statut_embarquement")
     private StatutPassagerArret statutEmbarquement = StatutPassagerArret.EN_ATTENTE_A_L_ARRET;
 
-    // 🟢 NOUVEAU : Lien vers la course précise du jour (le bus qui vient le chercher)
+    // 🟢 Lien vers la course précise du jour
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "course_id")
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private Course courseAssignee;
-    // --- Compatibilité JSON Frontend ---
 
+    // --- Compatibilité JSON Frontend ---
     @JsonProperty("client")
     public User getClient() {
         return this.client;

@@ -11,14 +11,14 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-        import java.util.List;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/chauffeurs")
-@CrossOrigin("*") // Pour autoriser les appels depuis React
+@CrossOrigin("*")
 @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
 public class ChauffeurController {
 
@@ -29,35 +29,51 @@ public class ChauffeurController {
     private PasswordEncoder passwordEncoder;
 
     /**
-     * Récupérer spécifiquement les chauffeurs de l'entité connectée
-     * C'est la route appelée par ton tableau de bord Frontend (GET /api/chauffeurs/mes-chauffeurs)
+     * 🟢 RÉCUPÉRER UNIQUEMENT LES CHAUFFEURS LIBRES (POUR LA CRÉATION DE TRAJET)
      */
+    @GetMapping("/disponibles")
+    public ResponseEntity<?> getChauffeursDisponibles() {
+        try {
+            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
+            User utilisateurConnecte = userRepository.findByEmail(emailConnecte)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur non authentifié"));
+
+            Long agenceId = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
+                    ? utilisateurConnecte.getId()
+                    : utilisateurConnecte.getAgenceEmployeur().getId();
+
+            // Filtrage strict : on exclut ceux qui sont "Aligné a un trajet"
+            List<User> chauffeursLibres = userRepository.findByRoleAndAgenceEmployeur_Id(Role.CHAUFFEUR, agenceId).stream()
+                    .filter(c -> c.getStatut() == null || !c.getStatut().equalsIgnoreCase("Aligné a un trajet"))
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(chauffeursLibres);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Erreur serveur : " + e.getMessage()));
+        }
+    }
+
     @GetMapping("/mes-chauffeurs")
     public ResponseEntity<?> getMesChauffeurs() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User utilisateurConnecte = userRepository.findByEmail(email).orElseThrow();
 
-        // Le Super Admin voit tout
         if (utilisateurConnecte.getRole() == Role.SUPER_ADMIN) {
             return ResponseEntity.ok(userRepository.findByRole(Role.CHAUFFEUR));
         }
 
-        // CORRECTION CRITIQUE : Définition de l'agence racine
-        // Si je suis Admin Agence, c'est moi l'agence. Sinon, c'est mon employeur.
         User agence = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) ? utilisateurConnecte : utilisateurConnecte.getAgenceEmployeur();
 
         if (agence == null) {
             return ResponseEntity.badRequest().body(Map.of("message", "Aucune agence rattachée à ce compte."));
         }
 
-        // On utilise la méthode de ton UserRepository pour filtrer par Agence ET par Role Chauffeur
         List<User> chauffeurs = userRepository.findByAgenceEmployeurAndRole(agence, Role.CHAUFFEUR);
         return ResponseEntity.ok(chauffeurs);
     }
 
-    /**
-     * RECRUTEMENT D'UN CHAUFFEUR (Par un Agent ou un Admin)
-     */
     @PostMapping("/recruter")
     public ResponseEntity<?> recruterChauffeur(@RequestBody User chauffeurDetails) {
         try {
@@ -65,17 +81,15 @@ public class ChauffeurController {
             User utilisateurConnecte = userRepository.findByEmail(email).orElseThrow();
 
             if (userRepository.existsByEmail(chauffeurDetails.getEmail())) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Cet email est déjà utilisé par un autre compte."));
+                return ResponseEntity.badRequest().body(Map.of("message", "Cet email est déjà utilisé."));
             }
 
-            // Définition de l'agence
             User agence = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) ? utilisateurConnecte : utilisateurConnecte.getAgenceEmployeur();
 
             chauffeurDetails.setAgenceEmployeur(agence);
             chauffeurDetails.setRole(Role.CHAUFFEUR);
-            chauffeurDetails.setStatut("EN_ATTENTE"); // En attente de la validation de l'Admin
+            chauffeurDetails.setStatut("DISPONIBLE"); // Statut propre à la création
 
-            // Génération d'un code d'accès temporaire unique à transmettre au chauffeur
             String tempCode = "GARI-" + UUID.randomUUID().toString().substring(0, 6).toUpperCase();
             chauffeurDetails.setCodeAcces(tempCode);
             chauffeurDetails.setPassword(passwordEncoder.encode(tempCode));
@@ -83,7 +97,7 @@ public class ChauffeurController {
             userRepository.save(chauffeurDetails);
 
             return ResponseEntity.ok(Map.of(
-                    "message", "Chauffeur recruté avec succès. En attente de validation.",
+                    "message", "Chauffeur recruté avec succès.",
                     "code", tempCode
             ));
         } catch (Exception e) {
@@ -92,29 +106,21 @@ public class ChauffeurController {
         }
     }
 
-    /**
-     * Récupérer la liste globale des chauffeurs
-     */
     @GetMapping
     public ResponseEntity<?> getTousLesChauffeurs() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User utilisateurConnecte = userRepository.findByEmail(email).orElseThrow();
 
         if (utilisateurConnecte.getRole() == Role.SUPER_ADMIN) {
-            List<User> tousLesChauffeurs = userRepository.findByRole(Role.CHAUFFEUR);
-            return ResponseEntity.ok(tousLesChauffeurs);
+            return ResponseEntity.ok(userRepository.findByRole(Role.CHAUFFEUR));
         }
 
         User agence = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) ? utilisateurConnecte : utilisateurConnecte.getAgenceEmployeur();
         if (agence == null) return ResponseEntity.badRequest().body(Map.of("message", "Aucune agence associée."));
 
-        List<User> chauffeursAgence = userRepository.findByAgenceAndRole(agence, Role.CHAUFFEUR);
-        return ResponseEntity.ok(chauffeursAgence);
+        return ResponseEntity.ok(userRepository.findByAgenceAndRole(agence, Role.CHAUFFEUR));
     }
 
-    /**
-     * Mettre à jour un chauffeur
-     */
     @PutMapping("/{id}")
     public ResponseEntity<?> mettreAJourChauffeur(@PathVariable Long id, @RequestBody User chauffeurDetails) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -124,7 +130,7 @@ public class ChauffeurController {
             if (utilisateurConnecte.getRole() != Role.SUPER_ADMIN) {
                 User agence = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) ? utilisateurConnecte : utilisateurConnecte.getAgenceEmployeur();
                 if (chauffeur.getAgenceEmployeur() == null || agence == null || !chauffeur.getAgenceEmployeur().getId().equals(agence.getId())) {
-                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Ce chauffeur n'appartient pas à votre agence."));
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Accès refusé."));
                 }
             }
 
@@ -132,17 +138,11 @@ public class ChauffeurController {
             if (chauffeurDetails.getEmail() != null) chauffeur.setEmail(chauffeurDetails.getEmail());
             if (chauffeurDetails.getTelephone() != null) chauffeur.setTelephone(chauffeurDetails.getTelephone());
 
-            // On empêche l'agent de changer le statut lui-même, seul l'admin le fait via les endpoints dédiés
-            // if (chauffeurDetails.getStatut() != null) chauffeur.setStatut(chauffeurDetails.getStatut());
-
             User misAJour = userRepository.save(chauffeur);
             return ResponseEntity.ok(misAJour);
         }).orElse(ResponseEntity.notFound().build());
     }
 
-    /**
-     * Supprimer un chauffeur
-     */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> supprimerChauffeur(@PathVariable Long id) {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -159,6 +159,8 @@ public class ChauffeurController {
             return ResponseEntity.ok().body(Map.of("message", "Chauffeur supprimé avec succès !"));
         }).orElse(ResponseEntity.notFound().build());
     }
+
+
 
     /**
      * Récupérer les chauffeurs assignés à un trajet spécifique
@@ -188,4 +190,5 @@ public class ChauffeurController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "Erreur : " + e.getMessage()));
         }
     }
+
 }

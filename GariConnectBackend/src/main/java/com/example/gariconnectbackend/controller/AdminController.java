@@ -245,7 +245,6 @@ import java.util.Map;
 @CrossOrigin(origins = "*") // Important pour React
 @RestController
 @RequestMapping("/api/admin") // Base de l'URL : /api/admin
-// CORRECTION ICI : Ajout de 'AGENCY_ADMIN' pour autoriser l'accès au contrôleur
 @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN')")
 public class AdminController {
 
@@ -254,12 +253,6 @@ public class AdminController {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
-
-    /**
-     * Tableau de bord dynamique et multi-tenant
-     * - SUPER_ADMIN : Statistiques globales de toute la plateforme.
-     * - AGENCY_ADMIN : Statistiques exclusives à son agence.
-     */
     @GetMapping("/dashboard-stats")
     public ResponseEntity<?> getDashboardStats() {
         try {
@@ -271,10 +264,7 @@ public class AdminController {
             // CAS 1 : Le Super Admin (Vision globale)
             if (utilisateurConnecte.getRole() == Role.SUPER_ADMIN) {
                 stats.put("totalCommissions", 150000);
-
-                // CORRECTION : Remplacement de Role.AGENCE par Role.AGENCY_ADMIN
                 stats.put("totalAgences", userRepository.countByRole(Role.AGENCY_ADMIN));
-
                 stats.put("totalClients", userRepository.countByRole(Role.CLIENT));
                 stats.put("totalReservations", 450);
 
@@ -291,13 +281,16 @@ public class AdminController {
                 stats.put("recentActivities", activities);
             }
 
-            // CAS 2 : L'Admin d'agence (Vision restreinte à son agence)
-            else if (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) {
-                User agence = utilisateurConnecte.getAgenceEmployeur();
+            // 🟢 CAS 2 : L'Admin d'agence OU le Manager d'agence (Vision restreinte à l'entreprise)
+            else if (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN || utilisateurConnecte.getRole() == Role.AGENCY_MANAGER) {
 
-                // Si l'admin n'a pas d'agence rattachée, on ne peut pas calculer ses stats
+                // Si c'est le manager qui se connecte, on redirige les calculs sur son entreprise mère (AGENCY_ADMIN)
+                User agence = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
+                        ? utilisateurConnecte
+                        : utilisateurConnecte.getAgenceEmployeur();
+
                 if (agence == null) {
-                    return ResponseEntity.badRequest().body(Map.of("message", "Vous n'êtes rattaché à aucune agence."));
+                    return ResponseEntity.badRequest().body(Map.of("message", "Vous n'êtes rattaché à aucune entreprise."));
                 }
 
                 long totalChauffeurs = userRepository.countByAgenceAndRole(agence, Role.CHAUFFEUR);
@@ -323,7 +316,6 @@ public class AdminController {
 
             return ResponseEntity.ok(stats);
         } catch (Exception e) {
-            // Log l'erreur réelle dans ta console pour debug
             e.printStackTrace();
             return ResponseEntity.internalServerError().body("Erreur lors du calcul des statistiques");
         }
@@ -331,12 +323,9 @@ public class AdminController {
 
     /**
      * Valider son Chauffeur
-     * - SUPER_ADMIN : Peut valider n'importe quel chauffeur.
-     * - AGENCY_ADMIN : Ne peut valider qu'un chauffeur de son agence.
      */
-    @PreAuthorize("hasAnyAuthority('ADMIN', 'AGENCY_ADMIN', 'ROLE_AGENCY_ADMIN')")
-
     @PutMapping("/valider-chauffeur/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN')")
     public ResponseEntity<?> validerChauffeur(@PathVariable Long id) {
         String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
         User utilisateurConnecte = userRepository.findByEmail(emailConnecte).orElseThrow();
@@ -344,14 +333,12 @@ public class AdminController {
         User chauffeur = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Chauffeur introuvable"));
 
-        // CORRECTION ICI : Changement vers Role.AGENCY_ADMIN
         if (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) {
             if (!utilisateurConnecte.getAgenceEmployeur().equals(chauffeur.getAgenceEmployeur())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
                         .body(Map.of("message", "Ce chauffeur ne fait pas partie de votre agence"));
             }
         }
-
         chauffeur.setStatut("ACTIF");
         userRepository.save(chauffeur);
 
@@ -360,7 +347,6 @@ public class AdminController {
 
     /**
      * Récupérer la liste des utilisateurs
-     * URL d'accès complète : GET /api/admin/users
      */
     @GetMapping("/users")
     public ResponseEntity<?> getAllUsers() {
@@ -371,7 +357,6 @@ public class AdminController {
             List<User> tousLesUtilisateurs = userRepository.findAll();
             return ResponseEntity.ok(tousLesUtilisateurs);
         } else {
-            // Un AGENCY_ADMIN ne récupère que les utilisateurs liés à son agence
             User agence = utilisateurConnecte.getAgenceEmployeur();
             List<User> utilisateursAgence = userRepository.findByAgenceEmployeur(agence);
             return ResponseEntity.ok(utilisateursAgence);
@@ -379,11 +364,58 @@ public class AdminController {
     }
 
     /**
-     * Validation générique d'un utilisateur par son ID
+     * 🟢 AJOUT : Modifier le statut d'un utilisateur (Suspension temporaire ou Réactivation)
+     * URL d'accès : PUT /api/admin/users/{id}/statut
      */
+    @PutMapping("/users/{id}/statut")
+    public ResponseEntity<?> modifierStatutUtilisateur(@PathVariable Long id, @RequestBody Map<String, String> payload) {
+        try {
+            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
+            User utilisateurConnecte = userRepository.findByEmail(emailConnecte).orElseThrow();
+
+            User cible = userRepository.findById(id)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+
+            // 1. Sécurité : Empêcher de modifier un SUPER_ADMIN
+            if (cible.getRole() == Role.SUPER_ADMIN) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("message", "Action interdite : Impossible de modifier le statut d'un Super Administrateur."));
+            }
+
+            // 2. Sécurité Cloisonnement : Un AGENCY_ADMIN ne peut modifier que les membres de son agence
+            if (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) {
+                if (cible.getAgenceEmployeur() == null ||
+                        !utilisateurConnecte.getAgenceEmployeur().getId().equals(cible.getAgenceEmployeur().getId())) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                            .body(Map.of("message", "Accès refusé : Cet utilisateur n'appartient pas à votre agence."));
+                }
+            }
+
+            // 3. Validation du statut reçu du frontend (ACTIF ou BLOQUE)
+            String nouveauStatut = payload.get("statut");
+            if (nouveauStatut == null || (!nouveauStatut.equals("ACTIF") && !nouveauStatut.equals("BLOQUE"))) {
+                return ResponseEntity.badRequest()
+                        .body(Map.of("message", "Statut invalide. Utilisez 'ACTIF' ou 'BLOQUE'."));
+            }
+
+            // 4. Enregistrement des modifications
+            cible.setStatut(nouveauStatut);
+            userRepository.save(cible);
+
+            String messageSucces = nouveauStatut.equals("BLOQUE")
+                    ? "Le compte de l'utilisateur a été suspendu avec succès."
+                    : "Le compte de l'utilisateur a été réactivé avec succès.";
+
+            return ResponseEntity.ok(Map.of("message", messageSucces, "statut", nouveauStatut));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Erreur lors de la modification du statut."));
+        }
+    }
+
     /**
-     * 💰 BASCULER LE TYPE D'ABONNEMENT D'UNE AGENCE (SaaS)
-     * Permet au SUPER_ADMIN de définir si l'agence paie par "COMMISSION" ou si elle a un abonnement "DEFINITIF"
+     * Basculer le type d'abonnement d'une agence
      */
     @PutMapping("/agences/{id}/abonnement")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
@@ -391,7 +423,6 @@ public class AdminController {
         User agence = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Agence introuvable"));
 
-        // On vérifie que c'est bien un compte Agence
         if (agence.getRole() != Role.AGENCY_ADMIN && agence.getRole() != Role.AGENCY_MANAGER) {
             return ResponseEntity.badRequest().body(Map.of("message", "Cet utilisateur n'est pas une agence."));
         }
@@ -406,6 +437,10 @@ public class AdminController {
 
         return ResponseEntity.ok(Map.of("message", "L'abonnement de l'agence " + agence.getNom() + " a été mis à jour avec succès en : " + nouveauType));
     }
+
+    /**
+     * Validation générique d'un utilisateur par son ID
+     */
     @PutMapping("/users/{id}/valider")
     public ResponseEntity<?> validerUtilisateur(@PathVariable Long id) {
         String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
@@ -414,7 +449,6 @@ public class AdminController {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
 
-        // CORRECTION ICI : Changement vers Role.AGENCY_ADMIN
         if (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) {
             if (!utilisateurConnecte.getAgenceEmployeur().equals(user.getAgenceEmployeur())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN)
@@ -430,7 +464,6 @@ public class AdminController {
 
     /**
      * VALIDER UNE AGENCE LORS DE L'INSCRIPTION
-     * Exclusif au SUPER_ADMIN.
      */
     @PutMapping("/valider-agence/{id}")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
@@ -438,8 +471,6 @@ public class AdminController {
         User agenceOrAdmin = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
 
-        // CORRECTION : Suppression de 'Role.AGENCE' qui n'existe plus.
-        // On vérifie maintenant si l'utilisateur est bien un AGENCY_ADMIN (ou MANAGER selon ton besoin)
         if (agenceOrAdmin.getRole() != Role.AGENCY_ADMIN) {
             return ResponseEntity.badRequest().body(Map.of("message", "Cet utilisateur n'est pas un administrateur d'agence autorisé à être validé."));
         }
@@ -451,7 +482,7 @@ public class AdminController {
     }
 
     /**
-     * CRÉATION D'UN UTILISATEUR (Chauffeur, Agent de comptoir, etc.)
+     * CRÉATION D'UN UTILISATEUR
      */
     @PostMapping("/users/create")
     public ResponseEntity<?> createByAdmin(@RequestBody User newUser) {
@@ -462,7 +493,6 @@ public class AdminController {
             return ResponseEntity.badRequest().body(Map.of("message", "Cet email est déjà utilisé"));
         }
 
-        // CORRECTION ICI : Remplacement par Role.AGENCY_ADMIN
         if (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) {
             if (utilisateurConnecte.getAgenceEmployeur() == null) {
                 return ResponseEntity.status(HttpStatus.BAD_REQUEST)
@@ -489,7 +519,6 @@ public class AdminController {
         User userASupprimer = userRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
 
-        // CORRECTION ICI : Remplacement par Role.AGENCY_ADMIN
         if (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) {
             if (userASupprimer.getAgenceEmployeur() == null ||
                     !utilisateurConnecte.getAgenceEmployeur().getId().equals(userASupprimer.getAgenceEmployeur().getId())) {
@@ -501,9 +530,5 @@ public class AdminController {
         userRepository.delete(userASupprimer);
         return ResponseEntity.ok(Map.of("message", "Utilisateur supprimé avec succès."));
     }
+
 }
-
-
-
-
-

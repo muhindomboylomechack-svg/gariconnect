@@ -15,6 +15,8 @@ public class TrajetDTO {
     private String jourDepart;
     private String statut;
     private Double prix;
+    // 🔥 AJOUT : Ce champ manquait et bloquait l'interface React en mode "COMPLET"
+    private Integer placesDisponibles;
 
     // Sous-objet pour garder la compatibilité avec React (trajet.agence.nom)
     private AgenceDTO agence;
@@ -32,6 +34,8 @@ public class TrajetDTO {
         dto.setDestination(trajet.getDestination());
         dto.setStatut(trajet.getStatut());
         dto.setPrix(trajet.getPrix());
+        // 🔥 AJOUT : On copie la valeur de l'entité vers le DTO pour l'envoyer au Frontend
+        dto.setPlacesDisponibles(trajet.getPlacesDisponibles());
 
         if (trajet.getAgence() != null) {
             AgenceDTO agenceDTO = new AgenceDTO();

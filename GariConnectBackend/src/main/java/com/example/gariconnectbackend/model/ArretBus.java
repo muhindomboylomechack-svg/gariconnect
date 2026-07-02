@@ -9,9 +9,9 @@ import jakarta.persistence.*;
 @Table(name = "arrets_bus")
 @Getter
 @Setter
-@NoArgsConstructor
-@AllArgsConstructor
 @Builder
+@NoArgsConstructor  // 🔥 INDISPENSABLE POUR JACKSON
+@AllArgsConstructor
 public class ArretBus {
 
     @Id

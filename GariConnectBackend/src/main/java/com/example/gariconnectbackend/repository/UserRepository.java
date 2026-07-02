@@ -56,4 +56,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     // 🔥 NOUVEAU : Trouver les employés de l'agence ET l'admin lui-même (grâce à son ID)
     List<User> findByAgenceEmployeurIdOrId(Long agenceEmployeurId, Long id);
+
+    List<User> findByAgenceEmployeurId(Long agenceId);
 }

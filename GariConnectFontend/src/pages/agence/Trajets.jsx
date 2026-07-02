@@ -6,10 +6,21 @@ import {
   FaMapMarkerAlt, FaPlus, FaUsers, FaArrowRight, FaMoneyBillWave
 } from 'react-icons/fa';
 
+// Déclaration locale du sous-composant FormGroup pour éviter les erreurs de portée (Scope)
+const FormGroup = ({ label, icon, children }) => (
+  <div className="space-y-2">
+    <label className="flex items-center gap-2 ml-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+      <span className="text-blue-500">{icon}</span> {label}
+    </label>
+    {children}
+  </div>
+);
+
 const Trajets = () => {
   const [trajets, setTrajets] = useState([]);
   const [vehicules, setVehicules] = useState([]);
   const [chauffeurs, setChauffeurs] = useState([]); 
+  const [agences, setAgences] = useState([]); // Pour le cas d'un SUPER_ADMIN
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState(null);
@@ -25,23 +36,26 @@ const Trajets = () => {
     chauffeurId: '', 
     statut: 'PROGRAMME', 
     placesDisponibles: '',
-    agenceId: '' // Support de la sélection de l'agence si SUPER_ADMIN
+    agenceId: '' 
   });
 
-  useEffect(() => { 
-    fetchTrajets(); 
-  }, []);
+  const userRole = localStorage.getItem('role') || localStorage.getItem('user_role');
 
-  // 🟢 CORRECTION : Remplacement de '/trajets/mes-trajets' par '/trajets' 
-  // La logique multi-tenant et le filtrage par agence sont appliqués directement sur la racine GET du backend.
+  useEffect(() => { 
+    fetchTrajets();
+    if (userRole === 'SUPER_ADMIN') {
+      fetchAgences(); // Charger les agences si l'utilisateur est un super administrateur
+    }
+  }, [userRole]);
+
   const fetchTrajets = async () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const res = await api.get('/trajets', {
+      const res = await api.get('/trajets/tous', {
           headers: { Authorization: `Bearer ${token}` }
       });
-      setTrajets(res.data);
+      setTrajets(Array.isArray(res.data) ? res.data : []);
     } catch (e) { 
       console.error("Erreur chargement trajets:", e); 
     } finally { 
@@ -49,30 +63,38 @@ const Trajets = () => {
     }
   };
 
+  const fetchAgences = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await api.get('/users/agencies', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setAgences(Array.isArray(res.data) ? res.data : []);
+    } catch (e) {
+      console.error("Erreur lors du chargement des agences :", e);
+    }
+  };
+
   useEffect(() => {
-    if (formData.joursSemaine) {
-      fetchRessourcesParJour(formData.joursSemaine);
+    if (showModal) {
+      fetchRessourcesDisponibles();
     } else {
       setVehicules([]);
       setChauffeurs([]);
     }
-  }, [formData.joursSemaine]);
+  }, [showModal, isEditing, currentId]);
 
-  // Appels API isolés et filtrés par agence (géré par le Token au niveau du Backend)
-  const fetchRessourcesParJour = async (jourChoisi) => {
+  const fetchRessourcesDisponibles = async () => {
     try {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
       
-      // Requêtes en parallèle pour optimiser la vitesse
       const [resVehicules, resChauffeurs] = await Promise.all([
-          // Appel direct au contrôleur des véhicules de l'agence connectée
-          api.get('/vehicules/agence', { headers }).catch(err => {
+          api.get('/vehicules/disponibles', { headers }).catch(err => {
               console.warn("Erreur chargement véhicules", err);
               return { data: [] };
           }),
-          // Appel au contrôleur des chauffeurs filtrés pour l'agence connectée
-          api.get('/trajets/chauffeurs-disponibles', { headers }).catch(err => {
+          api.get('/chauffeurs/disponibles', { headers }).catch(err => {
               console.warn("Erreur chargement chauffeurs", err);
               return { data: [] };
           })
@@ -96,12 +118,12 @@ const Trajets = () => {
       setVehicules(vDispo);
       setChauffeurs(cDispo);
     } catch (e) {
-      console.error("Erreur filtrage ressources:", e);
+      console.error("Erreur récupération des ressources:", e);
     }
   };
 
   const handleVehiculeChange = (vId) => {
-    const v = vehicules.find(item => item.id === parseInt(vId));
+    const v = vehicules.find(item => item.id === parseInt(vId, 10));
     setFormData(prev => ({
       ...prev, 
       vehiculeId: vId,
@@ -120,9 +142,6 @@ const Trajets = () => {
     const today = new Date().toISOString().split('T')[0];
     const dateIsoPropre = `${today}T${formData.heureDepart}:00`;
 
-    // Détection simplifiée du rôle pour injecter l'objet Agence requis si SUPER_ADMIN
-    const userRole = localStorage.getItem('role') || localStorage.getItem('user_role'); 
-
     const payload = {
       depart: formData.depart,
       destination: formData.destination,
@@ -130,15 +149,13 @@ const Trajets = () => {
       dateHeureDepart: dateIsoPropre, 
       prix: parseFloat(formData.prix),
       statut: formData.statut,
-      placesDisponibles: parseInt(formData.placesDisponibles),
-      // Format d'objet relationnel strict attendu par Spring Boot / JPA 
-      vehicule: { id: parseInt(formData.vehiculeId) },
-      chauffeur: { id: parseInt(formData.chauffeurId) }
+      placesDisponibles: parseInt(formData.placesDisponibles, 10),
+      vehicule: { id: parseInt(formData.vehiculeId, 10) },
+      chauffeur: { id: parseInt(formData.chauffeurId, 10) }
     };
 
-    // Si l'utilisateur connecté est SUPER_ADMIN, on passe obligatoirement l'agence sélectionnée
     if (userRole === 'SUPER_ADMIN' && formData.agenceId) {
-      payload.agence = { id: parseInt(formData.agenceId) };
+      payload.agence = { id: parseInt(formData.agenceId, 10) };
     }
 
     try {
@@ -156,7 +173,7 @@ const Trajets = () => {
       fetchTrajets(); 
     } catch (err) {
       console.error("Erreur détaillée du serveur :", err.response?.data);
-      const errorMsg = err.response?.data?.error || err.response?.data?.message || err.response?.data || "Erreur de format de données (400 Bad Request)";
+      const errorMsg = err.response?.data?.error || err.response?.data?.message || err.response?.data || "Erreur de traitement réseau";
       alert("⚠️ " + errorMsg);
     }
   };
@@ -205,7 +222,7 @@ const Trajets = () => {
             </div>
             Planning GariConnect
           </h1>
-          <p className="text-slate-400 font-bold text-xs mt-1 italic uppercase">Gestion des rotations véhicules et chauffeurs (Multi-Agences)</p>
+          <p className="text-slate-400 font-bold text-xs mt-1 italic uppercase">Gestion des rotations véhicules et chauffeurs</p>
         </div>
         <button 
           onClick={() => { 
@@ -254,7 +271,7 @@ const Trajets = () => {
               <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50 dark:border-slate-800">
                 <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                      <FaBus className="text-blue-500"/> {t.vehicule ? `${t.vehicule.plaque_immatriculation} (${t.vehicule.marque})` : 'Non assigné'}
+                      <FaBus className="text-blue-500"/> {t.vehicule ? `${t.vehicule.plaqueImmatriculation || t.vehicule.plaque_immatriculation} (${t.vehicule.marque})` : 'Non assigné'}
                     </div>
                     <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded w-fit">
                       <FaUsers /> {t.placesDisponibles} places restantes
@@ -286,6 +303,24 @@ const Trajets = () => {
 
             <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               
+              {userRole === 'SUPER_ADMIN' && (
+                <div className="col-span-full">
+                  <FormGroup label="Agence propriétaire" icon={<FaUsers />}>
+                    <select
+                      className="form-input-custom"
+                      value={formData.agenceId}
+                      onChange={(e) => setFormData({ ...formData, agenceId: e.target.value })}
+                      required
+                    >
+                      <option value="">Sélectionner une agence...</option>
+                      {agences.map(a => (
+                        <option key={a.id} value={a.id}>{a.nom || a.email}</option>
+                      ))}
+                    </select>
+                  </FormGroup>
+                </div>
+              )}
+
               <FormGroup label="Jours de la semaine" icon={<FaCalendarAlt />}>
                 <select 
                   className="form-input-custom" 
@@ -309,32 +344,30 @@ const Trajets = () => {
                 <input type="time" className="form-input-custom" value={formData.heureDepart} onChange={(e) => setFormData({...formData, heureDepart: e.target.value})} required />
               </FormGroup>
 
-              <FormGroup label="Véhicule (Disponible)" icon={<FaBus />}>
+              <FormGroup label="Véhicule (Libre)" icon={<FaBus />}>
                 <select 
-                  className={`form-input-custom ${!formData.joursSemaine && 'opacity-50 cursor-not-allowed'}`} 
+                  className="form-input-custom" 
                   value={formData.vehiculeId} 
                   onChange={(e) => handleVehiculeChange(e.target.value)} 
-                  disabled={!formData.joursSemaine}
                   required
                 >
-                  <option value="">{formData.joursSemaine ? "Sélectionner véhicule..." : "Sélectionnez d'abord un jour"}</option>
+                  <option value="">Sélectionner un véhicule...</option>
                   {vehicules.map(v => (
                     <option key={v.id} value={v.id}>
-                      {v.plaque_immatriculation} - {v.marque} {v.modele}
+                      {v.plaqueImmatriculation || v.plaque_immatriculation} - {v.marque} {v.modele}
                     </option>
                   ))}
                 </select>
               </FormGroup>
 
-              <FormGroup label="Chauffeur (Disponible)" icon={<FaUserTie />}>
+              <FormGroup label="Chauffeur (Libre)" icon={<FaUserTie />}>
                 <select 
-                  className={`form-input-custom ${!formData.joursSemaine && 'opacity-50 cursor-not-allowed'}`} 
+                  className="form-input-custom" 
                   value={formData.chauffeurId} 
                   onChange={(e) => setFormData({...formData, chauffeurId: e.target.value})} 
-                  disabled={!formData.joursSemaine}
                   required
                 >
-                  <option value="">{formData.joursSemaine ? "Sélectionner chauffeur..." : "Sélectionnez d'abord un jour"}</option>
+                  <option value="">Sélectionner un chauffeur...</option>
                   {chauffeurs.map(c => (
                     <option key={c.id} value={c.id}>
                       {c.prenom ? `${c.prenom} ${c.nom}` : c.nom}
@@ -407,23 +440,9 @@ const Trajets = () => {
             color: #f1f5f9;
           }
         }
-        :global(.dark) .form-input-custom {
-            background: #1e293b;
-            color: #f1f5f9;
-            border-color: #334155;
-        }
       `}</style>
     </div>
   );
 };
-
-const FormGroup = ({ label, icon, children }) => (
-  <div className="space-y-2">
-    <label className="flex items-center gap-2 ml-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-      <span className="text-blue-500">{icon}</span> {label}
-    </label>
-    {children}
-  </div>
-);
 
 export default Trajets;

@@ -27,7 +27,7 @@ public class UserController {
     @Autowired private PasswordEncoder passwordEncoder;
 
     // =========================================================================================
-    // 1. GESTION DU PROFIL ET DE L'AVATAR (Accessible par l'utilisateur connecté)
+    // 1. GESTION DU PROFIL ET DE L'AVATAR
     // =========================================================================================
 
     @GetMapping("/profile")
@@ -122,34 +122,7 @@ public class UserController {
     }
 
     // =========================================================================================
-    // 2. LECTURE DES UTILISATEURS (Accessible par SUPER_ADMIN et AGENCY_ADMIN)
-    // =========================================================================================
-
-/*
-    @GetMapping("/chauffeurs")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN')")
-    public ResponseEntity<?> recupererChauffeursDeMonAgence() {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-
-        return userRepository.findByEmail(email).map(utilisateurConnecte -> {
-            if (utilisateurConnecte.getRole() == Role.SUPER_ADMIN) {
-                return ResponseEntity.ok(userRepository.findByRole(Role.CHAUFFEUR));
-            }
-
-            if (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) {
-                User agence = (utilisateurConnecte.getAgenceEmployeur() != null)
-                        ? utilisateurConnecte.getAgenceEmployeur()
-                        : utilisateurConnecte;
-
-                return ResponseEntity.ok(userRepository.findByAgenceAndRole(agence, Role.CHAUFFEUR));
-            }
-
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
-        }).orElse(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
-    }
-*/
-    // =========================================================================================
-    // 3. CRÉATION D'UTILISATEURS (Accessible par SUPER_ADMIN et AGENCY_ADMIN)
+    // 2. CRÉATION D'UTILISATEURS
     // =========================================================================================
 
     @PostMapping
@@ -174,47 +147,8 @@ public class UserController {
         }).orElse(ResponseEntity.status(HttpStatus.UNAUTHORIZED).build());
     }
 
-    @PostMapping("/create")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN')")
-    public ResponseEntity<?> createByAdmin(@RequestBody User newUser) {
-        try {
-            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
-            User utilisateurConnecte = userRepository.findByEmail(emailConnecte)
-                    .orElseThrow(() -> new RuntimeException("Utilisateur connecté introuvable"));
-
-            if (userRepository.existsByEmail(newUser.getEmail())) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Cet email est déjà utilisé"));
-            }
-
-            if (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) {
-                User agence = (utilisateurConnecte.getAgenceEmployeur() != null)
-                        ? utilisateurConnecte.getAgenceEmployeur()
-                        : utilisateurConnecte;
-                newUser.setAgenceEmployeur(agence);
-            }
-
-            String codeTemporaire = java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-
-            newUser.setPassword(passwordEncoder.encode(codeTemporaire));
-            newUser.setCodeAcces(codeTemporaire);
-            newUser.setStatut("ACTIF");
-            newUser.setMustChangePassword(true);
-
-            userRepository.save(newUser);
-
-            return ResponseEntity.ok(Map.of(
-                    "message", "Utilisateur créé avec succès.",
-                    "codeAcces", codeTemporaire
-            ));
-
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", "Erreur lors de la création : " + e.getMessage()));
-        }
-    }
-
     // =========================================================================================
-    // 4. GESTION DES STATUTS ET COMMISSIONS
+    // 3. GESTION DES STATUTS ET COMMISSIONS
     // =========================================================================================
 
     @PutMapping("/valider-chauffeur/{id}")
@@ -265,14 +199,22 @@ public class UserController {
         }
     }
 
+    // 🔥 MODIFICATION CRITIQUE ICI : Validation stricte du rôle AGENCY_ADMIN
     @PatchMapping("/{id}/commission")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<?> modifierTauxCommission(@PathVariable Long id, @RequestBody Map<String, Object> request) {
         return userRepository.findById(id).map(u -> {
+
+            // 🟢 PROTECTION : Impossible d'appliquer une commission à un employé. Uniquement à l'entreprise.
+            if (u.getRole() != Role.AGENCY_ADMIN) {
+                return ResponseEntity.badRequest().body(Map.of("message",
+                        "Erreur structurelle : Le taux de commission ne peut être appliqué qu'à une entreprise (AGENCY_ADMIN), pas à un employé (" + u.getRole() + ")."));
+            }
+
             if (request.containsKey("taux")) {
                 u.setTauxCommission(Double.parseDouble(request.get("taux").toString()));
                 userRepository.save(u);
-                return ResponseEntity.ok(Map.of("message", "Taux de commission mis à jour avec succès"));
+                return ResponseEntity.ok(Map.of("message", "Taux de commission mis à jour avec succès pour l'entreprise."));
             }
             return ResponseEntity.badRequest().body(Map.of("message", "Données invalides"));
         }).orElse(ResponseEntity.notFound().build());
@@ -296,12 +238,9 @@ public class UserController {
     }
 
     // =========================================================================================
-    // 5. SUPPRESSION (Correction du doublon)
+    // 4. SUPPRESSION ET LISTES
     // =========================================================================================
 
-    /**
-     * SUPPRESSION DÉFINITIVE D'UN UTILISATEUR
-     */
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN')")
     public ResponseEntity<?> supprimerUtilisateur(@PathVariable Long id) {
@@ -346,7 +285,6 @@ public class UserController {
                 return ResponseEntity.ok(userRepository.findAll());
             }
             else {
-                // 🔥 Récupération stricte de l'ID de l'agence (soit l'admin lui-même, soit son employeur)
                 Long agenceId = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
                         ? utilisateurConnecte.getId()
                         : utilisateurConnecte.getAgenceEmployeur().getId();
@@ -356,7 +294,6 @@ public class UserController {
                             .body(Map.of("message", "Votre profil n'est lié à aucune agence."));
                 }
 
-                // Récupère les collaborateurs dont l'agenceEmployeurId correspond OU l'admin lui-même
                 List<User> collaborateurs = userRepository.findByAgenceEmployeurIdOrId(agenceId, agenceId);
                 return ResponseEntity.ok(collaborateurs);
             }
@@ -366,9 +303,7 @@ public class UserController {
         }
     }
 
-
     @GetMapping("/chauffeurs")
-    // 🔥 CORRECTION : Ajout de 'AGENCY_MANAGER' pour que le guichetier puisse voir les chauffeurs
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
     public ResponseEntity<?> recupererChauffeursDeMonAgence() {
         try {
@@ -380,12 +315,10 @@ public class UserController {
                 return ResponseEntity.ok(userRepository.findByRole(Role.CHAUFFEUR));
             }
             else {
-                // 🔥 Récupération stricte de l'ID de l'agence
                 Long agenceId = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
                         ? utilisateurConnecte.getId()
                         : utilisateurConnecte.getAgenceEmployeur().getId();
 
-                // 🔥 CORRECTION : Appeler la méthode exacte définie dans ton UserRepository
                 List<User> chauffeurs = userRepository.findByRoleAndAgenceEmployeur_Id(Role.CHAUFFEUR, agenceId);
                 return ResponseEntity.ok(chauffeurs);
             }
@@ -394,5 +327,90 @@ public class UserController {
                     .body(Map.of("message", "Erreur serveur : " + e.getMessage()));
         }
     }
+
+    @PostMapping("/create")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN')")
+    public ResponseEntity<?> createByAdmin(@RequestBody User newUser) {
+        try {
+            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
+            User utilisateurConnecte = userRepository.findByEmail(emailConnecte)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur connecté introuvable"));
+
+            if (userRepository.existsByEmail(newUser.getEmail())) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Cet email est déjà utilisé."));
+            }
+
+            if (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) {
+                User agence = (utilisateurConnecte.getAgenceEmployeur() != null)
+                        ? utilisateurConnecte.getAgenceEmployeur()
+                        : utilisateurConnecte;
+                newUser.setAgenceId(agence.getId());
+                newUser.setAgenceEmployeur(agence);
+            }
+
+            User utilisateurSauvegarde = userService.enregistrerUtilisateur(newUser);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Utilisateur créé avec succès.",
+                    "codeAcces", utilisateurSauvegarde.getCodeAcces() != null ? utilisateurSauvegarde.getCodeAcces() : "N/A"
+            ));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "Erreur lors de la création : " + e.getMessage()));
+        }
+    }
+
+    // 🟢 Cette route sert votre frontend pour lister UNIQUEMENT les vraies entreprises dans la gestion des commissions
+    @GetMapping("/agencies")
+    public ResponseEntity<List<User>> obtenirToutesLesAgences() {
+        try {
+            // Filtrage strict : Seules les entités de type AGENCY_ADMIN sont remontées à l'interface de commission
+            List<User> agences = userRepository.findByRole(Role.AGENCY_ADMIN);
+            return ResponseEntity.ok(agences);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    @PostMapping("/creer-employe")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN')")
+    public ResponseEntity<?> creerEmployeManuellement(@RequestBody User user) {
+        try {
+            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
+            User utilisateurConnecte = userRepository.findByEmail(emailConnecte)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur connecté non trouvé."));
+
+            if (utilisateurConnecte.getRole() == Role.SUPER_ADMIN) {
+                user.setRole(Role.AGENCY_ADMIN);
+            } else if (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) {
+                if (user.getRole() == Role.SUPER_ADMIN || user.getRole() == Role.AGENCY_ADMIN) {
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                            .body(Map.of("message", "Action refusée : Vous n'êtes pas autorisé à créer ce type de rôle."));
+                }
+
+                User agence = (utilisateurConnecte.getAgenceEmployeur() != null)
+                        ? utilisateurConnecte.getAgenceEmployeur()
+                        : utilisateurConnecte;
+                user.setAgenceId(agence.getId());
+                user.setAgenceEmployeur(agence);
+            }
+
+            User utilisateurSauvegarde = userService.enregistrerUtilisateur(user);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Utilisateur créé avec succès.",
+                    "codeAcces", utilisateurSauvegarde.getCodeAcces() != null ? utilisateurSauvegarde.getCodeAcces() : "N/A"
+            ));
+
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "Erreur lors de la création : " + e.getMessage()));
+        }
+    }
+
 
 }

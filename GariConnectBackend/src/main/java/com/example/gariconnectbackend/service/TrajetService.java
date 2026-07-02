@@ -1,151 +1,3 @@
-/*package com.example.gariconnectbackend.service;
-
-import com.example.gariconnectbackend.model.Trajet;
-import com.example.gariconnectbackend.model.Vehicule;
-import com.example.gariconnectbackend.model.User;
-import com.example.gariconnectbackend.repository.TrajetRepository;
-import com.example.gariconnectbackend.repository.VehiculeRepository;
-import com.example.gariconnectbackend.repository.UserRepository;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDate;
-import java.util.List;
-import java.util.stream.Collectors;
-import com.example.gariconnectbackend.exception.RessourceOccupeeException;
-
-
-@Service
-public class TrajetService {
-
-    @Autowired private TrajetRepository trajetRepository;
-    @Autowired private VehiculeRepository vehiculeRepository;
-    @Autowired private UserRepository userRepository;
-
-
-    // Dans TrajetService.java
-
-
-    public List<User> listerChauffeursDisponibles(Long agenceId, java.time.LocalDate date) {
-        List<Long> busyIds = trajetRepository.findBusyChauffeurIdsByDate(date);
-        // On récupère les chauffeurs de l'agence qui ne sont pas dans la liste des occupés
-        return userRepository.findAll().stream()
-                .filter(u -> u.getRole() != null && "CHAUFFEUR".equals(u.getRole().name()))
-                // Idéalement, filtrez aussi par agence si vous avez le champ agence_id dans User
-                .filter(u -> !busyIds.contains(u.getId()))
-                .toList();
-    }
-
-    // Ajoute ces méthodes dans TrajetService.java
-
-    public List<Vehicule> listerVehiculesDisponibles(Long agenceId, java.time.LocalDate date) {
-        // 1. On récupère les IDs des véhicules déjà pris ce jour-là
-        List<Long> busyIds = trajetRepository.findBusyVehiculeIdsByDate(date);
-
-        // 2. On retourne les véhicules de l'agence qui ne sont PAS dans la liste des occupés
-        return vehiculeRepository.findByAgenceId(agenceId).stream()
-                .filter(v -> busyIds == null || !busyIds.contains(v.getId()))
-                .toList();
-    }
-
-
-    @Transactional
-    public void mettreAJourStatut(Long trajetId, String nouveauStatut) {
-        Trajet trajet = trajetRepository.findById(trajetId)
-                .orElseThrow(() -> new RuntimeException("Trajet non trouvé"));
-        trajet.setStatut(nouveauStatut);
-        if ("TERMINE".equals(nouveauStatut) && trajet.getChauffeur() != null) {
-            User chauffeur = trajet.getChauffeur();
-            chauffeur.setStatut("DISPONIBLE");
-            userRepository.save(chauffeur);
-        }
-        trajetRepository.save(trajet);
-    }
-
-
-
-
-
-        // Appliquez la même logique pour les méthodes par Date (LocalDate)
-        public List<Vehicule> listerVehiculesDisponiblesParDate(Long agenceId, LocalDate date) {
-            List<Long> busyIds = trajetRepository.findBusyVehiculeIdsByDate(date);
-            List<Vehicule> tousLesVehicules = vehiculeRepository.findByAgenceId(agenceId);
-
-            if (busyIds == null || busyIds.isEmpty()) return tousLesVehicules;
-
-            return tousLesVehicules.stream()
-                    .filter(v -> busyIds.stream().noneMatch(id -> id.longValue() == v.getId().longValue()))
-                    .collect(Collectors.toList());
-        }
-
-        // ICI
-        @Transactional
-        public Trajet creerTrajet(Trajet trajet) {
-            // 1. Récupération des données complètes
-            Vehicule vehicule = vehiculeRepository.findById(trajet.getVehicule().getId())
-                    .orElseThrow(() -> new RuntimeException("Véhicule introuvable"));
-            User chauffeur = userRepository.findById(trajet.getChauffeur().getId())
-                    .orElseThrow(() -> new RuntimeException("Chauffeur introuvable"));
-
-            // 2. Vérification de la disponibilité (Jours Semaine)
-            if (trajet.getJoursSemaine() != null && !trajet.getJoursSemaine().isEmpty()) {
-                String jourCible = trajet.getJoursSemaine();
-
-                // --- Vérif Chauffeur ---
-                List<Long> chauffeursOccupes = trajetRepository.findBusyChauffeurIdsByDay(jourCible);
-                if (chauffeursOccupes.stream().anyMatch(id -> id.equals(chauffeur.getId()))) {
-                    throw new RessourceOccupeeException("Le chauffeur " + chauffeur.getNom() +
-                            " est déjà occupé le " + jourCible + " ou possède un planning 'TOUS les jours'.");
-                }
-
-                // --- Vérif Véhicule ---
-                List<Long> vehiculesOccupes = trajetRepository.findBusyVehiculeIdsByDay(jourCible);
-                if (vehiculesOccupes.stream().anyMatch(id -> id.equals(vehicule.getId()))) {
-                    throw new RessourceOccupeeException("Le véhicule " + vehicule.getPlaque_immatriculation() +
-                            " est déjà utilisé le " + jourCible + " ou possède un planning 'TOUS les jours'.");
-                }
-            }
-
-            // 3. Remplissage des données par défaut
-            trajet.setVehicule(vehicule);
-            trajet.setChauffeur(chauffeur);
-            if (trajet.getPlacesDisponibles() == null) trajet.setPlacesDisponibles(vehicule.getCapacite());
-            if (trajet.getStatut() == null) trajet.setStatut("PROGRAMME");
-
-            return trajetRepository.save(trajet);
-        }
-    // --- AUTRES MÉTHODES DE LISTAGE (Gardées telles quelles pour la cohérence) ---
-
-    public List<User> listerChauffeursDisponiblesParDate(Long agenceId, LocalDate date) {
-        List<Long> busyIds = trajetRepository.findBusyChauffeurIdsByDate(date);
-        return userRepository.findAll().stream()
-                .filter(u -> u.getRole() != null && "CHAUFFEUR".equals(u.getRole().name()))
-                .filter(u -> u.getAgenceEmployeur() != null && u.getAgenceEmployeur().getId().equals(agenceId))
-                .filter(u -> busyIds == null || busyIds.stream().noneMatch(id -> ((Number) id).longValue() == u.getId().longValue()))
-                .toList();
-    }
-
-    public List<Vehicule> listerVehiculesDisponiblesParJour(Long agenceId, String jour) {
-        List<Long> busyIds = trajetRepository.findBusyVehiculeIdsByDay(jour);
-        List<Vehicule> tousLesVehicules = vehiculeRepository.findByAgenceId(agenceId);
-        if (busyIds == null || busyIds.isEmpty()) return tousLesVehicules;
-        return tousLesVehicules.stream()
-                .filter(v -> busyIds.stream().noneMatch(id -> id.longValue() == v.getId().longValue()))
-                .collect(Collectors.toList());
-    }
-
-    public List<User> listerChauffeursDisponiblesParJour(Long agenceId, String jour) {
-        List<Long> busyIds = trajetRepository.findBusyChauffeurIdsByDay(jour);
-        return userRepository.findAll().stream()
-                .filter(u -> u.getRole() != null && "CHAUFFEUR".equals(u.getRole().name()))
-                .filter(u -> u.getAgenceEmployeur() != null && u.getAgenceEmployeur().getId().equals(agenceId))
-                .filter(u -> busyIds == null || busyIds.stream().noneMatch(id -> id.longValue() == u.getId().longValue()))
-                .collect(Collectors.toList());
-    }
-
-}
-*/
 package com.example.gariconnectbackend.service;
 
 import com.example.gariconnectbackend.model.Notification;
@@ -163,15 +15,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.TextStyle;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.stream.Collectors;
-import com.example.gariconnectbackend.exception.RessourceOccupeeException;
-
-
-
-import java.time.format.TextStyle;
-import java.util.Locale;
 
 @Service
 public class TrajetService {
@@ -179,12 +27,72 @@ public class TrajetService {
     @Autowired private TrajetRepository trajetRepository;
     @Autowired private VehiculeRepository vehiculeRepository;
     @Autowired private UserRepository userRepository;
-
-    // ✅ INJECTION DU REPOSITORY DE NOTIFICATIONS
     @Autowired private NotificationRepository notificationRepository;
+    @Transactional
+    public Trajet creerTrajet(Trajet trajet, Long agenceId) {
+        // Validation et liaison de l'agence propriétaire (L'entreprise AGENCY_ADMIN)
+        User agence = userRepository.findById(agenceId)
+                .orElseThrow(() -> new EntityNotFoundException("Agence introuvable avec l'ID: " + agenceId));
+        trajet.setAgence(agence);
 
+        // Validation du véhicule si présent
+        if (trajet.getVehicule() != null && trajet.getVehicule().getId() != null) {
+            Vehicule v = vehiculeRepository.findById(trajet.getVehicule().getId())
+                    .orElseThrow(() -> new EntityNotFoundException("Véhicule introuvable"));
+            trajet.setVehicule(v);
+        }
+
+        // Validation du chauffeur si présent
+        if (trajet.getChauffeur() != null && trajet.getChauffeur().getId() != null) {
+            User chauffeur = userRepository.findById(trajet.getChauffeur().getId())
+                    .orElseThrow(() -> new EntityNotFoundException("Chauffeur introuvable"));
+            trajet.setChauffeur(chauffeur);
+        }
+
+        trajet.setStatut("PROGRAMME");
+        return trajetRepository.save(trajet);
+    }
+
+    @Transactional
+    public Trajet modifierTrajet(Long id, Trajet details, Long agenceId) {
+        Trajet trajet = trajetRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable"));
+
+        if (!trajet.getAgence().getId().equals(agenceId)) {
+            throw new RuntimeException("Action non autorisée : Ce trajet appartient à une autre agence.");
+        }
+
+        trajet.setDepart(details.getDepart());
+        trajet.setDestination(details.getDestination());
+        trajet.setDateHeureDepart(details.getDateHeureDepart());
+        trajet.setJoursSemaine(details.getJoursSemaine());
+        trajet.setPrix(details.getPrix());
+        trajet.setPlacesDisponibles(details.getPlacesDisponibles());
+
+        if (details.getVehicule() != null) {
+            Vehicule v = vehiculeRepository.findById(details.getVehicule().getId()).orElse(null);
+            trajet.setVehicule(v);
+        }
+        if (details.getChauffeur() != null) {
+            User c = userRepository.findById(details.getChauffeur().getId()).orElse(null);
+            trajet.setChauffeur(c);
+        }
+
+        return trajetRepository.save(trajet);
+    }
+
+    @Transactional
+    public void supprimerTrajet(Long id, Long agenceId) {
+        Trajet trajet = trajetRepository.findById(id)
+                .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable"));
+
+        if (!trajet.getAgence().getId().equals(agenceId)) {
+            throw new RuntimeException("Action non autorisée pour cette agence.");
+        }
+        trajetRepository.delete(trajet);
+    }
     /**
-     * ✅ MÉTHODE CENTRALE POUR NOTIFIER LE CHAUFFEUR
+     * ✅ NOTIFIER LE CHAUFFEUR
      */
     public void envoyerNotificationChauffeur(User chauffeur, String message) {
         if (chauffeur != null) {
@@ -197,21 +105,141 @@ public class TrajetService {
         }
     }
 
-    public List<User> listerChauffeursDisponibles(Long agenceId, java.time.LocalDate date) {
-        List<Long> busyIds = trajetRepository.findBusyChauffeurIdsByDate(date);
-        return userRepository.findAll().stream()
-                .filter(u -> u.getRole() != null && "CHAUFFEUR".equals(u.getRole().name()))
-                .filter(u -> !busyIds.contains(u.getId()))
-                .toList();
-    }
+//    /**
+//     * 🟢 1. CRÉER UN TRAJET : Verrouillage du Véhicule et du Chauffeur
+//     */
+//    @Transactional
+//    public Trajet creerTrajet(Trajet trajet, Long agenceId) {
+//        // 1. Verrouillage du Véhicule
+//        if (trajet.getVehicule() != null && trajet.getVehicule().getId() != null) {
+//            Vehicule vehicule = vehiculeRepository.findById(trajet.getVehicule().getId())
+//                    .orElseThrow(() -> new EntityNotFoundException("Véhicule introuvable"));
+//
+//            vehicule.setStatut("Aligné a un trajet"); // 🔥 VERROUILLAGE
+//            vehiculeRepository.save(vehicule);
+//            trajet.setVehicule(vehicule);
+//
+//            if (trajet.getPlacesDisponibles() == null) {
+//                trajet.setPlacesDisponibles(vehicule.getCapacite());
+//            }
+//        }
+//
+//        // 2. Verrouillage du Chauffeur
+//        User chauffeurConnecte = null;
+//        if (trajet.getChauffeur() != null && trajet.getChauffeur().getId() != null) {
+//            chauffeurConnecte = userRepository.findById(trajet.getChauffeur().getId())
+//                    .orElseThrow(() -> new EntityNotFoundException("Chauffeur introuvable"));
+//
+//            chauffeurConnecte.setStatut("Aligné a un trajet"); // 🔥 VERROUILLAGE
+//            userRepository.save(chauffeurConnecte);
+//            trajet.setChauffeur(chauffeurConnecte);
+//        }
+//
+//        if (trajet.getStatut() == null) {
+//            trajet.setStatut("PROGRAMME");
+//        }
+//
+//        Trajet nouveauTrajet = trajetRepository.save(trajet);
+//
+//        // 3. Notification
+//        if (chauffeurConnecte != null) {
+//            envoyerNotificationChauffeur(
+//                    chauffeurConnecte,
+//                    "Nouvelle mission assignée : " + trajet.getDepart() + " ➔ " + trajet.getDestination()
+//            );
+//        }
+//
+//        return nouveauTrajet;
+//    }
 
-    public List<Vehicule> listerVehiculesDisponibles(Long agenceId, java.time.LocalDate date) {
-        List<Long> busyIds = trajetRepository.findBusyVehiculeIdsByDate(date);
-        return vehiculeRepository.findByAgenceId(agenceId).stream()
-                .filter(v -> busyIds == null || !busyIds.contains(v.getId()))
-                .toList();
-    }
+//    /**
+//     * 🔄 2. MODIFIER UN TRAJET : Gestion intelligente des échanges de ressources
+//     */
+//    @Transactional
+//    public Trajet modifierTrajet(Long id, Trajet trajetDetails, Long agenceId) {
+//        Trajet trajet = trajetRepository.findById(id)
+//                .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable"));
+//
+//        if (!trajet.getAgence().getId().equals(agenceId)) {
+//            throw new SecurityException("Vous n'êtes pas autorisé à modifier ce trajet.");
+//        }
+//
+//        // 1. Changement de Véhicule (Libérer l'ancien, verrouiller le nouveau)
+//        if (trajetDetails.getVehicule() != null && trajetDetails.getVehicule().getId() != null) {
+//            if (trajet.getVehicule() == null || !trajet.getVehicule().getId().equals(trajetDetails.getVehicule().getId())) {
+//                // Libérer l'ancien
+//                if (trajet.getVehicule() != null) {
+//                    Vehicule ancienVehicule = trajet.getVehicule();
+//                    ancienVehicule.setStatut("DISPONIBLE");
+//                    vehiculeRepository.save(ancienVehicule);
+//                }
+//                // Verrouiller le nouveau
+//                Vehicule nouveauVehicule = vehiculeRepository.findById(trajetDetails.getVehicule().getId()).orElseThrow();
+//                nouveauVehicule.setStatut("Aligné a un trajet");
+//                vehiculeRepository.save(nouveauVehicule);
+//                trajet.setVehicule(nouveauVehicule);
+//            }
+//        }
+//
+//        // 2. Changement de Chauffeur (Libérer l'ancien, verrouiller le nouveau)
+//        if (trajetDetails.getChauffeur() != null && trajetDetails.getChauffeur().getId() != null) {
+//            if (trajet.getChauffeur() == null || !trajet.getChauffeur().getId().equals(trajetDetails.getChauffeur().getId())) {
+//                // Libérer l'ancien
+//                if (trajet.getChauffeur() != null) {
+//                    User ancienChauffeur = trajet.getChauffeur();
+//                    ancienChauffeur.setStatut("DISPONIBLE");
+//                    userRepository.save(ancienChauffeur);
+//                }
+//                // Verrouiller le nouveau
+//                User nouveauChauffeur = userRepository.findById(trajetDetails.getChauffeur().getId()).orElseThrow();
+//                nouveauChauffeur.setStatut("Aligné a un trajet");
+//                userRepository.save(nouveauChauffeur);
+//                trajet.setChauffeur(nouveauChauffeur);
+//            }
+//        }
+//
+//        trajet.setDepart(trajetDetails.getDepart());
+//        trajet.setDestination(trajetDetails.getDestination());
+//        trajet.setDateHeureDepart(trajetDetails.getDateHeureDepart());
+//        trajet.setJoursSemaine(trajetDetails.getJoursSemaine());
+//        trajet.setPrix(trajetDetails.getPrix());
+//        trajet.setPlacesDisponibles(trajetDetails.getPlacesDisponibles());
+//
+//        if (trajetDetails.getStatut() != null) {
+//            trajet.setStatut(trajetDetails.getStatut());
+//        }
+//
+//        return trajetRepository.save(trajet);
+//    }
 
+    /**
+     * 🛑 3. SUPPRIMER UN TRAJET : Libération des ressources
+     */
+//    @Transactional
+//    public void supprimerTrajet(Long id, Long agenceId) {
+//        Trajet trajet = trajetRepository.findById(id)
+//                .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable"));
+//
+//        if (!trajet.getAgence().getId().equals(agenceId)) {
+//            throw new SecurityException("Vous n'êtes pas autorisé à supprimer ce trajet.");
+//        }
+//
+//        // 🔓 LIBÉRATION DES RESSOURCES
+//        if (trajet.getVehicule() != null) {
+//            trajet.getVehicule().setStatut("DISPONIBLE");
+//            vehiculeRepository.save(trajet.getVehicule());
+//        }
+//        if (trajet.getChauffeur() != null) {
+//            trajet.getChauffeur().setStatut("DISPONIBLE");
+//            userRepository.save(trajet.getChauffeur());
+//        }
+//
+//        trajetRepository.delete(trajet);
+//    }
+
+    /**
+     * 🚦 4. METTRE A JOUR LE STATUT : Libération à la fin de la course
+     */
     @Transactional
     public void mettreAJourStatut(Long trajetId, String nouveauStatut) {
         Trajet trajet = trajetRepository.findById(trajetId)
@@ -219,194 +247,35 @@ public class TrajetService {
 
         trajet.setStatut(nouveauStatut);
 
-        if ("TERMINE".equals(nouveauStatut) && trajet.getChauffeur() != null) {
-            User chauffeur = trajet.getChauffeur();
-            chauffeur.setStatut("DISPONIBLE");
-            userRepository.save(chauffeur);
+        // 🔓 LIBÉRATION DES RESSOURCES SI LE TRAJET EST FINI OU ANNULÉ
+        if ("TERMINE".equals(nouveauStatut) || "ANNULE".equals(nouveauStatut)) {
+            if (trajet.getChauffeur() != null) {
+                trajet.getChauffeur().setStatut("DISPONIBLE");
+                userRepository.save(trajet.getChauffeur());
+            }
+            if (trajet.getVehicule() != null) {
+                trajet.getVehicule().setStatut("DISPONIBLE");
+                vehiculeRepository.save(trajet.getVehicule());
+            }
         }
 
         trajetRepository.save(trajet);
 
-        // ✅ NOTIFICATION : Changement de statut
         envoyerNotificationChauffeur(
                 trajet.getChauffeur(),
                 "Le statut de votre trajet vers " + trajet.getDestination() + " est passé à : " + nouveauStatut
         );
     }
 
-
-    @Transactional
-    public Trajet creerTrajet(Trajet trajet) {
-        Vehicule vehicule = vehiculeRepository.findById(trajet.getVehicule().getId())
-                .orElseThrow(() -> new RuntimeException("Véhicule introuvable"));
-        User chauffeur = userRepository.findById(trajet.getChauffeur().getId())
-                .orElseThrow(() -> new RuntimeException("Chauffeur introuvable"));
-
-        if (trajet.getJoursSemaine() != null && !trajet.getJoursSemaine().isEmpty()) {
-            String jourCible = trajet.getJoursSemaine();
-
-            List<Long> chauffeursOccupes = trajetRepository.findBusyChauffeurIdsByDay(jourCible);
-            if (chauffeursOccupes.stream().anyMatch(id -> id.equals(chauffeur.getId()))) {
-                throw new RessourceOccupeeException("Le chauffeur " + chauffeur.getNom() +
-                        " est déjà occupé le " + jourCible + " ou possède un planning 'TOUS les jours'.");
-            }
-
-            List<Long> vehiculesOccupes = trajetRepository.findBusyVehiculeIdsByDay(jourCible);
-            if (vehiculesOccupes.stream().anyMatch(id -> id.equals(vehicule.getId()))) {
-                throw new RessourceOccupeeException("Le véhicule " + vehicule.getPlaque_immatriculation() +
-                        " est déjà utilisé le " + jourCible + " ou possède un planning 'TOUS les jours'.");
-            }
-        }
-
-        trajet.setVehicule(vehicule);
-        trajet.setChauffeur(chauffeur);
-        if (trajet.getPlacesDisponibles() == null) trajet.setPlacesDisponibles(vehicule.getCapacite());
-        if (trajet.getStatut() == null) trajet.setStatut("PROGRAMME");
-
-        Trajet nouveauTrajet = trajetRepository.save(trajet);
-
-        // ✅ NOTIFICATION : Nouvelle assignation
-        envoyerNotificationChauffeur(
-                chauffeur,
-                "Nouvelle mission assignée : " + trajet.getDepart() + " ➔ " + trajet.getDestination() + " (" + trajet.getJoursSemaine() + ")"
-        );
-
-        return nouveauTrajet;
-    }
-
-
-
-    // Trouver le trajet actif du chauffeur
     public Optional<Trajet> getTrajetActifChauffeur(Long chauffeurId) {
         return trajetRepository.findActiveTrajetByChauffeurId(chauffeurId);
     }
 
-    // Mettre à jour le statut du trajet
-    public Trajet updateStatutTrajet(Long trajetId, String nouveauStatut) {
-        Trajet trajet = trajetRepository.findById(trajetId)
-                .orElseThrow(() -> new EntityNotFoundException("Trajet non trouvé avec l'ID : " + trajetId));
-
-        // Validation basique des transitions de statut (Optionnel mais recommandé)
-        String statutActuel = trajet.getStatut();
-        if ("TERMINE".equals(statutActuel)) {
-            throw new IllegalStateException("Impossible de modifier le statut d'un trajet déjà terminé.");
-        }
-
-        trajet.setStatut(nouveauStatut);
-        return trajetRepository.save(trajet);
-    }
-
-
-    // icic
-
-
-    public List<Vehicule> listerVehiculesDisponiblesParDate(Long agenceId, LocalDate date) {
-        List<Long> busyIds = trajetRepository.findBusyVehiculeIdsByDate(date);
-        List<Vehicule> tousLesVehicules = vehiculeRepository.findByAgenceId(agenceId);
-        if (busyIds == null || busyIds.isEmpty()) return tousLesVehicules;
-        return tousLesVehicules.stream()
-                .filter(v -> busyIds.stream().noneMatch(id -> id.longValue() == v.getId().longValue()))
-                .collect(Collectors.toList());
-    }
-
-    public List<User> listerChauffeursDisponiblesParDate(Long agenceId, LocalDate date) {
-        List<Long> busyIds = trajetRepository.findBusyChauffeurIdsByDate(date);
-        return userRepository.findAll().stream()
-                .filter(u -> u.getRole() != null && "CHAUFFEUR".equals(u.getRole().name()))
-                .filter(u -> u.getAgenceEmployeur() != null && u.getAgenceEmployeur().getId().equals(agenceId))
-                .filter(u -> busyIds == null || busyIds.stream().noneMatch(id -> id.longValue() == u.getId().longValue()))
-                .collect(Collectors.toList());
-    }
-
-    public List<Vehicule> listerVehiculesDisponiblesParJour(Long agenceId, String jour) {
-        List<Long> busyIds = trajetRepository.findBusyVehiculeIdsByDay(jour);
-        List<Vehicule> tousLesVehicules = vehiculeRepository.findByAgenceId(agenceId);
-        if (busyIds == null || busyIds.isEmpty()) return tousLesVehicules;
-        return tousLesVehicules.stream()
-                .filter(v -> busyIds.stream().noneMatch(id -> id.longValue() == v.getId().longValue()))
-                .collect(Collectors.toList());
-    }
-
-    public List<User> listerChauffeursDisponiblesParJour(Long agenceId, String jour) {
-        List<Long> busyIds = trajetRepository.findBusyChauffeurIdsByDay(jour);
-        return userRepository.findAll().stream()
-                .filter(u -> u.getRole() != null && "CHAUFFEUR".equals(u.getRole().name()))
-                .filter(u -> u.getAgenceEmployeur() != null && u.getAgenceEmployeur().getId().equals(agenceId))
-                .filter(u -> busyIds == null || busyIds.stream().noneMatch(id -> id.longValue() == u.getId().longValue()))
-                .collect(Collectors.toList());
-    }
-
-    @Transactional
-    public Trajet creerTrajet(Trajet trajet, Long agenceId) {
-        User agence = userRepository.findById(agenceId)
-                .orElseThrow(() -> new EntityNotFoundException("Agence introuvable"));
-        trajet.setAgence(agence);
-        trajet.setStatut("DISPONIBLE");
-
-        if (trajet.getVehicule() != null && trajet.getDateHeureDepart() != null) {
-            if (trajetRepository.isVehiculeOccupeADate(trajet.getVehicule().getId(), trajet.getDateHeureDepart())) {
-                throw new RessourceOccupeeException("Ce véhicule est déjà affecté à un autre trajet ce jour-là.");
-            }
-        }
-
-        if (trajet.getChauffeur() != null && trajet.getDateHeureDepart() != null) {
-            if (trajetRepository.isChauffeurOccupeADate(trajet.getChauffeur().getId(), trajet.getDateHeureDepart())) {
-                throw new RessourceOccupeeException("Ce chauffeur est déjà occupé sur un autre trajet ce jour-là.");
-            }
-        }
-
-        return trajetRepository.save(trajet);
-    }
-
-    @Transactional
-    public Trajet modifierTrajet(Long id, Trajet trajetDetails, Long agenceId) {
-        Trajet trajet = trajetRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable"));
-
-        if (!trajet.getAgence().getId().equals(agenceId)) {
-            throw new SecurityException("Vous n'êtes pas autorisé à modifier ce trajet.");
-        }
-
-        trajet.setDepart(trajetDetails.getDepart());
-        trajet.setDestination(trajetDetails.getDestination());
-        trajet.setDateHeureDepart(trajetDetails.getDateHeureDepart());
-        trajet.setJoursSemaine(trajetDetails.getJoursSemaine());
-        trajet.setPrix(trajetDetails.getPrix());
-        trajet.setPlacesDisponibles(trajetDetails.getPlacesDisponibles());
-        trajet.setVehicule(trajetDetails.getVehicule());
-        trajet.setChauffeur(trajetDetails.getChauffeur());
-
-        if (trajetDetails.getStatut() != null) {
-            trajet.setStatut(trajetDetails.getStatut());
-        }
-
-        return trajetRepository.save(trajet);
-    }
-
-    @Transactional
-    public void supprimerTrajet(Long id, Long agenceId) {
-        Trajet trajet = trajetRepository.findById(id)
-                .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable"));
-
-        if (!trajet.getAgence().getId().equals(agenceId)) {
-            throw new SecurityException("Vous n'êtes pas autorisé à supprimer ce trajet.");
-        }
-
-        trajetRepository.delete(trajet);
-    }
-
     public List<Trajet> getTrajetsDuJour(Long chauffeurId) {
-        // 1. Obtenir le jour actuel en français (ex: "LUNDI")
         String jourActuel = LocalDate.now().getDayOfWeek()
                 .getDisplayName(TextStyle.FULL, Locale.FRENCH).toUpperCase();
 
-        // 2. Récupérer tous les trajets du chauffeur
-        List<Trajet> tousLesTrajets = trajetRepository.findByChauffeurId(chauffeurId);
-
-        // 3. Filtrer :
-        // - Si "TOUS" ou "TOUS LES JOURS" -> affiché
-        // - Sinon -> vérifier si le jour actuel est dans la chaîne des jours
-        return tousLesTrajets.stream()
+        return trajetRepository.findByChauffeurId(chauffeurId).stream()
                 .filter(t -> {
                     if (t.getJoursSemaine() == null) return false;
                     String jours = t.getJoursSemaine().toUpperCase();
@@ -415,5 +284,3 @@ public class TrajetService {
                 .collect(Collectors.toList());
     }
 }
-
-// ... dans votre classe TrajetService ...

@@ -26,6 +26,16 @@ public class AuthService {
             throw new RuntimeException("Action interdite : Le compte Super Admin ne peut pas être créé via une inscription.");
         }
 
+        // 🟢 SÉCURITÉ : Vérifier si l'email ou le téléphone existe déjà
+        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
+            throw new RuntimeException("Cet adresse email est déjà utilisée.");
+        }
+
+        // Optionnel : Décommente si tu as existsByTelephone dans ton UserRepository
+        // if (user.getTelephone() != null && userRepository.existsByTelephone(user.getTelephone())) {
+        //     throw new RuntimeException("Ce numéro de téléphone est déjà utilisé.");
+        // }
+
         System.out.println("=== Inscription utilisateur ===");
         System.out.println("Email reçu : " + user.getEmail());
         System.out.println("Téléphone reçu : " + user.getTelephone());
@@ -33,7 +43,7 @@ public class AuthService {
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         user.setMustChangePassword(false);
 
-        // 🔥 CORRECTION : Récupération de l'agence et création du lien relationnel
+        // Récupération de l'agence et création du lien relationnel
         if (agenceId != null) {
             User agence = userRepository.findById(agenceId)
                     .orElseThrow(() -> new RuntimeException("L'agence sélectionnée est introuvable."));
@@ -43,9 +53,9 @@ public class AuthService {
         // Gestion des statuts selon le rôle
         if (user.getRole() == Role.AGENCY_ADMIN) {
             user.setStatut("EN_ATTENTE");
-            user.setAgenceEmployeur(null); // L'admin d'agence n'a pas d'employeur au-dessus de lui
+            user.setAgenceEmployeur(null);
         } else if (user.getRole() == Role.CHAUFFEUR || user.getRole() == Role.AGENCY_MANAGER) {
-            user.setStatut("EN_ATTENTE"); // Doit être validé par l'AGENCY_ADMIN
+            user.setStatut("EN_ATTENTE");
         } else {
             user.setStatut("ACTIF"); // Client ou passager
         }
@@ -81,4 +91,6 @@ public class AuthService {
                 user.getPhotoUrl()
         );
     }
+
+
 }

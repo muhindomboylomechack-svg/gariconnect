@@ -1,5 +1,6 @@
 package com.example.gariconnectbackend.controller;
 
+import com.example.gariconnectbackend.dto.TrajetDTO;
 import com.example.gariconnectbackend.model.Role;
 import com.example.gariconnectbackend.model.Trajet;
 import com.example.gariconnectbackend.model.User;
@@ -35,26 +36,153 @@ public class TrajetController {
 
     @Autowired
     private VehiculeRepository vehiculeRepository;
-
-    // ==========================================
-    // 1. ENDPOINTS PUBLICS / CONSULTATION
-    // ==========================================
-
+//
+//    @GetMapping("/tous")
+//   // @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CLIENT', 'CHAUFFEUR')")
+//    public ResponseEntity<?> obtenirTousLesTrajets() {
+//        try {
+//            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
+//            User utilisateurConnecte = userRepository.findByEmail(emailConnecte)
+//                    .orElseThrow(() -> new RuntimeException("Utilisateur connecté introuvable"));
+//
+//            List<Trajet> trajets;
+//
+//            if (utilisateurConnecte.getRole() == Role.SUPER_ADMIN) {
+//                trajets = trajetRepository.findAll();
+//            } else {
+//                Long agenceId = null;
+//
+//                if (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) {
+//                    agenceId = utilisateurConnecte.getId();
+//                } else if (utilisateurConnecte.getRole() == Role.AGENCY_MANAGER && utilisateurConnecte.getAgenceEmployeur() != null) {
+//                    agenceId = utilisateurConnecte.getAgenceEmployeur().getId();
+//                } else if (utilisateurConnecte.getRole() == Role.CHAUFFEUR && utilisateurConnecte.getAgenceEmployeur() != null) {
+//                    agenceId = utilisateurConnecte.getAgenceEmployeur().getId();
+//                }
+//
+//                if (agenceId == null) {
+//                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Action non autorisée : Liaison agence introuvable.");
+//                }
+//
+//                trajets = trajetRepository.findByAgenceId(agenceId);
+//            }
+//
+//            return ResponseEntity.ok(trajets);
+//
+//        } catch (Exception e) {
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                    .body(Map.of("message", "Erreur lors du chargement des trajets : " + e.getMessage()));
+//        }
+//    }
+    // =========================================================================
+    // 1. ENDPOINT PUBLIC (Pour la page d'accueil Home.jsx - Sans restriction)
+    // =========================================================================
     @GetMapping("/tous")
-    public List<Trajet> getTousLesTrajets() {
-        return trajetRepository.findAll();
+    public ResponseEntity<?> obtenirTousLesTrajets() {
+        try {
+            // 🟢 L'endpoint est maintenant 100% PUBLIC.
+            // On ne cherche plus à récupérer un utilisateur connecté,
+            // ce qui empêche le rejet (403) ou le crash (500) pour les simples visiteurs de l'application.
+
+            List<Trajet> trajets = trajetRepository.findAll();
+
+            return ResponseEntity.ok(trajets);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Erreur lors du chargement des trajets : " + e.getMessage()));
+        }
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<?> getTrajetById(@PathVariable Long id) {
+    @PostMapping
+    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> creerTrajet(@RequestBody Trajet trajet) {
         try {
-            Trajet trajet = trajetRepository.findById(id)
-                    .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable"));
-            return ResponseEntity.ok(trajet);
-        } catch (EntityNotFoundException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", e.getMessage()));
+            String emailAgence = SecurityContextHolder.getContext().getAuthentication().getName();
+            User utilisateurConnecte = userRepository.findByEmail(emailAgence)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur connecté introuvable"));
+
+            Long agenceId = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
+                    ? utilisateurConnecte.getId()
+                    : (utilisateurConnecte.getAgenceEmployeur() != null ? utilisateurConnecte.getAgenceEmployeur().getId() : null);
+
+            if (agenceId == null) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Création impossible : Agence de rattachement introuvable.");
+            }
+
+            Trajet nouveauTrajet = trajetService.creerTrajet(trajet, agenceId);
+            return ResponseEntity.status(HttpStatus.CREATED).body(nouveauTrajet);
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Erreur de création : " + e.getMessage());
+        }
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> modifierTrajet(@PathVariable Long id, @RequestBody Trajet details) {
+        try {
+            String emailAgence = SecurityContextHolder.getContext().getAuthentication().getName();
+            User utilisateurConnecte = userRepository.findByEmail(emailAgence)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur connecté introuvable"));
+
+            Long agenceId = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
+                    ? utilisateurConnecte.getId()
+                    : (utilisateurConnecte.getAgenceEmployeur() != null ? utilisateurConnecte.getAgenceEmployeur().getId() : null);
+
+            if (agenceId == null) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Modification impossible : Agence de rattachement introuvable.");
+            }
+
+            Trajet trajetMisAJour = trajetService.modifierTrajet(id, details, agenceId);
+            return ResponseEntity.ok(trajetMisAJour);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Erreur de modification : " + e.getMessage());
+        }
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> supprimerTrajet(@PathVariable Long id) {
+        try {
+            String emailAgence = SecurityContextHolder.getContext().getAuthentication().getName();
+            User utilisateurConnecte = userRepository.findByEmail(emailAgence)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur connecté introuvable"));
+
+            Long agenceId = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
+                    ? utilisateurConnecte.getId()
+                    : (utilisateurConnecte.getAgenceEmployeur() != null ? utilisateurConnecte.getAgenceEmployeur().getId() : null);
+
+            if (agenceId == null) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Suppression non autorisée.");
+            }
+
+            trajetService.supprimerTrajet(id, agenceId);
+            return ResponseEntity.ok(Map.of("message", "Trajet supprimé avec succès."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Erreur de suppression : " + e.getMessage());
+        }
+    }
+
+    @GetMapping("/mes-chauffeurs")
+    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> getChauffeursDeMonAgence() {
+        try {
+            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+            User currentUser = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+
+            Long agenceId = (currentUser.getRole() == Role.AGENCY_ADMIN)
+                    ? currentUser.getId()
+                    : (currentUser.getAgenceEmployeur() != null ? currentUser.getAgenceEmployeur().getId() : null);
+
+            if (agenceId == null) {
+                return ResponseEntity.badRequest().body("Vous n'êtes rattaché à aucune agence.");
+            }
+
+            List<User> chauffeurs = userRepository.findByRoleAndAgenceEmployeur_Id(Role.CHAUFFEUR, agenceId);
+            return ResponseEntity.ok(chauffeurs);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Erreur : " + e.getMessage());
         }
     }
 
@@ -66,27 +194,7 @@ public class TrajetController {
         return ResponseEntity.ok(trajets);
     }
 
-    // ==========================================
-    // 2. ENDPOINTS CHAUFFEUR
-    // ==========================================
 
-    @GetMapping("/mes-trajets")
-    @PreAuthorize("hasRole('CHAUFFEUR')")
-    public ResponseEntity<?> getMesTrajetsChauffeur() {
-        try {
-            String email = SecurityContextHolder.getContext().getAuthentication().getName();
-            User chauffeur = userRepository.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("Chauffeur non trouvé"));
-
-            List<Trajet> trajets = trajetRepository.findAll().stream()
-                    .filter(t -> t.getChauffeur() != null && t.getChauffeur().getId().equals(chauffeur.getId()))
-                    .collect(Collectors.toList());
-
-            return ResponseEntity.ok(trajets);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("message", "Erreur lors de la récupération de vos trajets : " + e.getMessage()));
-        }
-    }
 
     @GetMapping("/mon-historique")
     @PreAuthorize("hasRole('CHAUFFEUR')")
@@ -121,117 +229,76 @@ public class TrajetController {
                     .body(Map.of("message", "Impossible de récupérer les trajets d'aujourd'hui : " + e.getMessage()));
         }
     }
-
-    // ==========================================
-    // 3. ENDPOINTS MANAGEMENT (AGENCE & ADMIN)
-    // ==========================================
-
-    @GetMapping("/mes-chauffeurs")
+    @GetMapping("/mes-trajets")
     @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
-    public ResponseEntity<?> getChauffeursDeMonAgence() {
+    public ResponseEntity<?> getTrajetsDeMonAgence() {
         try {
-            String email = SecurityContextHolder.getContext().getAuthentication().getName();
-            User currentUser = userRepository.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
-
-            Long agenceId = (currentUser.getRole() == Role.AGENCY_ADMIN)
-                    ? currentUser.getId()
-                    : (currentUser.getAgenceEmployeur() != null ? currentUser.getAgenceEmployeur().getId() : null);
-
-            if (agenceId == null) {
-                return ResponseEntity.badRequest().body("Vous n'êtes rattaché à aucune agence.");
-            }
-
-            List<User> chauffeurs = userRepository.findByRoleAndAgenceEmployeur_Id(Role.CHAUFFEUR, agenceId);
-            return ResponseEntity.ok(chauffeurs);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Erreur : " + e.getMessage());
-        }
-    }
-
-    @PostMapping("/creer")
-    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
-    public ResponseEntity<?> creerTrajet(@RequestBody Trajet trajet) {
-        try {
+            // 1. Récupérer l'email de l'administrateur ou gestionnaire connecté
             String emailAgence = SecurityContextHolder.getContext().getAuthentication().getName();
             User utilisateurConnecte = userRepository.findByEmail(emailAgence)
-                    .orElseThrow(() -> new RuntimeException("Agence introuvable"));
+                    .orElseThrow(() -> new RuntimeException("Utilisateur connecté introuvable"));
 
-            User agence = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
-                    ? utilisateurConnecte
-                    : utilisateurConnecte.getAgenceEmployeur();
+            // 2. Déterminer l'ID de l'agence propriétaire
+            Long agenceId = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
+                    ? utilisateurConnecte.getId()
+                    : (utilisateurConnecte.getAgenceEmployeur() != null ? utilisateurConnecte.getAgenceEmployeur().getId() : null);
 
-            if (agence == null) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                        .body(Map.of("message", "Erreur : Impossible de déterminer l'agence propriétaire."));
+            if (agenceId == null) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Action non autorisée : vous n'êtes rattaché à aucune agence.");
             }
 
-            trajet.setAgence(agence);
-
-            if (trajet.getChauffeur() != null && trajet.getChauffeur().getId() != null) {
-                User chauffeur = userRepository.findById(trajet.getChauffeur().getId())
-                        .orElseThrow(() -> new RuntimeException("Chauffeur spécifié introuvable"));
-                trajet.setChauffeur(chauffeur);
-            }
-
-            if (trajet.getVehicule() != null && trajet.getVehicule().getId() != null) {
-                Vehicule vehicule = vehiculeRepository.findById(trajet.getVehicule().getId())
-                        .orElseThrow(() -> new RuntimeException("Véhicule spécifié introuvable"));
-                trajet.setVehicule(vehicule);
-            }
-
-            Trajet nouveauTrajet = trajetService.creerTrajet(trajet);
-            return ResponseEntity.status(HttpStatus.CREATED).body(nouveauTrajet);
+            // 3. Récupérer tous les trajets associés à cette agence
+            List<Trajet> trajets = trajetRepository.findByAgenceId(agenceId);
+            return ResponseEntity.ok(trajets);
 
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                    .body(Map.of("message", "Erreur lors de la création du trajet : " + e.getMessage()));
+                    .body(Map.of("message", "Impossible de récupérer les trajets : " + e.getMessage()));
+        }
+    }
+    @GetMapping("/recherche")
+    public ResponseEntity<?> rechercherTrajetsPublics(
+            @RequestParam(required = false) String depart,
+            @RequestParam(required = false) String destination,
+            @RequestParam(required = false) String date) {
+        try {
+            List<Trajet> trajets = trajetRepository.findAll().stream()
+                    .filter(t -> !"TERMINE".equals(t.getStatut()) && !"ANNULE".equals(t.getStatut()))
+                    .filter(t -> depart == null || depart.trim().isEmpty() || (t.getDepart() != null && t.getDepart().toLowerCase().contains(depart.toLowerCase())))
+                    .filter(t -> destination == null || destination.trim().isEmpty() || (t.getDestination() != null && t.getDestination().toLowerCase().contains(destination.toLowerCase())))
+                    // La vérification de date peut être ajoutée ici si besoin
+                    .collect(Collectors.toList());
+
+            List<TrajetDTO> trajetsDTO = trajets.stream()
+                    .map(TrajetDTO::fromEntity)
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(trajetsDTO);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Erreur lors de la recherche : " + e.getMessage()));
         }
     }
 
-    @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
-    public ResponseEntity<?> modifierTrajet(@PathVariable Long id, @RequestBody Trajet details) {
+    // ==========================================
+    // MÉTHODE À VÉRIFIER DANS TrajetController.java
+    // ==========================================
+
+    // 🔓 Cette méthode doit rester accessible pour que ReservationPage puisse charger les données !
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getTrajetById(@PathVariable Long id) {
         try {
-            String emailAgence = SecurityContextHolder.getContext().getAuthentication().getName();
-            User utilisateurConnecte = userRepository.findByEmail(emailAgence)
-                    .orElseThrow(() -> new RuntimeException("Utilisateur connecté introuvable"));
+            Trajet trajet = trajetRepository.findById(id)
+                    .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Trajet introuvable avec l'ID : " + id));
 
-            Long agenceId = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
-                    ? utilisateurConnecte.getId()
-                    : (utilisateurConnecte.getAgenceEmployeur() != null ? utilisateurConnecte.getAgenceEmployeur().getId() : null);
+            return ResponseEntity.ok(TrajetDTO.fromEntity(trajet));
 
-            if (agenceId == null) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Action non autorisée.");
-            }
-
-            Trajet trajetMisAJour = trajetService.modifierTrajet(id, details, agenceId);
-            return ResponseEntity.ok(trajetMisAJour);
+        } catch (jakarta.persistence.EntityNotFoundException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Erreur de modification : " + e.getMessage());
-        }
-    }
-
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
-    public ResponseEntity<?> supprimerTrajet(@PathVariable Long id) {
-        try {
-            String emailAgence = SecurityContextHolder.getContext().getAuthentication().getName();
-            User utilisateurConnecte = userRepository.findByEmail(emailAgence)
-                    .orElseThrow(() -> new RuntimeException("Utilisateur connecté introuvable"));
-
-            Long agenceId = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
-                    ? utilisateurConnecte.getId()
-                    : (utilisateurConnecte.getAgenceEmployeur() != null ? utilisateurConnecte.getAgenceEmployeur().getId() : null);
-
-            if (agenceId == null) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Action non autorisée.");
-            }
-
-            trajetService.supprimerTrajet(id, agenceId);
-            return ResponseEntity.ok(Map.of("message", "Trajet supprimé avec succès."));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Erreur de suppression : " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Erreur lors de la récupération du trajet : " + e.getMessage()));
         }
     }
 }

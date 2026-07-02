@@ -7,7 +7,8 @@ import lombok.*;
 @Entity
 @Table(name = "vehicules")
 @Getter @Setter
-@NoArgsConstructor @AllArgsConstructor
+@NoArgsConstructor  // 🔥 INDISPENSABLE POUR JACKSON
+@AllArgsConstructor
 public class Vehicule {
 
     @Id

@@ -35,7 +35,7 @@ const Login = () => {
         
         login(userData);
 
-        // 🔥 NOUVELLE MODIFICATION : Stockage persistant de l'URL de l'avatar en local
+        // 🔥 Stockage persistant de l'URL de l'avatar en local
         if (userData.photoUrl) {
           localStorage.setItem('userAvatar', userData.photoUrl);
         }
@@ -44,15 +44,17 @@ const Login = () => {
             localStorage.setItem('nomAgence', userData.nomAgence || userData.agenceNom);
         }
 
+        // 🟢 MODIFICATION MAJEURE : Sauvegarde du mot de passe saisi pour l'Option Rapide
         if (userData.mustChangePassword) {
-          navigate('/change-password-obligatoire');
-          return;
+          localStorage.setItem('temp_login_password', credentials.password);
+          navigate('/change-password-obligatoire', { state: { email: userData.email } });
+          return; // On interrompt le flux ici pour éviter la redirection vers le tableau de bord
         }
 
         // Nettoyage du préfixe éventuel ajouté par Spring Security
         const cleanRole = userData.role.replace('ROLE_', '');
 
-        // MISE À JOUR MAJEURE : Alignement strict avec la nouvelle architecture des rôles
+        // MISE À ZONE MAJEURE : Alignement complet avec l'architecture des rôles
         const roleRoutes = {
           SUPER_ADMIN: '/admin',             // Le propriétaire de la plateforme
           AGENCY_ADMIN: '/admin-agence',     // Le propriétaire/directeur d'une agence
@@ -123,7 +125,7 @@ const Login = () => {
             className="z-10 mt-10 p-4 bg-black/20 backdrop-blur-md rounded-2xl border border-white/10"
           >
             <p className="text-sm font-medium opacity-90 leading-relaxed">
-              "Gérez votre flotte, vos chauffeurs et vos finances sur une seule et même plateforme sécurisée."
+              "Gégrez votre flotte, vos chauffeurs et vos finances sur une seule et même plateforme sécurisée."
             </p>
           </motion.div>
         </div>

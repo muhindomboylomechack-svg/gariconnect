@@ -26,7 +26,6 @@ public class AuthController {
     @Autowired private UserRepository userRepository;
     @Autowired private PasswordEncoder passwordEncoder;
 
-
     @PostMapping("/register")
     public ResponseEntity<?> register(@RequestBody Map<String, Object> request) {
         try {
@@ -34,6 +33,11 @@ public class AuthController {
             user.setNom((String) request.get("nom"));
             user.setEmail((String) request.get("email"));
             user.setPassword((String) request.get("password"));
+
+            // 🟢 AJOUT : Extraction et assignation du numéro de téléphone
+            if (request.containsKey("telephone")) {
+                user.setTelephone((String) request.get("telephone"));
+            }
 
             String roleStr = (String) request.get("role");
             if (roleStr != null) {
@@ -63,8 +67,6 @@ public class AuthController {
         }
     }
 
-
-
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody AuthRequest authRequest) {
         try {
@@ -75,18 +77,6 @@ public class AuthController {
         }
     }
 
-    @PostMapping("/update-password")
-    public ResponseEntity<?> updatePassword(@RequestBody Map<String, String> request) {
-        String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        User user = userRepository.findByEmail(email).orElseThrow();
-
-        String newPassword = request.get("newPassword");
-        user.setPassword(passwordEncoder.encode(newPassword));
-        user.setMustChangePassword(false);
-
-        userRepository.save(user);
-        return ResponseEntity.ok(Map.of("message", "Mot de passe mis à jour avec succès !"));
-    }
 
     @GetMapping("/agences-liste")
     public ResponseEntity<?> getAgencesActives() {
@@ -101,9 +91,43 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<?> getCurrentUser() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
-        // Retourne l'utilisateur complet (incluant le champ photoUrl qui sera relu par React)
         return userRepository.findByEmail(email)
                 .map(ResponseEntity::ok)
                 .orElse(ResponseEntity.status(401).build());
     }
+    @PostMapping("/update-password")
+    public ResponseEntity<?> updatePassword(@RequestBody Map<String, String> request) {
+        // Récupération de l'email depuis le contexte de sécurité ou du payload si besoin
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+
+        // Au cas où le token ne porte pas le nom (ex: anonyme), on peut aussi accepter l'email dans le body
+        if (email == null || "anonymousUser".equals(email)) {
+            email = request.get("email");
+        }
+
+        if (email == null || email.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Email de l'utilisateur introuvable."));
+        }
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé."));
+
+        String newPassword = request.get("newPassword");
+        if (newPassword == null || newPassword.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Le nouveau mot de passe ne peut pas être vide."));
+        }
+
+        // Hachage du nouveau mot de passe définitif
+        user.setPassword(passwordEncoder.encode(newPassword));
+
+        // 🟢 L'utilisateur a changé son code secret, il peut maintenant accéder à l'application normalement
+        user.setMustChangePassword(false);
+
+        // Optionnel : On nettoie le code d'accès temporaire
+        user.setCodeAcces(null);
+
+        userRepository.save(user);
+        return ResponseEntity.ok(Map.of("message", "Mot de passe mis à jour avec succès !"));
+    }
+
 }

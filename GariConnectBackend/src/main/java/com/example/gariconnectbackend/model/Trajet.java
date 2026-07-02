@@ -62,6 +62,15 @@ public class Trajet {
     )
     private List<ArretBus> arrets = new ArrayList<>();
 
+
+    // N'oubliez pas le getter et le setter si vous n'utilisez pas Lombok (@Data)
+    public Integer getPlacesDisponibles() {
+        return placesDisponibles;
+    }
+
+    public void setPlacesDisponibles(Integer placesDisponibles) {
+        this.placesDisponibles = placesDisponibles;
+    }
     @JsonProperty("label")
     public String getLabel() {
         if (depart == null || destination == null) return "Trajet non défini";

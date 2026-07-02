@@ -21,6 +21,8 @@ import ClientLayout from './layouts/ClientLayout';
 // ==========================================
 import Login from './pages/auth/Login';
 import Register from './pages/auth/Register';
+// 🟢 NOUVEL IMPORT : CHANGEMENT DE MOT DE PASSE OBLIGATOIRE
+import ChangePasswordObligatoire from './pages/auth/ChangePasswordObligatoire';
 
 // ==========================================
 // 4. PAGES : Espace Super Admin
@@ -45,7 +47,7 @@ import CourriersPage from './pages/agence/CourriersPage';
 import GestionFinance from './pages/agence/GestionFinance';
 import DashboardPerformance from './pages/agence/DashboardPerformance';
 import InterfaceCotationAgent from './pages/agence/InterfaceCotationAgent'; 
-// 🚏 NOUVEL IMPORT : RÉGULATION DES ARRÊTS DE BUS
+// 🚏 REGULATION DES ARRÊTS DE BUS
 import RegulationAgence from './pages/agence/RegulationAgence'; 
 
 // ==========================================
@@ -57,9 +59,9 @@ import PerformanceHistory from './pages/chauffeur/PerformanceHistory';
 import ChauffeurProfil from './pages/chauffeur/ChauffeurProfil'; 
 import RamassageVipChauffeur from './pages/chauffeur/RamassageVipChauffeur';
 
-// 📱 NOUVEAUX IMPORTS : INTERFACE CHAUFFEUR MOBILE FIRST
-import CourseActuelle from './pages/chauffeur/CourseActuelle'; // Écran 1 : Prochain arrêt & infos passagers
-import ListeRamassage from './pages/chauffeur/ListeRamassage'; // Écran 2 : Pick-up list avec bouton Embarquer / QR Code
+// 📱 INTERFACE CHAUFFEUR MOBILE FIRST
+import CourseActuelle from './pages/chauffeur/CourseActuelle'; 
+import ListeRamassage from './pages/chauffeur/ListeRamassage'; 
 
 import HomeClient from "./pages/client/Home";
 import MesTickets from "./pages/client/MesTickets"; 
@@ -90,6 +92,12 @@ const HomeRedirect = () => {
   
   if (!user) return <Navigate to="/login" replace />;
   
+  // 🟢 LOGIQUE PRIORITAIRE : Si l'utilisateur doit changer son mot de passe, on court-circuite le rôle
+  if (user.mustChangePassword) {
+    console.log("Utilisateur doit changer son mot de passe, redirection forcée.");
+    return <Navigate to="/change-password-obligatoire" replace />;
+  }
+  
   // Sécurité : Nettoyage du préfixe "ROLE_" si le backend l'ajoute automatiquement
   const cleanRole = user.role.replace('ROLE_', '');
 
@@ -117,6 +125,9 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/" element={<HomeRedirect />} />
+        
+        {/* 🟢 DECOUPAGE DE LA ROUTE DE SECURITE CRUCIALE */}
+        <Route path="/change-password-obligatoire" element={<ChangePasswordObligatoire />} />
 
         {/* --- ESPACE 1 : SUPER ADMIN --- */}
         <Route path="/admin" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><SuperAdminLayout /></ProtectedRoute>}>
@@ -140,10 +151,7 @@ function App() {
           <Route path="trajets" element={<Trajets />} />
           <Route path="reservations" element={<GestionReservations />} />
           <Route path="ramassages-vip" element={<InterfaceCotationAgent />} />
-          
-          {/* 🚀 NOUVELLE ROUTE ROUTER CONNECTÉE AU BOUTON GESTION DES ARRÊTS */}
           <Route path="regulation" element={<RegulationAgence />} />
-
           <Route path="paiements" element={<GestionPaiements />} />
           <Route path="chauffeurs" element={<GestionChauffeurs />} />
           <Route path="courriers" element={<CourriersPage />} />
@@ -155,16 +163,11 @@ function App() {
         <Route path="/chauffeur" element={<ProtectedRoute allowedRoles={['CHAUFFEUR']}><ChauffeurLayout /></ProtectedRoute>}>
           <Route index element={<ChauffeurDashboard />} />
           <Route path="historique" element={<HistoriqueCourses />} />
-          
-          {/* NOUVELLES ROUTES VIP POUR LE CHAUFFEUR */}
           <Route path="vip" element={<RamassageVipChauffeur />} />
           <Route path="vip/:trajetId" element={<RamassageVipChauffeur />} />
-          
-          {/* 📱 NOUVELLES ROUTES : L'INTERFACE CHAUFFEUR MOBILE FIRST */}
           <Route path="course-actuelle" element={<CourseActuelle />} />
           <Route path="liste-ramassage" element={<ListeRamassage />} />
           <Route path="liste-ramassage/:arretId" element={<ListeRamassage />} />
-          
           <Route path="performance" element={<PerformanceHistory />} />
           <Route path="profil" element={<ChauffeurProfil />} />
         </Route>
@@ -177,17 +180,9 @@ function App() {
           <Route path="profil" element={<Profil />} />
           <Route path="reservation/:id" element={<ReservationPage />} />
           <Route path="evaluer/:id" element={<FormulaireEvaluation />} />
-          
-          {/* ⚡ LOGIQUE DE PAIEMENT UNIFIÉE DEJA PRESENTE ET FONCTIONNELLE */}
           <Route path="paiement-reservation/:reservationId" element={<PagePaiementReservation />} />
-          
-          {/* Étape intermédiare - Flux A : Réservation classique */}
           <Route path="reservation-normale/:id" element={<CheckoutPage />} />
-          
-          {/* Étape intermédiare - Flux B : Demande de récupération / Ramassage à domicile */}
           <Route path="reservation-recuperation/:id" element={<ReservationRecuperationPage />} />
-
-          {/* Fallback de compatibilité descendante */}
           <Route path="finaliser-reservation/:id" element={<CheckoutPage />} />
         </Route>
 

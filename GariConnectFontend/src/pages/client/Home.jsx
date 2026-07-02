@@ -20,22 +20,23 @@ const Home = () => {
         fetchTrajets();
     }, []);
 
-    const fetchTrajets = async () => {
+const fetchTrajets = async () => {
         setLoading(true);
         try {
-            // Modification de l'endpoint de '/trajets' vers '/trajets/tous' pour s'aligner avec l'option A
+            // 🔓 Route publique, PAS besoin d'envoyer les headers avec le Token
             const response = await api.get('/trajets/tous');
-            setTrajets(response.data);
-        } catch (error) {
-            console.error("Erreur de chargement des trajets", error);
-        } finally {
-            setLoading(false);
+            setTrajets(Array.isArray(response.data) ? response.data : []);
+        } catch (e) { 
+            console.error("Erreur chargement trajets:", e); 
+        } finally { 
+            setLoading(false); 
         }
     };
 
     const handleSearch = async () => {
         setLoading(true);
         try {
+            // 🔓 Route publique, PAS besoin d'envoyer les headers avec le Token
             const response = await api.get('/trajets/recherche', {
                 params: { 
                     depart: searchQuery.depart, 
@@ -43,15 +44,14 @@ const Home = () => {
                     date: searchQuery.date 
                 }
             });
-            setTrajets(response.data);
+            setTrajets(Array.isArray(response.data) ? response.data : []);
         } catch (error) {
             console.error("Erreur lors de la recherche", error);
         } finally {
             setLoading(false);
         }
     };
-
-    // 🔥 Redirection directe vers la page unifiée après vérification du token
+    // Redirection directe vers la page unifiée après vérification du token
     const proceedToReservation = (trajetId) => {
         const token = localStorage.getItem('token');
         
@@ -164,8 +164,13 @@ const Home = () => {
                                             <FaBus className="text-lg md:text-xl" />
                                         </div>
                                         <div>
-                                            <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">{trajet.agence?.nom || "Express"}</p>
-                                            <h3 className="text-lg md:text-xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">{trajet.heureDepart}</h3>
+                                            {/* Sécurisé : Utilisation de la structure du TrajetDTO */}
+                                            <p className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                                                {trajet.agence?.nom || "Express"}
+                                            </p>
+                                            <h3 className="text-lg md:text-xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">
+                                                {trajet.heureDepart}
+                                            </h3>
                                             {trajet.jourDepart && (
                                                 <p className="text-[10px] font-bold text-slate-400 dark:text-slate-500">{trajet.jourDepart}</p>
                                             )}

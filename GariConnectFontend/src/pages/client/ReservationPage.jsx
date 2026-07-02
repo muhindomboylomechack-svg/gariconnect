@@ -8,7 +8,6 @@ import {
     FaCheck, FaMoneyBillWave, FaHome, FaTicketAlt, FaPaperPlane, FaMapMarkerAlt,
     FaMinus, FaPlus
 } from 'react-icons/fa';
-
 // Importation du composant enfant pour le ramassage à domicile
 import FormulaireRecuperation from './FormulaireRecuperation';
 
@@ -34,7 +33,6 @@ const ReservationPage = () => {
     // Choix explicite du type de voyage (Standard vs Ramassage à domicile VIP)
     const [isVip, setIsVip] = useState(false);
     const [recuperationData, setRecuperationData] = useState(null);
-
     const [paymentData, setPaymentData] = useState({ 
         modePaiement: 'M-PESA', 
         referenceTransaction: '' 
@@ -52,23 +50,34 @@ const ReservationPage = () => {
     // Fonction isolée pour charger les données du trajet ET la liste des arrêts
     const fetchInitialData = async () => {
         try {
-            const [resTrajet, resArrets] = await Promise.all([
-                api.get(`/trajets/${id}?t=${Date.now()}`),
-                api.get(`/arrets/trajet/${id}`).catch(() => ({ data: [] })) // Appelle les arrêts spécifiques à ce trajet
-            ]);
+            // 🟢 OPTIMISATION COHÉRENTE BACKEND : 
+            // On récupère le token s'il existe pour l'ajouter, mais s'il est absent,
+            // la route étant désormais publique côté Spring Security, la requête n'échouera plus en 403.
+            const token = localStorage.getItem('token');
+            const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+            
+            const resTrajet = await api.get(`/trajets/${id}?t=${Date.now()}`, config);
+            
+            // Tentative de récupération des arrêts (ne bloquera pas si ça échoue)
+            let listArrets = [];
+            try {
+                 const resArrets = await api.get(`/arrets/trajet/${id}`, config);
+                 listArrets = resArrets.data || [];
+            } catch (errArret) {
+                 console.warn("Impossible de charger les arrêts spécifiques, utilisation de ceux du trajet :", errArret);
+            }
             
             setTrajet(resTrajet.data);
             
-            // LOGIQUE DES ARRÊTS : On prend en priorité les arrêts retournés par la route par trajet dédiée
-            const listArrets = (resArrets.data && resArrets.data.length > 0) 
-                ? resArrets.data 
+            // LOGIQUE DES ARRÊTS : On prend en priorité les arrêts retournés par la route
+            const arretsDefinitifs = (listArrets.length > 0) 
+                ? listArrets 
                 : (resTrajet.data.arrets && resTrajet.data.arrets.length > 0 ? resTrajet.data.arrets : []);
             
-            setArretsDisponibles(listArrets);
-
+            setArretsDisponibles(arretsDefinitifs);
             // Présélection du premier arrêt de la liste
-            if (listArrets.length > 0) {
-                setSelectedArret(listArrets[0].id.toString());
+            if (arretsDefinitifs.length > 0) {
+                setSelectedArret(arretsDefinitifs[0].id.toString());
             }
             
             // 🟢 Présélection initiale de 1 place s'il y a de la disponibilité
@@ -77,11 +86,15 @@ const ReservationPage = () => {
             } else {
                 setNombrePlaces(0);
             }
-
         } catch (err) {
-            console.error("Erreur lors du chargement des données :", err);
+            console.error("Erreur lors du chargement des données (Vérifiez la synchronisation avec SecurityConfig) :", err);
+            // Rediriger vers l'accueil si le trajet n'existe pas ou reste bloqué
+            if (err.response && (err.response.status === 404 || err.response.status === 405 || err.response.status === 403)) {
+                alert("Ce trajet n'est plus accessible ou vous n'avez pas les permissions requises.");
+                navigate('/');
+            }
         } finally {
-            loading && setLoading(false);
+            setLoading(false);
         }
     };
 
@@ -117,18 +130,18 @@ const ReservationPage = () => {
     
     // ACTION 1 : Clic sur le bouton principal (Standard ou VIP)
     const handleInitialSubmit = () => {
-        if (!user?.id) return alert(t('auth_error') || "Veuillez vous reconnecter.");
+        if (!user?.id && !localStorage.getItem('token')) {
+             return alert(t('auth_error') || "Veuillez vous connecter pour effectuer une réservation.");
+        }
         
         // Sécurité Frontend : On revérifie l'état actuel des places chargées
         if (trajet?.placesDisponibles <= 0) {
             return alert("Désolé, ce trajet vient d'être complété entre-temps.");
         }
-
         // Sécurité : La quantité doit être valide
         if (nombrePlaces <= 0 || nombrePlaces > trajet?.placesDisponibles) {
             return alert("Veuillez choisir une quantité de places valide.");
         }
-
         // Sécurité Arrêt : Un arrêt doit être sélectionné si des arrêts sont disponibles en Standard
         if (!isVip && arretsDisponibles.length > 0 && !selectedArret) {
             return alert("Veuillez sélectionner un arrêt de bus pour votre montée.");
@@ -162,16 +175,12 @@ const ReservationPage = () => {
                 longitude: parseFloat(recuperationData.longitudeClient) || 0.0,
                 coutRecuperation: parseFloat(recuperationData.coutRecuperation) || 0.0
             };
-
             const resReservation = await api.post('/reservations/creer', reservationPayload);
-
             if (!resReservation.data || !resReservation.data.id) {
                 throw new Error("Erreur de génération de la réservation VIP.");
             }
-
             alert("Succès ! Vos places ont été bloquées (En attente de paiement) et vos coordonnées de récupération GPS ont bien été enregistrées. Le chauffeur verra votre position lors de sa course.");
             navigate('/client/historique');
-
         } catch (error) {
             console.error("Erreur cycle VIP :", error);
             const errorMessage = error.response?.data?.erreur || error.response?.data?.message || "Erreur de connexion avec le serveur.";
@@ -245,7 +254,7 @@ const ReservationPage = () => {
 
     if (!trajet) return (
         <div className={`h-screen w-full flex items-center justify-center font-bold p-10 transition-colors duration-500 ${darkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
-            Trajet introuvable.
+            Trajet introuvable ou indisponible actuellement.
         </div>
     );
     
@@ -264,7 +273,6 @@ const ReservationPage = () => {
             </button>
 
             <div className={`w-full max-w-md md:max-w-2xl lg:max-w-4xl rounded-[2rem] md:rounded-[3rem] shadow-2xl overflow-hidden border transition-all duration-500 ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
-                
                 <div className="lg:grid lg:grid-cols-12 min-h-[500px]">
                     
                     <div className="bg-indigo-600 p-6 md:p-10 text-white text-center flex flex-col justify-center items-center lg:col-span-4 transition-colors duration-500">
@@ -276,7 +284,7 @@ const ReservationPage = () => {
                             {trajet?.depart} ➔ {trajet?.destination}
                         </p>
                         <span className={`text-xs font-bold mt-4 px-3 py-1 rounded-lg ${isFull ? 'bg-red-500/80' : 'bg-white/20'}`}>
-                            🎫 {trajet?.placesDisponibles} places restantes
+                            {isFull ? '❌ Complet' : `🎫 ${trajet?.placesDisponibles} places restantes`}
                         </span>
                     </div>
 
@@ -325,7 +333,7 @@ const ReservationPage = () => {
                                 </div>
                             )}
 
-                            {/* 🟢 BLOC MODIFIÉ : COMPTEUR SÉLECTEUR DE QUANTITÉ DE PLACES */}
+                            {/* QUANTITÉ DE PLACES */}
                             <div className="mb-6 md:mb-8">
                                 <label className={`block text-[10px] font-black uppercase mb-3 tracking-wider transition-colors duration-500 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                                     <FaUsers className="inline mr-2 text-indigo-500" size={12}/> Nombre de places à réserver
@@ -386,8 +394,8 @@ const ReservationPage = () => {
                                     ({prixUnitaire.toLocaleString()} FC x {nombrePlaces})
                                 </p>
                                 {isVip && (
-                                    <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-2 animate-pulse">
-                                        ⏳ + Frais de ramassage (À coter par l'agence)
+                                    <p className="text-xs font-bold text-emerald-600 dark:text-emerald-400 mt-2">
+                                        ⏳ + Frais de ramassage (À fixer par l'agence)
                                     </p>
                                 )}
                             </div>
@@ -400,7 +408,6 @@ const ReservationPage = () => {
                         >
                             {isSubmitting ? "Traitement..." : (isVip ? <><FaPaperPlane /> Envoyer demande de ramassage VIP</> : "Procéder au paiement")}
                         </button>
-
                     </div>
                 </div>
             </div>
@@ -483,7 +490,6 @@ const ReservationPage = () => {
                                         value={paymentData.referenceTransaction}
                                     />
                                 </div>
-
                                 <button 
                                     onClick={() => handleFinalizePaymentStandard(false)} 
                                     disabled={!paymentData.referenceTransaction || isSubmitting} 

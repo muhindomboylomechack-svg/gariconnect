@@ -13,7 +13,7 @@ import {
   FaShieldAlt, 
   FaEye, 
   FaEyeSlash,
-  FaPhone // Ajout de l'icône pour le téléphone
+  FaPhone 
 } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -21,9 +21,9 @@ const Register = () => {
   const [formData, setFormData] = useState({ 
     nom: '', 
     email: '', 
-    telephone: '', // Ajout du champ téléphone dans l'état initial
+    telephone: '', 
     password: '',
-    role: 'CLIENT', // Valeur par défaut alignée avec le backend
+    role: 'CLIENT', 
     agenceId: '' 
   });
   
@@ -58,28 +58,31 @@ const Register = () => {
     // Vérifie si le rôle nécessite d'être rattaché à une agence parente
     const requiresAgency = formData.role === 'CHAUFFEUR' || formData.role === 'AGENCY_MANAGER';
 
+    // Payload nettoyé et structuré de manière cohérente avec le AuthController backend
     const dataToSubmit = {
       nom: formData.nom,
       email: formData.email,
-      telephone: formData.telephone, // Transmission du numéro de téléphone au backend
+      telephone: formData.telephone,
       password: formData.password,
       role: formData.role,
-      agenceEmployeur: requiresAgency ? { id: formData.agenceId } : null
+      // On envoie directement agenceId à la racine pour correspondre au request.get("agenceId") du backend
+      agenceId: requiresAgency ? formData.agenceId : null
     };
 
     try {
       const response = await api.post('/auth/register', dataToSubmit);
       const userData = response.data;
 
-      // Logique post-inscription en fonction du rôle
+      // Logique post-inscription alignée sur les statuts du AuthService backend
       if (formData.role === 'CLIENT') {
         login(userData); 
         navigate('/client');
       } else if (formData.role === 'AGENCY_ADMIN') {
         setSuccess("Inscription réussie ! Votre compte Entreprise/Agence de transport a été créé et est en attente de validation par le Super Administrateur de la plateforme.");
-      } else {
-        // Cas du Chauffeur ou du Manageur
-        setSuccess(`Inscription réussie ! Votre compte ${formData.role === 'CHAUFFEUR' ? 'chauffeur' : 'manageur'} est en attente de validation par l'Administrateur de votre agence.`);
+      } else if (formData.role === 'CHAUFFEUR') {
+        setSuccess("Inscription réussie ! Votre compte Chauffeur a été créé et est en attente de validation par l'Administrateur de votre agence.");
+      } else if (formData.role === 'AGENCY_MANAGER') {
+        setSuccess("Inscription réussie ! Votre compte Manageur est en attente de validation par l'Administrateur de votre agence.");
       }
     } catch (err) {
       setError(err.response?.data?.message || "Erreur lors de l'inscription. Vérifiez vos informations.");
@@ -107,7 +110,7 @@ const Register = () => {
         className="w-full max-w-2xl bg-white/80 backdrop-blur-xl rounded-[2.5rem] shadow-[0_40px_100px_-20px_rgba(15,23,42,0.08)] border border-slate-200/60 p-6 sm:p-10 md:p-14 flex flex-col"
       >
         
-        {/* LOGO & ENTÊTE ÉPURÉS */}
+        {/* LOGO & ENTÊTE */}
         <div className="flex flex-col items-center text-center mb-8">
           <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl mb-4 shadow-sm border border-indigo-100/50">
             <FaBus size={26} />
@@ -151,7 +154,10 @@ const Register = () => {
                     <FaUser size={15} />
                   </span>
                   <input 
-                    type="text" placeholder="Nom complet / Nom de l'agence" required 
+                    type="text" 
+                    placeholder="Nom complet / Nom de l'agence" 
+                    required 
+                    value={formData.nom}
                     className="w-full pl-11 pr-4 py-3.5 bg-slate-50/50 hover:bg-slate-50/80 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-none font-semibold text-slate-800 text-sm transition-all focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]"
                     onChange={(e) => setFormData({...formData, nom: e.target.value})} 
                   />
@@ -163,7 +169,10 @@ const Register = () => {
                     <FaEnvelope size={15} />
                   </span>
                   <input 
-                    type="email" placeholder="Adresse email" required 
+                    type="email" 
+                    placeholder="Adresse email" 
+                    required 
+                    value={formData.email}
                     className="w-full pl-11 pr-4 py-3.5 bg-slate-50/50 hover:bg-slate-50/80 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-none font-semibold text-slate-800 text-sm transition-all focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]"
                     onChange={(e) => setFormData({...formData, email: e.target.value})} 
                   />
@@ -178,7 +187,10 @@ const Register = () => {
                     <FaPhone size={15} />
                   </span>
                   <input 
-                    type="tel" placeholder="Numéro de téléphone" required 
+                    type="tel" 
+                    placeholder="Numéro de téléphone" 
+                    required 
+                    value={formData.telephone}
                     className="w-full pl-11 pr-4 py-3.5 bg-slate-50/50 hover:bg-slate-50/80 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-none font-semibold text-slate-800 text-sm transition-all focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]"
                     onChange={(e) => setFormData({...formData, telephone: e.target.value})} 
                   />
@@ -193,6 +205,7 @@ const Register = () => {
                     type={showPassword ? "text" : "password"} 
                     placeholder="Mot de passe" 
                     required 
+                    value={formData.password}
                     className="w-full pl-11 pr-12 py-3.5 bg-slate-50/50 hover:bg-slate-50/80 border border-slate-200 focus:border-indigo-600 focus:bg-white rounded-2xl outline-none font-semibold text-slate-800 text-sm transition-all focus:shadow-[0_0_0_4px_rgba(79,70,229,0.08)]"
                     onChange={(e) => setFormData({...formData, password: e.target.value})} 
                   />
@@ -206,7 +219,7 @@ const Register = () => {
                 </div>
               </div>
 
-              {/* CHAMP RÔLE (PLEINE LARGEUR POUR UN MEILLEUR BALANCE VISUEL) */}
+              {/* CHAMP RÔLE */}
               <div className="relative group">
                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-600 transition-colors pointer-events-none z-10">
                   <FaUserTag size={15} />
@@ -237,7 +250,7 @@ const Register = () => {
                     <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 text-xs font-medium text-blue-800 flex items-start gap-3">
                       <div className="mt-0.5"><FaShieldAlt size={14} className="text-blue-600" /></div>
                       <p className="leading-relaxed">
-                        Vous êtes sur le point d'inscrire une entreprise de transport sur GariConnect. Après soumission, le Super Administrateur de la plateforme devra examiner vos informations et activer manuellement votre space de gestion.
+                        Vous êtes sur le point d'inscrire une entreprise de transport sur GariConnect. Après soumission, le Super Administrateur de la plateforme devra examiner vos informations et activer manuellement votre espace de gestion.
                       </p>
                     </div>
                   </motion.div>
@@ -289,7 +302,7 @@ const Register = () => {
           )}
         </AnimatePresence>
 
-        {/* PIED DE PAGE DE L'INSCRIPTION */}
+        {/* PIED DE PAGE */}
         <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3 text-xs text-slate-400 font-medium">
           <p>
             Déjà inscrit ? 

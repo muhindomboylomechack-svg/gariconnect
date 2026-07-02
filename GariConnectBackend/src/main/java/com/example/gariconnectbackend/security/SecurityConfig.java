@@ -33,14 +33,24 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-                .csrf(csrf -> csrf.disable()) // Indispensable pour les architectures API REST Stateless avec JWT
+                .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         // 🟢 Autoriser toutes les requêtes OPTIONS de pré-vérification (CORS) du navigateur
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                        // 1. Routes publiques
-                        .requestMatchers("/api/auth/**", "/uploads/**", "/error").permitAll()
+                        // 1. 🔓 ROUTES STRICTEMENT PUBLIQUES (Page d'accueil & Consultation)
+                        .requestMatchers(
+                                "/api/auth/**",
+                                "/uploads/**",
+                                "/error",
+                                "/api/trajets/tous",
+                                "/api/trajets/recherche"
+                        ).permitAll()
+
+                        // 🟢 CORRECTIF CRUCIAL : Rendre publique la route de récupération d'un trajet par ID
+                        // Placé impérativement AVANT la règle restrictive générique du point 5
+                        .requestMatchers(HttpMethod.GET, "/api/trajets/{id}").permitAll()
 
                         // 2. Gestion des récupérations
                         .requestMatchers("/api/recuperations/**", "/api/recuperation/**")
@@ -57,7 +67,8 @@ public class SecurityConfig {
                         .hasAnyAuthority("SUPER_ADMIN", "AGENCY_ADMIN", "AGENCY_MANAGER",
                                 "ROLE_SUPER_ADMIN", "ROLE_AGENCY_ADMIN", "ROLE_AGENCY_MANAGER")
 
-                        // 5. 🛠️ CORRECTION COMPLÈTE : Ajout explicit de /api/arrets (racine) et /api/arrets/** (sous-chemins)
+                        // 5. 🔒 ROUTES PRIVÉES DES TRAJETS ET RÉSERVATIONS
+                        // N'impactera plus le GET d'un trajet unique grâce au permitAll positionné plus haut
                         .requestMatchers(
                                 "/api/trajets/**",
                                 "/api/reservations/**",

@@ -120,7 +120,6 @@
 //        }
 //    }
 //}
-
 package com.example.gariconnectbackend.controller;
 
 import com.example.gariconnectbackend.model.Role;
@@ -137,11 +136,12 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/vehicules")
 @CrossOrigin("*")
-@PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')") // Sécurisation globale
+@PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
 public class VehiculeController {
 
     @Autowired
@@ -150,83 +150,82 @@ public class VehiculeController {
     @Autowired
     private UserRepository userRepository;
 
-    /**
-     * Utilitaire interne pour toujours cibler la VRAIE agence,
-     * même si c'est un agent de guichet (MANAGER) qui est connecté.
-     */
     private User getAgenceCible() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User currentUser = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
 
         if (currentUser.getRole() == Role.AGENCY_ADMIN) {
-            return currentUser; // Le patron est l'agence
+            return currentUser;
         } else if (currentUser.getRole() == Role.AGENCY_MANAGER && currentUser.getAgenceEmployeur() != null) {
-            return currentUser.getAgenceEmployeur(); // Le manager cible son employeur
+            return currentUser.getAgenceEmployeur();
         }
         return null;
     }
 
     /**
-     * 1. LECTURE : Récupère les véhicules filtrés par la bonne agence
+     * 🟢 RÉCUPÉRER UNIQUEMENT LES VÉHICULES LIBRES (POUR LA CRÉATION DE TRAJET)
      */
+    @GetMapping("/disponibles")
+    public ResponseEntity<?> getVehiculesDisponibles() {
+        try {
+            User agence = getAgenceCible();
+            if (agence == null) return ResponseEntity.badRequest().body(Map.of("message", "Aucune agence rattachée."));
+
+            // Filtrage strict : on exclut ceux qui sont "Aligné a un trajet"
+            List<Vehicule> vehiculesLibres = vehiculeRepository.findByAgence(agence).stream()
+                    .filter(v -> v.getStatut() == null || !v.getStatut().equalsIgnoreCase("Aligné a un trajet"))
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(vehiculesLibres);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Erreur lors de la récupération des véhicules : " + e.getMessage()));
+        }
+    }
+
     @GetMapping({"/mes-vehicules", "/agence"})
     public ResponseEntity<?> getVehicules(@RequestParam(required = false) Long trajetId) {
         try {
             User agence = getAgenceCible();
-
-            if (agence == null) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Aucune agence rattachée."));
-            }
+            if (agence == null) return ResponseEntity.badRequest().body(Map.of("message", "Aucune agence rattachée."));
 
             if (trajetId != null) {
                 return ResponseEntity.ok(vehiculeRepository.findByAgenceAndTrajet_Id(agence, trajetId));
             }
-
-            // Retourne STRICTEMENT les véhicules de l'agence
             return ResponseEntity.ok(vehiculeRepository.findByAgence(agence));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "Erreur : " + e.getMessage()));
         }
     }
 
-    /**
-     * 2. CRÉATION : L'Agent crée un véhicule pour son Agence
-     */
     @PostMapping
     public ResponseEntity<?> creerVehicule(@RequestBody Vehicule vehicule) {
         try {
             User agence = getAgenceCible();
             if (agence == null) return ResponseEntity.badRequest().body(Map.of("message", "Aucune agence rattachée."));
 
-            // On lie le véhicule au vrai propriétaire (l'agence)
             vehicule.setAgence(agence);
-
-            // Sécurité pour éviter les erreurs "Null" sur la capacité
             if(vehicule.getCapacite() == null && vehicule.getCapaciteTotale() != null) {
                 vehicule.setCapacite(vehicule.getCapaciteTotale());
             }
 
             return ResponseEntity.ok(vehiculeRepository.save(vehicule));
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "Erreur lors de la création : " + e.getMessage()));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "Erreur : " + e.getMessage()));
         }
     }
 
-    /**
-     * 3. MODIFICATION : Seuls les membres de l'agence peuvent modifier leurs véhicules
-     */
     @PutMapping("/{id}")
     public ResponseEntity<?> modifierVehicule(@PathVariable Long id, @RequestBody Vehicule details) {
         User agence = getAgenceCible();
         if (agence == null) return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Non autorisé"));
 
         return vehiculeRepository.findById(id).map(v -> {
-            // Vérification de sécurité multi-tenant
             if (v.getAgence() == null || !v.getAgence().getId().equals(agence.getId())) {
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Ce véhicule n'appartient pas à votre agence."));
             }
-
             v.setMarque(details.getMarque());
             v.setModele(details.getModele());
             v.setPlaque_immatriculation(details.getPlaque_immatriculation());
@@ -237,9 +236,6 @@ public class VehiculeController {
         }).orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Véhicule introuvable")));
     }
 
-    /**
-     * 4. SUPPRESSION : Sécurisée par Agence
-     */
     @DeleteMapping("/{id}")
     public ResponseEntity<?> supprimerVehicule(@PathVariable Long id) {
         User agence = getAgenceCible();
@@ -254,6 +250,10 @@ public class VehiculeController {
         }).orElse(ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Véhicule introuvable")));
     }
 
+
+
+
+
     @GetMapping("/par-trajet")
     public ResponseEntity<?> getVehiculesParTrajet(@RequestParam Long trajetId) {
         try {
@@ -266,4 +266,5 @@ public class VehiculeController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "Erreur : " + e.getMessage()));
         }
     }
+
 }

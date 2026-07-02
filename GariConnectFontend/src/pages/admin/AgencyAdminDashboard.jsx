@@ -59,31 +59,62 @@ export default function AgencyAdminDashboard() {
         setTimeout(() => setNotification({ text: '', type: '' }), 4000);
     };
 
-    // 2. CRÉATION D'UN COLLABORATEUR (Avec capture du code d'accès)
-    const handleCreate = async (e) => {
-        e.preventDefault();
-        try {
-            const response = await adminService.createUser(formData);
-            const data = response?.data !== undefined ? response.data : response;
-            
-            // Si le backend renvoie le codeAcces temporaire
-            if (data?.codeAcces) {
-                setGeneratedCode(data.codeAcces);
-                triggerNotification("Compte créé ! Veuillez copier le code d'accès.", "success");
-            } else {
-                triggerNotification(data?.message || "Collaborateur ajouté avec succès !", "success");
-                setShowModal(false);
-            }
-            
-            // Réinitialisation du formulaire et rechargement de la liste
-            setFormData({ nom: '', prenom: '', email: '', telephone: '', role: 'CHAUFFEUR' });
-            loadAgencyData(); 
-        } catch (error) {
-            const errorMsg = error.response?.data?.message || "Erreur lors de la création du compte.";
-            triggerNotification(errorMsg, "error");
-        }
-    };
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setNotification({ text: '', type: '' });
 
+    try {
+        // 1. Récupérer l'utilisateur connecté (l'admin de l'agence) depuis le localStorage
+        const authData = JSON.parse(localStorage.getItem('user')); 
+        
+        // Côté backend, pour un AGENCY_ADMIN, l'ID de son agence correspond soit à son propre ID, 
+        // soit à authData.agenceEmployeur?.id selon ta structure de token.
+        const agenceId = authData?.agenceEmployeur?.id || authData?.id;
+
+        if (!agenceId) {
+            setNotification({ 
+                text: "Erreur : Impossible de récupérer l'ID de votre agence. Veuillez vous reconnecter.", 
+                type: 'error' 
+            });
+            setLoading(false);
+            return;
+        }
+
+        // 2. Construire le payload JSON propre attendu par ton entité User.java
+        const userPayload = {
+            nom: formData.nom,
+            prenom: formData.prenom,
+            email: formData.email,
+            telephone: formData.telephone,
+            role: formData.role, // "CHAUFFEUR" ou "AGENCY_MANAGER"
+            agenceId: Number(agenceId) // Injecte l'ID de l'agence de l'admin connecté
+        };
+
+        // 3. Appel au service d'administration
+        const response = await adminService.createUser(userPayload);
+
+        // Si la création réussit, le backend retourne le nouvel utilisateur avec son code secret
+        if (response && response.codeAcces) {
+            setGeneratedCode(response.codeAcces); // Stocke le code à 6 chiffres pour l'afficher à l'écran
+            setNotification({ text: 'Collaborateur créé avec succès !', type: 'success' });
+            setShowModal(false); // Fermer le formulaire de saisie
+            
+            // Réinitialiser le formulaire
+            setFormData({ nom: '', prenom: '', email: '', telephone: '', role: 'CHAUFFEUR' });
+            
+            // Rafraîchir la liste des collaborateurs
+            loadAgencyData();
+        }
+
+    } catch (error) {
+        console.error("Erreur lors de la création :", error);
+        const errorMessage = error.response?.data?.message || "Une erreur est survenue (400 Bad Request). Vérifiez les champs.";
+        setNotification({ text: errorMessage, type: 'error' });
+    } finally {
+        setLoading(false);
+    }
+};
     // Fonction pratique pour copier le code d'accès dans le presse-papier
     const handleCopyCode = () => {
         if (generatedCode) {

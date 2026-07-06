@@ -7,7 +7,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface CommissionDetteRepository extends JpaRepository<CommissionDette, Long> {
@@ -28,4 +30,12 @@ public interface CommissionDetteRepository extends JpaRepository<CommissionDette
     List<CommissionDette> findByAgenceAndReglee(User agence, boolean reglee);
 
     List<CommissionDette> findByAgenceAndRegleeOrderByIdAsc(User agence, boolean b);
+
+    Optional<CommissionDette> findByAgenceAndDateCalcul(User agence, LocalDate now);
+
+    // ==========================================
+    // 🔥 AJOUTEZ LA CORRECTION ICI :
+    // ==========================================
+    @Query("SELECT COALESCE(SUM(c.montant), 0.0) FROM CommissionDette c WHERE c.agence.id = :agenceId AND c.reglee = true")
+    Double totalRegleParAgence(@Param("agenceId") Long agenceId);
 }

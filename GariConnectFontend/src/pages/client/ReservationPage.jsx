@@ -8,29 +8,25 @@ import {
     FaCheck, FaMoneyBillWave, FaHome, FaTicketAlt, FaPaperPlane, FaMapMarkerAlt,
     FaMinus, FaPlus
 } from 'react-icons/fa';
-// Importation du composant enfant pour le ramassage à domicile
 import FormulaireRecuperation from './FormulaireRecuperation';
 
 const ReservationPage = () => {
-    const { id } = useParams(); // 🔥 Représente l'ID du TRAJET sélectionné
+    const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useAuth();
     const { t } = useTranslation();
     
-    // États du Trajet et de l'Interface
     const [trajet, setTrajet] = useState(null);
-    const [arretsDisponibles, setArretsDisponibles] = useState([]); // 📍 Liste de tous les arrêts affichables
-    const [nombrePlaces, setNombrePlaces] = useState(1); // 🟢 Gère la quantité de places par incrémentation
-    const [selectedArret, setSelectedArret] = useState(''); // 📍 Arrêt sélectionné par le client
+    const [arretsDisponibles, setArretsDisponibles] = useState([]);
+    const [nombrePlaces, setNombrePlaces] = useState(1);
+    const [selectedArret, setSelectedArret] = useState('');
     const [loading, setLoading] = useState(true);
     const [darkMode, setDarkMode] = useState(localStorage.getItem('client-theme') === 'dark');
     
-    // États du Processus de Réservation et Modals
     const [showModal, setShowModal] = useState(false);
     const [paymentStep, setPaymentStep] = useState(1);
     const [isSubmitting, setIsSubmitting] = useState(false);
     
-    // Choix explicite du type de voyage (Standard vs Ramassage à domicile VIP)
     const [isVip, setIsVip] = useState(false);
     const [recuperationData, setRecuperationData] = useState(null);
     const [paymentData, setPaymentData] = useState({ 
@@ -38,7 +34,21 @@ const ReservationPage = () => {
         referenceTransaction: '' 
     });
 
-    // Écouteur pour appliquer la classe "dark" globalement pour Tailwind
+    const placesDisponibles = trajet?.placesDisponibles ?? trajet?.places_disponible ?? trajet?.places_disponibles ?? 0;
+    const isFull = placesDisponibles <= 0;
+    const prixUnitaire = trajet?.prix || 0;
+    const prixTotalBillet = prixUnitaire * nombrePlaces;
+
+    useEffect(() => {
+        const handleSyncTheme = (e) => {
+            if (e.key === 'client-theme') {
+                setDarkMode(e.newValue === 'dark');
+            }
+        };
+        window.addEventListener('storage', handleSyncTheme);
+        return () => window.removeEventListener('storage', handleSyncTheme);
+    }, []);
+
     useEffect(() => {
         if (darkMode) {
             document.documentElement.classList.add('dark');
@@ -47,48 +57,41 @@ const ReservationPage = () => {
         }
     }, [darkMode]);
 
-    // Fonction isolée pour charger les données du trajet ET la liste des arrêts
     const fetchInitialData = async () => {
         try {
-            // 🟢 OPTIMISATION COHÉRENTE BACKEND : 
-            // On récupère le token s'il existe pour l'ajouter, mais s'il est absent,
-            // la route étant désormais publique côté Spring Security, la requête n'échouera plus en 403.
             const token = localStorage.getItem('token');
             const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
             
             const resTrajet = await api.get(`/trajets/${id}?t=${Date.now()}`, config);
             
-            // Tentative de récupération des arrêts (ne bloquera pas si ça échoue)
             let listArrets = [];
             try {
                  const resArrets = await api.get(`/arrets/trajet/${id}`, config);
                  listArrets = resArrets.data || [];
             } catch (errArret) {
-                 console.warn("Impossible de charger les arrêts spécifiques, utilisation de ceux du trajet :", errArret);
+                 console.warn("Impossible de charger les arrêts spécifiques via la route dédiée :", errArret);
             }
             
-            setTrajet(resTrajet.data);
+            const fetchedTrajet = resTrajet.data;
+            setTrajet(fetchedTrajet);
             
-            // LOGIQUE DES ARRÊTS : On prend en priorité les arrêts retournés par la route
             const arretsDefinitifs = (listArrets.length > 0) 
                 ? listArrets 
-                : (resTrajet.data.arrets && resTrajet.data.arrets.length > 0 ? resTrajet.data.arrets : []);
+                : (fetchedTrajet?.arrets && fetchedTrajet.arrets.length > 0 ? fetchedTrajet.arrets : []);
             
             setArretsDisponibles(arretsDefinitifs);
-            // Présélection du premier arrêt de la liste
             if (arretsDefinitifs.length > 0) {
                 setSelectedArret(arretsDefinitifs[0].id.toString());
             }
             
-            // 🟢 Présélection initiale de 1 place s'il y a de la disponibilité
-            if (resTrajet.data && resTrajet.data.placesDisponibles > 0) {
+            const initialAvailable = fetchedTrajet?.placesDisponibles ?? fetchedTrajet?.places_disponible ?? fetchedTrajet?.places_disponibles ?? 0;
+            if (initialAvailable > 0) {
                 setNombrePlaces(1);
             } else {
                 setNombrePlaces(0);
             }
         } catch (err) {
-            console.error("Erreur lors du chargement des données (Vérifiez la synchronisation avec SecurityConfig) :", err);
-            // Rediriger vers l'accueil si le trajet n'existe pas ou reste bloqué
+            console.error("Erreur lors du chargement des données :", err);
             if (err.response && (err.response.status === 404 || err.response.status === 405 || err.response.status === 403)) {
                 alert("Ce trajet n'est plus accessible ou vous n'avez pas les permissions requises.");
                 navigate('/');
@@ -110,9 +113,8 @@ const ReservationPage = () => {
         localStorage.setItem('client-theme', newMode ? 'dark' : 'light');
     };
 
-    // 🟢 Fonctions de gestion de l'incrémentation
     const incrementPlaces = () => {
-        const maxPlaces = trajet?.placesDisponibles ? Math.min(trajet.placesDisponibles, 10) : 10;
+        const maxPlaces = placesDisponibles ? Math.min(placesDisponibles, 10) : 10;
         if (nombrePlaces < maxPlaces) {
             setNombrePlaces(prev => prev + 1);
         }
@@ -124,35 +126,24 @@ const ReservationPage = () => {
         }
     };
 
-    // ====================================================================
-    // SOUMISSION METIER : ENCHAÎNEMENT DES ACTIONS 
-    // ====================================================================
-    
-    // ACTION 1 : Clic sur le bouton principal (Standard ou VIP)
     const handleInitialSubmit = () => {
         if (!user?.id && !localStorage.getItem('token')) {
              return alert(t('auth_error') || "Veuillez vous connecter pour effectuer une réservation.");
         }
         
-        // Sécurité Frontend : On revérifie l'état actuel des places chargées
-        if (trajet?.placesDisponibles <= 0) {
+        if (isFull) {
             return alert("Désolé, ce trajet vient d'être complété entre-temps.");
         }
-        // Sécurité : La quantité doit être valide
-        if (nombrePlaces <= 0 || nombrePlaces > trajet?.placesDisponibles) {
+        if (nombrePlaces <= 0 || nombrePlaces > placesDisponibles) {
             return alert("Veuillez choisir une quantité de places valide.");
         }
-        // Sécurité Arrêt : Un arrêt doit être sélectionné si des arrêts sont disponibles en Standard
         if (!isVip && arretsDisponibles.length > 0 && !selectedArret) {
             return alert("Veuillez sélectionner un arrêt de bus pour votre montée.");
         }
-
         if (!isVip) {
-            // Mode STANDARD : On passe à l'affichage de la modale de paiement direct
             setShowModal(true);
             setPaymentStep(1);
         } else {
-            // Mode VIP : Validation de l'adresse requise avant envoi de la demande
             if (!recuperationData || !recuperationData.adresseTextuelle) {
                 return alert("Veuillez valider votre adresse sur la carte avant de continuer.");
             }
@@ -160,7 +151,6 @@ const ReservationPage = () => {
         }
     };
 
-    // ACTION 2-VIP : Création de la réservation + VRAIES COORDONNÉES GPS VIA UNE SEULE ROUTE BACKEND
     const creerReservationVIP = async () => {
         setIsSubmitting(true);
         try {
@@ -169,7 +159,6 @@ const ReservationPage = () => {
                 nombrePlaces: parseInt(nombrePlaces),
                 typeReservation: "VIP",
                 estPaye: false,
-                
                 adresseRecuperation: recuperationData.adresseTextuelle,
                 latitude: parseFloat(recuperationData.latitudeClient) || 0.0,
                 longitude: parseFloat(recuperationData.longitudeClient) || 0.0,
@@ -179,7 +168,7 @@ const ReservationPage = () => {
             if (!resReservation.data || !resReservation.data.id) {
                 throw new Error("Erreur de génération de la réservation VIP.");
             }
-            alert("Succès ! Vos places ont été bloquées (En attente de paiement) et vos coordonnées de récupération GPS ont bien été enregistrées. Le chauffeur verra votre position lors de sa course.");
+            alert("Succès ! Vos places ont été bloquées (En attente de paiement) et vos coordonnées de récupération GPS ont bien été enregistrées.");
             navigate('/client/historique');
         } catch (error) {
             console.error("Erreur cycle VIP :", error);
@@ -191,7 +180,6 @@ const ReservationPage = () => {
         }
     };
 
-    // ACTION 2-STANDARD : Finalisation ou Déclaration d'intention de paiement Cash
     const handleFinalizePaymentStandard = async (isCash = false) => {
         if (!isCash && !paymentData.referenceTransaction) {
             return alert(t('transaction_id_error') || "L'ID de transaction est requis.");
@@ -212,12 +200,12 @@ const ReservationPage = () => {
             
             const resReservation = await api.post('/reservations/creer', reservationPayload);
             const reservationId = resReservation.data.id;
-
+            
             if (isCash) {
                 await api.post(`/reservations/${reservationId}/intention-cash`, {
                     modePaiement: "CASH"
                 });
-                alert("Réservation enregistrée avec succès ! Vos places ont été bloquées. Veuillez vous présenter au guichet de l'agence pour régler en espèces.");
+                alert("Réservation enregistrée avec succès !");
             } else {
                 await api.put(`/reservations/${reservationId}/finaliser`, {
                     modePaiement: paymentData.modePaiement,
@@ -232,12 +220,10 @@ const ReservationPage = () => {
         } catch (error) {
             console.error("Détails de l'erreur:", error.response);
             const errorMessage = error.response?.data?.error || error.response?.data?.message || error.response?.data || "Erreur lors de la procédure.";
-            
             let alertMsg = errorMessage;
             if (typeof errorMessage === 'object') {
                  alertMsg = JSON.stringify(errorMessage);
             }
-            
             alert("Échec de la réservation : " + alertMsg);
             fetchInitialData(); 
             setShowModal(false);
@@ -257,10 +243,6 @@ const ReservationPage = () => {
             Trajet introuvable ou indisponible actuellement.
         </div>
     );
-    
-    const isFull = !trajet.placesDisponibles || trajet.placesDisponibles <= 0;
-    const prixUnitaire = trajet?.prix || 0;
-    const prixTotalBillet = prixUnitaire * nombrePlaces;
 
     return (
         <div className={`min-h-screen w-full transition-colors duration-500 flex flex-col items-center justify-center py-6 px-4 md:py-12 ${darkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
@@ -272,7 +254,7 @@ const ReservationPage = () => {
                 {darkMode ? <FaSun size={20}/> : <FaMoon size={20}/>}
             </button>
 
-            <div className={`w-full max-w-md md:max-w-2xl lg:max-w-4xl rounded-[2rem] md:rounded-[3rem] shadow-2xl overflow-hidden border transition-all duration-500 ${darkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-100'}`}>
+            <div className={`w-full max-w-md md:max-w-2xl lg:max-w-4xl rounded-[2rem] md:rounded-[3rem] shadow-2xl overflow-hidden border transition-all duration-500 ${darkMode ? 'bg-slate-900 border-slate-800/80' : 'bg-white border-slate-100'}`}>
                 <div className="lg:grid lg:grid-cols-12 min-h-[500px]">
                     
                     <div className="bg-indigo-600 p-6 md:p-10 text-white text-center flex flex-col justify-center items-center lg:col-span-4 transition-colors duration-500">
@@ -284,7 +266,7 @@ const ReservationPage = () => {
                             {trajet?.depart} ➔ {trajet?.destination}
                         </p>
                         <span className={`text-xs font-bold mt-4 px-3 py-1 rounded-lg ${isFull ? 'bg-red-500/80' : 'bg-white/20'}`}>
-                            {isFull ? '❌ Complet' : `🎫 ${trajet?.placesDisponibles} places restantes`}
+                            {isFull ? '❌ Complet' : `🎫 ${placesDisponibles} places restantes`}
                         </span>
                     </div>
 
@@ -298,14 +280,14 @@ const ReservationPage = () => {
                                     <button 
                                         type="button"
                                         onClick={() => setIsVip(false)}
-                                        className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-xs transition-all ${!isVip ? 'bg-white dark:bg-slate-800 shadow-md text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                                        className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-xs transition-all ${!isVip ? 'bg-white dark:bg-slate-800 shadow-md text-indigo-600 dark:text-indigo-400' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white'}`}
                                     >
                                         <FaTicketAlt size={14} /> Standard
                                     </button>
                                     <button 
                                         type="button"
                                         onClick={() => setIsVip(true)}
-                                        className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-xs transition-all ${isVip ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'}`}
+                                        className={`flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-bold text-xs transition-all ${isVip ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white'}`}
                                     >
                                         <FaHome size={14} /> Ramassage VIP
                                     </button>
@@ -333,7 +315,6 @@ const ReservationPage = () => {
                                 </div>
                             )}
 
-                            {/* QUANTITÉ DE PLACES */}
                             <div className="mb-6 md:mb-8">
                                 <label className={`block text-[10px] font-black uppercase mb-3 tracking-wider transition-colors duration-500 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                                     <FaUsers className="inline mr-2 text-indigo-500" size={12}/> Nombre de places à réserver
@@ -357,7 +338,7 @@ const ReservationPage = () => {
                                             <span className="text-xl md:text-2xl font-black block">
                                                 {nombrePlaces}
                                             </span>
-                                            <span className="text-[10px] uppercase font-bold text-slate-400">
+                                            <span className="text-[10px] uppercase font-bold text-slate-400 dark:text-slate-500">
                                                 {nombrePlaces > 1 ? 'Places sélectionnées' : 'Place sélectionnée'}
                                             </span>
                                         </div>
@@ -365,8 +346,8 @@ const ReservationPage = () => {
                                         <button
                                             type="button"
                                             onClick={incrementPlaces}
-                                            disabled={nombrePlaces >= Math.min(trajet.placesDisponibles, 10)}
-                                            className={`p-4 rounded-xl flex items-center justify-center transition-all ${nombrePlaces >= Math.min(trajet.placesDisponibles, 10) ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-500 active:scale-95'}`}
+                                            disabled={nombrePlaces >= Math.min(placesDisponibles, 10)}
+                                            className={`p-4 rounded-xl flex items-center justify-center transition-all ${nombrePlaces >= Math.min(placesDisponibles, 10) ? 'text-slate-300 dark:text-slate-700 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-500 active:scale-95'}`}
                                         >
                                             <FaPlus size={14} />
                                         </button>
@@ -412,7 +393,6 @@ const ReservationPage = () => {
                 </div>
             </div>
 
-            {/* MODAL DU PAIEMENT */}
             {showModal && !isVip && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fadeIn">
                     <div className={`w-full max-w-sm rounded-[2rem] md:rounded-[2.5rem] p-6 md:p-8 relative shadow-2xl transition-all duration-500 border ${darkMode ? 'bg-slate-900 text-white border-slate-800' : 'bg-white text-slate-900 border-slate-100'}`}>
@@ -463,6 +443,7 @@ const ReservationPage = () => {
                                 <h3 className="text-xl font-black text-center mb-2 tracking-tight">Paiement</h3>
                                 
                                 <button 
+                                    type="button"
                                     onClick={() => handleFinalizePaymentStandard(true)} 
                                     disabled={isSubmitting} 
                                     className={`w-full p-4 rounded-xl font-black text-xs border-2 flex items-center justify-center gap-3 transition-all active:scale-[0.98] ${darkMode ? 'border-slate-800 text-white hover:bg-slate-950' : 'border-slate-200 text-slate-800 hover:bg-slate-50'}`}

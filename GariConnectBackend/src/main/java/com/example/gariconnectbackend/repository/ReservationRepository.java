@@ -57,4 +57,8 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     List<Reservation> findByArretMontageIdAndStatutEmbarquement(Long id, StatutPassagerArret statutPassagerArret);
 
     long countByTrajetId(Long id);
+    @Query("SELECT COUNT(r) FROM Reservation r WHERE r.statut = :statut")
+    long countByStatutPaiement(@Param("statut") String statut);
+
+    long countByStatutIn(List<String> paye);
 }

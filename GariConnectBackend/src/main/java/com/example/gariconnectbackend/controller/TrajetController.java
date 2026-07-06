@@ -1,10 +1,7 @@
 package com.example.gariconnectbackend.controller;
 
 import com.example.gariconnectbackend.dto.TrajetDTO;
-import com.example.gariconnectbackend.model.Role;
-import com.example.gariconnectbackend.model.Trajet;
-import com.example.gariconnectbackend.model.User;
-import com.example.gariconnectbackend.model.Vehicule;
+import com.example.gariconnectbackend.model.*;
 import com.example.gariconnectbackend.repository.TrajetRepository;
 import com.example.gariconnectbackend.repository.UserRepository;
 import com.example.gariconnectbackend.repository.VehiculeRepository;
@@ -12,6 +9,7 @@ import com.example.gariconnectbackend.service.TrajetService;
 import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import com.example.gariconnectbackend.repository.CourrierRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -33,47 +31,12 @@ public class TrajetController {
 
     @Autowired
     private TrajetService trajetService;
-
+    @Autowired
+    private CourrierRepository courrierRepository;
     @Autowired
     private VehiculeRepository vehiculeRepository;
 //
-//    @GetMapping("/tous")
-//   // @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CLIENT', 'CHAUFFEUR')")
-//    public ResponseEntity<?> obtenirTousLesTrajets() {
-//        try {
-//            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
-//            User utilisateurConnecte = userRepository.findByEmail(emailConnecte)
-//                    .orElseThrow(() -> new RuntimeException("Utilisateur connecté introuvable"));
-//
-//            List<Trajet> trajets;
-//
-//            if (utilisateurConnecte.getRole() == Role.SUPER_ADMIN) {
-//                trajets = trajetRepository.findAll();
-//            } else {
-//                Long agenceId = null;
-//
-//                if (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN) {
-//                    agenceId = utilisateurConnecte.getId();
-//                } else if (utilisateurConnecte.getRole() == Role.AGENCY_MANAGER && utilisateurConnecte.getAgenceEmployeur() != null) {
-//                    agenceId = utilisateurConnecte.getAgenceEmployeur().getId();
-//                } else if (utilisateurConnecte.getRole() == Role.CHAUFFEUR && utilisateurConnecte.getAgenceEmployeur() != null) {
-//                    agenceId = utilisateurConnecte.getAgenceEmployeur().getId();
-//                }
-//
-//                if (agenceId == null) {
-//                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Action non autorisée : Liaison agence introuvable.");
-//                }
-//
-//                trajets = trajetRepository.findByAgenceId(agenceId);
-//            }
-//
-//            return ResponseEntity.ok(trajets);
-//
-//        } catch (Exception e) {
-//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-//                    .body(Map.of("message", "Erreur lors du chargement des trajets : " + e.getMessage()));
-//        }
-//    }
+
     // =========================================================================
     // 1. ENDPOINT PUBLIC (Pour la page d'accueil Home.jsx - Sans restriction)
     // =========================================================================
@@ -280,20 +243,25 @@ public class TrajetController {
         }
     }
 
-    // ==========================================
-    // MÉTHODE À VÉRIFIER DANS TrajetController.java
-    // ==========================================
 
-    // 🔓 Cette méthode doit rester accessible pour que ReservationPage puisse charger les données !
+
+    // ✅ SOLUTION : Endpoint principal pour récupérer les trajets
+    @GetMapping
+    public ResponseEntity<List<Trajet>> getAllTrajets() {
+        List<Trajet> trajets = trajetService.getAllTrajets();
+        return ResponseEntity.ok(trajets);
+    }
+
+    // 🔓 Cette méthode reste accessible pour charger un trajet spécifique par son ID
     @GetMapping("/{id}")
     public ResponseEntity<?> getTrajetById(@PathVariable Long id) {
         try {
             Trajet trajet = trajetRepository.findById(id)
-                    .orElseThrow(() -> new jakarta.persistence.EntityNotFoundException("Trajet introuvable avec l'ID : " + id));
+                    .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable avec l'ID : " + id));
 
             return ResponseEntity.ok(TrajetDTO.fromEntity(trajet));
 
-        } catch (jakarta.persistence.EntityNotFoundException e) {
+        } catch (EntityNotFoundException e) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body(Map.of("message", e.getMessage()));
         } catch (Exception e) {
@@ -301,4 +269,15 @@ public class TrajetController {
                     .body(Map.of("message", "Erreur lors de la récupération du trajet : " + e.getMessage()));
         }
     }
+
+    // ✅ RÉSOUT : Cannot resolve method 'getAgencePourUtilisateur'
+    // Méthode utilitaire privée partagée pour récupérer l'agence d'un utilisateur connecté
+    private User getAgencePourUtilisateur(User utilisateur) {
+        if (utilisateur.getRole() == Role.AGENCY_MANAGER) {
+            return utilisateur;
+        }
+        return utilisateur.getAgenceEmployeur();
+    }
+
+
 }

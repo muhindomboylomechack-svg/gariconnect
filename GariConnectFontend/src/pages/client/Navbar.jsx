@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { 
   FaHome, FaTicketAlt, FaBox, FaHistory, 
-  FaUser, FaSignOutAlt, FaBars, FaTimes 
+  FaUser, FaSignOutAlt, FaBars, FaTimes, FaSun, FaMoon 
 } from 'react-icons/fa';
 
 // ✅ CHEMIN CONSERVÉ EXPRESSEMENT
@@ -19,7 +19,7 @@ const NavItem = ({ to, icon, label, active }) => (
   </Link>
 );
 
-const Navbar = () => {
+const Navbar = ({ darkMode, setDarkMode }) => {
   const { t } = useTranslation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -30,6 +30,20 @@ const Navbar = () => {
   const profileMenuRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
+
+  // 🟢 NOUVEAU : Écouteur pour synchroniser instantanément le thème s'il change depuis le profil
+  useEffect(() => {
+    const handleSyncTheme = (e) => {
+      if (e.key === 'theme' && setDarkMode) {
+        setDarkMode(e.newValue === 'dark');
+      }
+    };
+
+    window.addEventListener('storage', handleSyncTheme);
+    return () => {
+      window.removeEventListener('storage', handleSyncTheme);
+    };
+  }, [setDarkMode]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -62,10 +76,20 @@ const Navbar = () => {
     navigate('/login');
   };
 
+  // Fonction optionnelle au cas où vous voulez aussi permettre de switcher le thème directement depuis la Navbar
+  const toggleTheme = () => {
+    if (setDarkMode) {
+      const newMode = !darkMode;
+      setDarkMode(newMode);
+      localStorage.setItem('theme', newMode ? 'dark' : 'light');
+    }
+  };
+
   const navLinks = [
     { to: "/client/dashboard", icon: <FaHome />, label: t('back', "Tableau de bord") },
     { to: "/client/tickets", icon: <FaTicketAlt />, label: t('checkout.your_seat', "Mes Billets") },
-    { to: "/client/colis", icon: <FaBox />, label: t('nav.parcels', "Colis") },
+    // 🚀 MODIFICATION ICI : Lien mis à jour vers /client/courriers pour charger ClientCourrierHub.js
+    { to: "/client/courriers", icon: <FaBox />, label: t('nav.parcels', "Colis") },
     { to: "/client/historique", icon: <FaHistory />, label: t('eval_trip', "Mes Reservations") }
   ];
 
@@ -124,7 +148,7 @@ const Navbar = () => {
                 )}
               </div>
               <div className="text-left">
-                <p className="text-[10px] font-black uppercase text-slate-800 dark:text-slate-200 leading-none">{t('profile', "Profil")}</p>
+                <p className="text-[10px] font-black uppercase text-slate-888 dark:text-slate-200 leading-none">{t('profile', "Profil")}</p>
                 <p className="text-[9px] font-bold text-emerald-500 dark:text-emerald-400 uppercase tracking-tighter">{t('verified', "Vérifié")}</p>
               </div>
             </button>
@@ -139,6 +163,7 @@ const Navbar = () => {
                   <Link to="/client/profil" className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded-xl transition-colors">
                     <FaUser className="text-indigo-500 dark:text-indigo-400" /> {t('profile', "Profil")}
                   </Link>
+                  
                   <button onClick={handleLogout} className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl w-full text-left transition-colors">
                     <FaSignOutAlt /> {t('logout', "Déconnexion")}
                   </button>
@@ -147,7 +172,7 @@ const Navbar = () => {
             )}
           </div>
 
-          {/* 🔥 NOUVEAU : Avatar cliquable en mode Mobile (à la place de l'ancien burger) */}
+          {/* 🔥 Avatar cliquable en mode Mobile */}
           <Link 
             to="/client/profil" 
             className="w-10 h-10 bg-indigo-600 dark:bg-indigo-500 rounded-full flex items-center justify-center text-white font-bold shadow-md overflow-hidden border-2 border-indigo-100 dark:border-slate-700 lg:hidden hover:scale-105 transition-transform"

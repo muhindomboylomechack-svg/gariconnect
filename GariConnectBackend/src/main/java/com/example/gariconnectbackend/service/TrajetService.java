@@ -236,7 +236,10 @@ public class TrajetService {
 //
 //        trajetRepository.delete(trajet);
 //    }
-
+// 🚀 AJOUTER CETTE MÉTHODE :
+    public List<Trajet> getAllTrajets() {
+        return trajetRepository.findAll();
+    }
     /**
      * 🚦 4. METTRE A JOUR LE STATUT : Libération à la fin de la course
      */

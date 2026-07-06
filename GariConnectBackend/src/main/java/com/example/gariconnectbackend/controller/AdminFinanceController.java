@@ -26,68 +26,7 @@ public class AdminFinanceController {
     // Ajoutez ces injections en haut de votre classe AdminFinanceController
     @Autowired private NotificationRepository notificationRepository;
 
-    @GetMapping({"/stats-globales", "/dashboard-stats"})
-    public ResponseEntity<AdminFinanceDTO> getStatsGlobales() {
-        // 1. Volume total d'affaires
-        Double volumeTotal = paiementRepository.sumMontantByStatutIn(List.of("SUCCES", "EN_ATTENTE_CAISSE"));
-        if (volumeTotal == null) volumeTotal = 0.0;
 
-        // 2. Reste total à percevoir (Somme des montants restants)
-        Double resteAPercevoirTotal = commissionRepo.sumTotalDettesEnAttente();
-        if (resteAPercevoirTotal == null) resteAPercevoirTotal = 0.0;
-
-        // 3. Statistiques utilisateurs
-        long totalUsers = userRepository.count();
-        long activeAgences = userRepository.countByRole(Role.AGENCY_MANAGER);
-
-        // 4. Construction de la liste par agence
-        List<User> agences = userRepository.findByRole(Role.AGENCY_MANAGER);
-        List<Map<String, Object>> detailParAgence = agences.stream().map(agence -> {
-            Map<String, Object> map = new HashMap<>();
-            map.put("id", agence.getId());
-            map.put("nom", agence.getNom());
-
-            // Ventes Brutes
-            Double ventes = commissionRepo.sumVentesBrutesParAgence(agence.getId());
-            map.put("ventesBrutes", ventes != null ? ventes : 0.0);
-
-            // Commission à payer (On affiche le montant restant)
-            Double commissionRestante = commissionRepo.totalDuRestantParAgence(agence.getId());
-            map.put("commissionTotale", commissionRestante != null ? commissionRestante : 0.0);
-
-            return map;
-        }).collect(Collectors.toList());
-
-        AdminFinanceDTO dto = new AdminFinanceDTO();
-        dto.setVolumeAffairesTotal(volumeTotal);
-        dto.setRevenusGariConnectNet(resteAPercevoirTotal);
-        dto.setTotalUsers(totalUsers);
-        dto.setActiveAgences(activeAgences);
-        dto.setDetailParAgence(detailParAgence);
-
-        return ResponseEntity.ok(dto);
-    }
-
-    @GetMapping("/resume-commissions")
-    public ResponseEntity<?> getResumeCommissions() {
-        List<User> agences = userRepository.findByRole(Role.AGENCY_MANAGER);
-        List<Map<String, Object>> resume = new ArrayList<>();
-
-        for (User agence : agences) {
-            // ON RÉCUPÈRE LE SOLDE RESTANT (Le 15 000 FC)
-            Double resteAPayer = commissionRepo.totalDuRestantParAgence(agence.getId());
-            Double ventesBrutes = commissionRepo.sumVentesBrutesParAgence(agence.getId());
-
-            Map<String, Object> map = new HashMap<>();
-            map.put("partenaire", agence.getNom());
-            map.put("volumeVentes", ventesBrutes != null ? ventesBrutes : 0.0);
-            // C'est cette valeur que le React affiche
-            map.put("commissionNet", resteAPayer != null ? resteAPayer : 0.0);
-
-            resume.add(map);
-        }
-        return ResponseEntity.ok(resume);
-    }
 
     // 1. Petite classe interne pour capturer le JSON de React proprement
     static class ReglementPayload {
@@ -98,6 +37,88 @@ public class AdminFinanceController {
         public void setAgence(String agence) { this.agence = agence; }
         public Double getMontant() { return montant; }
         public void setMontant(Double montant) { this.montant = montant; }
+    }
+
+
+
+    @GetMapping("/resume-commissions")
+    public ResponseEntity<?> getResumeCommissions() {
+        List<User> agences = userRepository.findByRole(Role.AGENCY_ADMIN); // Corrigé sur AGENCY_ADMIN
+        List<Map<String, Object>> resume = new ArrayList<>();
+
+        for (User agence : agences) {
+            Double resteAPayer = commissionRepo.totalDuRestantParAgence(agence.getId());
+            Double ventesBrutes = commissionRepo.sumVentesBrutesParAgence(agence.getId());
+
+            Map<String, Object> map = new HashMap<>();
+            map.put("partenaire", agence.getNom() != null ? agence.getNom() : "Agence " + agence.getId());
+            map.put("volumeVentes", ventesBrutes != null ? ventesBrutes : 0.0);
+            map.put("commissionNet", resteAPayer != null ? resteAPayer : 0.0);
+
+            resume.add(map);
+        }
+        return ResponseEntity.ok(resume);
+    }
+    @GetMapping({"/stats-globales", "/dashboard-stats"})
+    public ResponseEntity<AdminFinanceDTO> getStatsGlobales() {
+        // 1. Volume total d'affaires
+        Double volumeTotal = paiementRepository.sumMontantByStatutIn(List.of("SUCCES", "EN_ATTENTE_CAISSE"));
+        if (volumeTotal == null) volumeTotal = 0.0;
+
+        // 2. Revenus GariConnect Net (Somme des commissions reçues/dues)
+        Double revenusNet = commissionRepo.sumTotalDettesEnAttente(); // ou une autre requête globale si nécessaire
+        if (revenusNet == null) revenusNet = 0.0;
+
+        // 3. Nombre total d'utilisateurs (tous rôles confondus)
+        long totalUsers = userRepository.count();
+
+        // 4. Nombre total de billets/tickets confirmés
+        long billetsConfirmes = reservationRepository.countByStatutPaiement("PAYE");
+
+        // 5. 🔥 MODIFICATION : Nombre total de Tenants Partenaires (AGENCY_ADMIN)
+        long totalAgences = userRepository.countByRole(Role.AGENCY_ADMIN);
+
+        // 6. Nombre d'agences actives (ayant au moins une activité ou statut ACTIF)
+        long activeAgences = userRepository.findByRoleAndStatut(Role.AGENCY_ADMIN, "ACTIF").size();
+
+        // --- Construction du DTO ---
+        AdminFinanceDTO dto = new AdminFinanceDTO();
+        dto.setVolumeAffairesTotal(volumeTotal);
+        dto.setRevenusGariConnectNet(revenusNet);
+        dto.setTotalUsers(totalUsers);
+        dto.setBilletsConfirmes(billetsConfirmes);
+        dto.setTotalAgences(totalAgences); // Injection du nombre total de tenants
+        dto.setActiveAgences(activeAgences);
+
+        // 7. Détails par agence (Calcul des dettes/commissions par agence)
+        List<User> agences = userRepository.findByRole(Role.AGENCY_ADMIN);
+        List<Map<String, Object>> detailParAgence = new ArrayList<>();
+
+        for (User agence : agences) {
+            Map<String, Object> map = new HashMap<>();
+            map.put("id", agence.getId());
+            map.put("nom", agence.getNom());
+
+            Double totalDu = commissionRepo.totalDuParAgence(agence.getId());
+            Double totalRegle = commissionRepo.totalRegleParAgence(agence.getId());
+
+            map.put("totalDu", totalDu != null ? totalDu : 0.0);
+            map.put("totalRegle", totalRegle != null ? totalRegle : 0.0);
+            detailParAgence.add(map);
+        }
+        dto.setDetailParAgence(detailParAgence);
+
+        // 8. Données de graphe fictives ou réelles (Exemple basé sur les 5 derniers règlements)
+        List<Map<String, Object>> chartData = new ArrayList<>();
+        // Remplir chartData ici si nécessaire...
+        dto.setChartData(chartData);
+
+        // 9. Activités récentes (Exemple : liste des derniers règlements ou inscriptions)
+        List<Map<String, Object>> recentActivities = new ArrayList<>();
+        // Remplir recentActivities ici si nécessaire...
+        dto.setRecentActivities(recentActivities);
+
+        return ResponseEntity.ok(dto);
     }
 
 
@@ -114,7 +135,7 @@ public class AdminFinanceController {
             List<CommissionDette> dettes = commissionRepo.findByAgenceAndRegleeOrderByIdAsc(agence, false);
 
             Double resteAVerser = montantRecu;
-            Double montantTotalRegle = 0.0; // Pour calculer le montant exact traité
+            Double montantTotalRegle = 0.0;
 
             for (CommissionDette dette : dettes) {
                 if (resteAVerser <= 0) break;
@@ -134,7 +155,6 @@ public class AdminFinanceController {
                 commissionRepo.save(dette);
             }
 
-            // ✅ NOUVEAU : Envoi de la notification à l'agence
             if (montantTotalRegle > 0) {
                 Notification notifAgence = new Notification();
                 notifAgence.setDestinataire(agence);
@@ -142,7 +162,6 @@ public class AdminFinanceController {
                 notifAgence.setDate(LocalDateTime.now());
                 notifAgence.setLue(false);
                 notificationRepository.save(notifAgence);
-                System.out.println("✅ Notification de règlement envoyée à l'agence : " + agence.getNom());
             }
 
             return ResponseEntity.ok(Map.of(

@@ -4,6 +4,9 @@ import { Outlet } from 'react-router-dom';
 // ✅ Import propre depuis "component" sans "s"
 import Navbar from '../pages/client/Navbar'; 
 
+// 📦 Importation de l'Espace Expéditions / Gestion des colis du Client
+import ClientCourrierHub from '../pages/client/ClientCourrierHub'; 
+
 import { FaBus, FaTimes, FaStar } from 'react-icons/fa';
 import api from '../services/api';
 import FormulaireEvaluation from '../pages/client/FormulaireEvaluation';
@@ -16,6 +19,23 @@ const Layout = () => {
     const [showFullForm, setShowFullForm] = useState(false);
     const [isDismissed, setIsDismissed] = useState(false);
     const [submissionCount, setSubmissionCount] = useState(0);
+    
+    // 💡 État optionnel si ta Navbar pilote l'affichage par état plutôt que par URL de routage
+    const [showColisHub, setShowColisHub] = useState(false);
+
+    // 🟢 Écouteur global pour synchroniser le thème en temps réel s'il change depuis le profil
+    useEffect(() => {
+        const handleStorageChange = (event) => {
+            if (event.key === 'theme') {
+                setDarkMode(event.newValue === 'dark');
+            }
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+        };
+    }, []);
 
     useEffect(() => {
         if (darkMode) {
@@ -67,7 +87,13 @@ const Layout = () => {
 
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-500">
-            <Navbar darkMode={darkMode} setDarkMode={setDarkMode} />
+            {/* 🟢 Ajout d'une prop de callback au cas où ton bouton Colis est dans la Navbar et requiert un toggle d'état */}
+            <Navbar 
+                darkMode={darkMode} 
+                setDarkMode={setDarkMode} 
+                onColisClick={() => setShowColisHub(true)} 
+                onHomeClick={() => setShowColisHub(false)}
+            />
             
             <main className="container mx-auto px-4 pt-24 pb-10">
                 
@@ -131,8 +157,13 @@ const Layout = () => {
                     </div>
                 )}
 
+                {/* 🔀 Affichage conditionnel : Si le module Colis est actif, on l'affiche, sinon on laisse passer les enfants des routes classiques via <Outlet /> */}
                 <div className="animate-in fade-in duration-700">
-                    <Outlet />
+                    {showColisHub ? (
+                        <ClientCourrierHub />
+                    ) : (
+                        <Outlet />
+                    )}
                 </div>
             </main>
 

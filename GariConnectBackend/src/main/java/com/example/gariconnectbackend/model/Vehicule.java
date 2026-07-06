@@ -30,13 +30,26 @@ public class Vehicule {
     private Integer capaciteTotale;
 
     private String statut;
+
     @ManyToOne
     @JoinColumn(name = "trajet_id")
     private Trajet trajet;
+
     // LIEN DE PARENTÉ : Le bus appartient à une agence
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "agence_id", nullable = false)
     private User agence;
+
+    @OneToOne // ou @ManyToOne selon vos besoins
+    @JoinColumn(name = "chauffeur_id")
+    private User chauffeurActuel; // 🔍 Résout getChauffeurActuel
+
+    // ✅ CORRECTION : Ajout de insertable=false et updatable=false
+    // pour éviter la duplication de la colonne 'trajet_id' dans Hibernate.
+    @ManyToOne
+    @JoinColumn(name = "trajet_id", insertable = false, updatable = false)
+    private Trajet trajetActuel; // 🔍 Résout getTrajetActuel
+
     public User getAgence() { return agence; }
     public void setAgence(User agence) { this.agence = agence; }
 

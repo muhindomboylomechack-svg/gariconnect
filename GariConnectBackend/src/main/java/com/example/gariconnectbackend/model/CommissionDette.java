@@ -3,6 +3,8 @@ package com.example.gariconnectbackend.model;
 import jakarta.persistence.*;
         import lombok.Getter;
 import lombok.Setter;
+
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Entity
@@ -37,7 +39,11 @@ public class CommissionDette {
 
     private boolean reglee = false;
     private LocalDateTime dateCreation = LocalDateTime.now();
+    private LocalDate dateCalcul; // Résout setDateCalcul / getDateCalcul
 
+    private Double totalCommissionsCumulees; // Résout setTotalCommissionsCumulees / getTotalCommissionsCumulees
+
+    private Double resteAPayerRecouvrer;
     // --- Méthodes de compatibilité pour tes contrôleurs actuels ---
 
     public void setLibelle(String libelle) {

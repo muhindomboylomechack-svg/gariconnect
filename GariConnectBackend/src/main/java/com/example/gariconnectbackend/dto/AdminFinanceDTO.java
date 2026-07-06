@@ -18,5 +18,16 @@ public class AdminFinanceDTO {
     private List<Map<String, Object>> detailParAgence;
     private List<Map<String, Object>> chartData;
     private List<Map<String, Object>> recentActivities;
+// Tes autres champs existants (volumeTotal, commissions, etc.)...
 
+    private long totalAgences;
+
+    // Getters et Setters
+    public long getTotalAgences() {
+        return totalAgences;
+    }
+
+    public void setTotalAgences(long totalAgences) {
+        this.totalAgences = totalAgences;
+    }
 }

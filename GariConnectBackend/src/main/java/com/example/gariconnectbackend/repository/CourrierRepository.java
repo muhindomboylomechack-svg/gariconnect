@@ -7,13 +7,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 import java.util.List;
-import java.util.Optional;
+import java.util.Optional; // 🔍 Ajouté pour gérer proprement le résultat de recherche
 
 @Repository
 public interface CourrierRepository extends JpaRepository<Courrier, Long> {
-
-    // CORRECTION : Un code de retrait doit être unique pour le suivi
-
 
     List<Courrier> findByTelDestinataire(String tel);
     List<Courrier> findByAgence_Id(Long agenceId);
@@ -22,16 +19,24 @@ public interface CourrierRepository extends JpaRepository<Courrier, Long> {
     @Query("SELECT c FROM Courrier c WHERE c.agence = :agence ORDER BY c.id DESC")
     List<Courrier> findByAgenceOrigineOrderByIdDesc(@Param("agence") User agence);
 
-    // Pour filtrer par agence et par type (Colis vs Courrier)
     List<Courrier> findByAgenceAndType(User agence, String type);
-
-    // Pour filtrer par statut (ex: voir tout ce qui est "EN_ROUTE")
     List<Courrier> findByAgenceAndStatut(User agence, String statut);
 
-    List<Courrier> findByAgence(User agence);
+    /**
+     * 🚀 Récupérer tous les colis liés à un utilisateur (Expéditeur OU Destinataire)
+     * Recherche par objet de compte OU par son numéro de téléphone officiel
+     */
+    @Query("SELECT c FROM Courrier c WHERE " +
+            "c.expediteurCompte = :user OR c.destinataireCompte = :user OR " +
+            "c.telExpediteur = :telephone OR c.telDestinataire = :telephone " +
+            "ORDER BY c.dateEnvoi DESC")
+    List<Courrier> findAllByClientCompteOrTelephone(@Param("user") User user, @Param("telephone") String telephone);
+
+    /**
+     * 🔍 Correction Optimale : Remplacement du type interne protégé par un Optional standard de JPA
+     */
     Optional<Courrier> findByCodeRetrait(String code);
 
-    @Query("SELECT c FROM Courrier c WHERE c.telExpediteur LIKE %:tel% OR c.telDestinataire LIKE %:tel%")
-    List<Courrier> findByTelephoneFuzzy(@Param("tel") String tel);
-}
+    List<Courrier> findByTrajet_Agence_Id(Long id);
 
+}

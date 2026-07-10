@@ -19,7 +19,7 @@ export const API_URL = isProduction
  */
 const api = axios.create({
   baseURL: `${API_URL}/api`,
-  timeout: 10000, 
+  timeout: 45000, 
 });
 
 /**

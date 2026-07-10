@@ -205,6 +205,7 @@ public class DemandeRecuperationService {
         System.out.println("🗑️ [VIP] Demande de ramassage N°" + id + " supprimée avec succès.");
     }
 
+
     // =========================================================================================
     // 🔥 ÉTAPE 5 : PRÉPARER LA LISTE DE NAVIGATION POUR LE CHAUFFEUR (Sécurité Améliorée)
     // =========================================================================================
@@ -254,12 +255,28 @@ public class DemandeRecuperationService {
             data.put("clientNom", nomComplet);
             data.put("clientTelephone", demande.getClient().getTelephone());
 
-            // Les coordonnées cruciales pour l'ouverture de Google Maps côté React
-            data.put("latitude", demande.getLatitudeClient());
-            data.put("longitude", demande.getLongitudeClient());
+            // Extraction locale pour la lisibilité de la construction de l'URL
+            Double lat = demande.getLatitudeClient();
+            Double lng = demande.getLongitudeClient();
+            String adresse = demande.getAdresseTextuelle();
 
-            data.put("adresseTextuelle", demande.getAdresseTextuelle());
+            // Les coordonnées cruciales pour l'ouverture de Google Maps côté React
+            data.put("latitude", lat);
+            data.put("longitude", lng);
+            data.put("adresseTextuelle", adresse);
             data.put("pointRepere", demande.getPointRepereAgence());
+
+            // ✨ NOUVEAU : Génération intelligente du lien Google Maps (API universelle)
+            String googleMapsUrl = "";
+            if (lat != null && lng != null && lat != 0.0 && lng != 0.0) {
+                // Priorité 1 : Mode Itinéraire direct (Idéal pour le chauffeur sur la route)
+                googleMapsUrl = "https://www.google.com/maps/dir/?api=1&destination=" + lat + "," + lng;
+            } else if (adresse != null && !adresse.trim().isEmpty()) {
+                // Priorité 2 : Repli vers la recherche textuelle de l'adresse si les coordonnées GPS manquent
+                String encodedAddress = adresse.replace(" ", "+");
+                googleMapsUrl = "https://www.google.com/maps/search/?api=1&query=" + encodedAddress;
+            }
+            data.put("googleMapsUrl", googleMapsUrl);
 
             return data;
         }).collect(Collectors.toList());

@@ -69,41 +69,15 @@ const RamassageVipChauffeur = () => {
     loadVipData();
   }, [trajetId]);
 
-  // 🛠️ FONCTION DE NAVIGATION OPTIMISÉE ET SÉCURISÉE
+  // 🛠️ FONCTION DE NAVIGATION OPTIMISÉE (Utilise la donnée préparée par le backend)
   const openGPS = (vip) => {
-    if (!vip) return;
-
-    const { latitude, longitude, adresseTextuelle, pointRepere } = vip;
-
-    // Protection anti "Null Island" : Vérifie si les coordonnées sont réelles et différentes de 0
-    const gpsValide = latitude && longitude && Math.abs(latitude) > 0.001 && Math.abs(longitude) > 0.001;
-
-    let destinationParam = "";
-
-    if (gpsValide) {
-      // Cas idéal : Coordonnées GPS précises du client
-      destinationParam = `${latitude},${longitude}`;
-    } else if (adresseTextuelle && adresseTextuelle.trim() !== "") {
-      // Fallback de sécurité : Si le GPS est à 0, on utilise l'adresse textuelle tapée par le client
-      destinationParam = encodeURIComponent(adresseTextuelle);
+    // On vérifie que l'objet vip et l'URL générée par le backend existent
+    if (vip && vip.googleMapsUrl) {
+      // Ouvre directement Google Maps (App native sur mobile, ou nouvel onglet sur PC)
+      window.open(vip.googleMapsUrl, '_blank', 'noopener,noreferrer');
     } else {
-      alert("Désolé, ce client n'a pas de coordonnées GPS valides et n'a fourni aucune adresse textuelle.");
-      return;
+      alert("Aucun itinéraire ou adresse n'est disponible pour ce client.");
     }
-
-    // URL officielle de navigation Google Maps Directions
-    let url = `https://www.google.com/maps/dir/?api=1&destination=${destinationParam}`;
-
-    // Ajout du point de repère fixé par l'agence comme étape intermédiaire obligatoire
-    if (pointRepere && pointRepere.trim() !== "") {
-      url += `&waypoints=${encodeURIComponent(pointRepere)}`;
-    }
-
-    // Forcer l'itinéraire en mode conduite automobile (driving)
-    url += "&travelmode=driving";
-
-    // Ouvre directement l'application Google Maps sur le téléphone du chauffeur
-    window.open(url, '_blank');
   };
 
   if (loading) {

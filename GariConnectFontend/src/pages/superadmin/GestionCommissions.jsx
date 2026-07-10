@@ -16,12 +16,8 @@ const GestionCommissions = () => {
 
     const chargerAgences = async () => {
         try {
-            // Utilisation de la route admin pour récupérer les utilisateurs
             const response = await api.get('/admin/users');
-            // On s'assure d'inclure les nouveaux rôles définis dans le backend
-            const uniquementAgences = response.data.filter(u => 
-                ['AGENCE', 'AGENCY_ADMIN', 'AGENCY_MANAGER'].includes(u.role)
-            );
+            const uniquementAgences = response.data.filter(u => u.role === 'AGENCY_ADMIN');
             setAgences(uniquementAgences);
         } catch (error) {
             console.error("Erreur lors du chargement des agences", error);
@@ -30,12 +26,12 @@ const GestionCommissions = () => {
         }
     };
 
-    // 🚀 NOUVELLE FONCTION : Changer le type d'abonnement (SaaS)
+    // Changer le type d'abonnement (SaaS)
     const modifierAbonnement = async (id, nouveauType) => {
         setUpdatingId(`abonnement-${id}`);
         try {
             await api.put(`/admin/agences/${id}/abonnement`, { typeAbonnement: nouveauType });
-            chargerAgences(); // Rafraîchir pour voir les changements
+            chargerAgences(); 
         } catch (error) {
             console.error("Erreur abonnement:", error);
             alert(error.response?.data?.message || "Erreur lors de la modification du plan d'abonnement.");
@@ -78,12 +74,12 @@ const GestionCommissions = () => {
                         Contrats & <span className="text-blue-600">Licences</span>
                     </h1>
                     <p className="text-slate-400 dark:text-slate-500 font-bold text-xs uppercase tracking-[0.2em] mt-1">
-                        Gestion des abonnements et commissions partenaires
+                        Gestion des abonnements et commissions partenaires (Administrateurs)
                     </p>
                 </div>
                 <div className="px-6 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm flex gap-6">
                     <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Total</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1">Total Admin</p>
                         <p className="text-xl font-black text-blue-600">{agences.length}</p>
                     </div>
                     <div className="border-l border-slate-200 dark:border-slate-800 pl-6">
@@ -99,7 +95,7 @@ const GestionCommissions = () => {
                     <div className="bg-white dark:bg-slate-900 p-20 rounded-[3rem] text-center shadow-sm border-2 border-dashed border-slate-200 dark:border-slate-800">
                         <FaUserTie className="text-slate-200 dark:text-slate-800 text-6xl mx-auto mb-6" />
                         <p className="text-slate-400 dark:text-slate-500 font-bold italic tracking-tight">
-                            Aucune agence partenaire n'est enregistrée dans la base de données.
+                            Aucun administrateur d'agence (AGENCY_ADMIN) n'est enregistré dans la base de données.
                         </p>
                     </div>
                 ) : (
@@ -115,7 +111,7 @@ const GestionCommissions = () => {
                                 <div className="flex items-center gap-6 w-full xl:w-auto">
                                     <div className="relative">
                                         <div className={`w-20 h-20 rounded-3xl flex items-center justify-center text-white text-3xl font-black shadow-xl group-hover:rotate-3 transition-transform ${isDefinitif ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-slate-800 to-slate-950 dark:from-blue-600 dark:to-indigo-700'}`}>
-                                            {agence.nom.charAt(0).toUpperCase()}
+                                            {agence.nom ? agence.nom.charAt(0).toUpperCase() : 'A'}
                                         </div>
                                         <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-emerald-500 border-4 border-white dark:border-slate-900 rounded-full flex items-center justify-center text-white">
                                             <FaCheckCircle size={12} />
@@ -127,6 +123,9 @@ const GestionCommissions = () => {
                                         <div className="flex flex-wrap items-center gap-2">
                                             <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[9px] font-black rounded-full uppercase tracking-widest">
                                                 ID: #{agence.id}
+                                            </span>
+                                            <span className="px-3 py-1 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 text-[9px] font-black rounded-full uppercase tracking-widest border border-blue-100 dark:border-blue-900/30">
+                                                Admin Agence
                                             </span>
                                             {isDefinitif && (
                                                 <span className="px-3 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 text-[9px] font-black rounded-full uppercase tracking-widest border border-amber-200 dark:border-amber-800 flex items-center gap-1">
@@ -152,13 +151,13 @@ const GestionCommissions = () => {
                                         <button 
                                             onClick={() => modifierAbonnement(agence.id, 'DEFINITIF')}
                                             disabled={updatingId === `abonnement-${agence.id}`}
-                                            className={`flex-1 md:w-40 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${isDefinitif ? 'bg-amber-500 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+                                            className={`flex-1 md:w-40 py-3 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 ${isDefinitif ? 'bg-amber-50 text-white shadow-sm' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
                                         >
                                             <FaCrown/> Définitif
                                         </button>
                                     </div>
 
-                                    {/* MODULE DE COMMISSION (Conditionnel) */}
+                                    {/* MODULE DE COMMISSION */}
                                     <div className={`flex flex-col sm:flex-row items-center gap-6 p-6 rounded-[2.5rem] border w-full md:w-auto transition-all ${isDefinitif ? 'bg-amber-50 dark:bg-amber-950/10 border-amber-100 dark:border-amber-900/30' : 'bg-slate-50 dark:bg-slate-800/50 border-slate-100 dark:border-slate-800'}`}>
                                         
                                         {isDefinitif ? (
@@ -178,7 +177,7 @@ const GestionCommissions = () => {
                                                         <FaPercentage className="text-blue-500" /> Taux Actuel
                                                     </p>
                                                     <p className="text-3xl font-black text-slate-900 dark:text-white leading-none tracking-tighter">
-                                                        {agence.tauxCommission || 10}<span className="text-blue-600">%</span>
+                                                        {agence.tauxCommission || 10}%
                                                     </p>
                                                 </div>
                                                 

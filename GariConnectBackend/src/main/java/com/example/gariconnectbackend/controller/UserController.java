@@ -120,7 +120,34 @@ public class UserController {
             return ResponseEntity.ok(Map.of("message", "Mot de passe mis à jour avec succès"));
         }).orElse(ResponseEntity.notFound().build());
     }
+// =========================================================================================
+    // 🏢 COMPTAGE DYNAMIQUE DES AGENCES (AGENCY_ADMIN)
+    // =========================================================================================
 
+    /**
+     * URL d'accès : GET http://localhost:8080/api/users/count-agencies
+     * Permet de récupérer le nombre exact d'utilisateurs ayant le rôle AGENCY_ADMIN
+     */
+    @GetMapping("/count-agencies")
+    public ResponseEntity<?> obtenirNombreAgences() {
+        try {
+            // Utilisation directe de la méthode countByRole générée par Spring Data JPA
+            long totalAgences = userRepository.countByRole(Role.AGENCY_ADMIN);
+
+            // On renvoie le résultat proprement dans un Map (format JSON pour React)
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "count", totalAgences
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of(
+                            "success", false,
+                            "message", "Erreur lors du comptage : " + e.getMessage(),
+                            "count", 0
+                    ));
+        }
+    }
     // =========================================================================================
     // 2. CRÉATION D'UTILISATEURS
     // =========================================================================================

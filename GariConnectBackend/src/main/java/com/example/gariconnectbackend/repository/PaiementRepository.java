@@ -46,5 +46,15 @@ public interface PaiementRepository extends JpaRepository<Paiement, Long> {
             "ORDER BY date_paiement ASC", nativeQuery = true)
     List<Map<String, Object>> getStatsPaiementsParJourPourAgence(@Param("agenceId") Long agenceId);
    Optional<Paiement> findByReservationId(Long reservationId);
+
+    @Query("SELECT SUM(p.montant) FROM Paiement p")
+    Double sumMontantTotal();
+
+    @Query("SELECT p.modePaiement, COUNT(p) FROM Paiement p GROUP BY p.modePaiement")
+    List<Object[]> findCountByModePaiement();
+
+    @Query("SELECT SUM(p.montant) FROM Paiement p WHERE p.reservation.trajet.agence.id = :agenceId")
+    Double sumMontantByAgence(@Param("agenceId") Long agenceId);
+    List<Paiement> findTop5ByOrderByDatePaiementDesc(); //  Correct !
 }
 

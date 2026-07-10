@@ -1,34 +1,24 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   FaChartLine, FaUsers, FaSignOutAlt, 
-  FaPercentage, FaWallet, FaBars, FaTimes,
-  FaMoon, FaSun 
+  FaPercentage, FaWallet, FaBars, 
+  FaMoon, FaSun, FaCog 
 } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
+
+// ✅ Importation du hook global depuis App.js
+import { useTheme } from '../App';
 
 const SuperAdminLayout = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
 
-  // ✅ Initialisation du thème (Identique à AgenceLayout pour la cohérence)
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    const savedTheme = localStorage.getItem('theme');
-    return savedTheme ? savedTheme === 'dark' : true; // Par défaut sombre pour l'admin
-  });
+  // ✅ Utilisation du thème global au lieu de l'état local
+  const { theme, toggleTheme } = useTheme();
+  const isDarkMode = theme === 'dark';
 
-  useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem('theme', 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem('theme', 'light');
-    }
-  }, [isDarkMode]);
-
-  const toggleTheme = () => setIsDarkMode(!isDarkMode);
   const closeSidebar = () => setIsSidebarOpen(false);
 
   const handleLogout = () => {
@@ -43,6 +33,8 @@ const SuperAdminLayout = () => {
     { to: "/admin/utilisateurs", label: "Utilisateurs", icon: <FaUsers />, section: "Principal" },
     { to: "/admin/commissions", label: "Taux Commissions", icon: <FaPercentage />, section: "Contrats & Revenus" },
     { to: "/admin/finances", label: "Trésorerie Globale", icon: <FaWallet />, section: "Contrats & Revenus" },
+    // ✅ Ajout du bouton de configuration système
+    { to: "/admin/settings", label: "Configuration SaaS", icon: <FaCog />, section: "Système" },
   ];
 
   const activeClass = (path) => 

@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { 
   FaUsers, FaHandshake, FaTicketAlt, 
-  FaSync, FaExclamationTriangle, FaBuilding 
+  FaSync, FaExclamationTriangle, FaBuilding, FaInfoCircle 
 } from 'react-icons/fa';
 
 import api from '../../services/api'; 
@@ -29,13 +29,17 @@ const DashboardAdmin = () => {
     setLoading(true);
     setError(false);
     try {
-      const response = await api.get('/admin/finances/stats-globales');
-      const serverData = response.data;
+      const [financesRes, agenciesRes] = await Promise.all([
+        api.get('/admin/finances/stats-globales'),
+        api.get('/users/count-agencies')
+      ]);
 
-      // 🟢 MAPPING PARFAIT AVEC LE NOUVEAU BACKEND
+      const serverData = financesRes.data;
+      const totalAgencesBDD = agenciesRes.data?.count || 0;
+
       const mappedData = {
         totalCommissions: serverData.revenusGariConnectNet || 0,
-        activeTenants: serverData.agencesActives || 0,
+        activeTenants: totalAgencesBDD,
         totalReservations: serverData.billetsConfirmes || 0,
         totalUsers: serverData.totalUsers || 0,
         chartData: serverData.chartData || [], 
@@ -185,15 +189,15 @@ const DashboardAdmin = () => {
           </div>
         </div>
 
-        {/* FLUX EN DIRECT (LOGS ET AUDIT TRAIL GLOBAL) */}
+        {/* FLUX D'AUDIT GLOBAL + MODULE LÉGENDE */}
         <div className="bg-slate-950 p-8 rounded-[3rem] text-white shadow-2xl border border-slate-800 flex flex-col justify-between">
           <div>
-            <div className="flex items-center gap-3 mb-10">
+            <div className="flex items-center gap-3 mb-8">
               <div className="w-2 h-2 bg-rose-500 rounded-full animate-ping"></div>
               <h3 className="text-xl font-black uppercase italic tracking-tighter">Flux d'audit global</h3>
             </div>
             
-            <div className="space-y-8 relative before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-800 max-h-[360px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-6 relative before:absolute before:left-[7px] before:top-2 before:bottom-2 before:w-[2px] before:bg-slate-800 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
               {data.recentActivities && data.recentActivities.length > 0 ? (
                 data.recentActivities.map((act, index) => (
                   <div key={index} className="flex gap-6 relative group">
@@ -211,8 +215,27 @@ const DashboardAdmin = () => {
                 <p className="text-slate-600 text-xs italic pl-6 tracking-widest uppercase font-black">Aucun mouvement réseau détecté</p>
               )}
             </div>
+
+            {/* ZONE EXPLICATIVE INTÉGRÉE POUR LES HISTOGRAMMES & DIAGRAMMES */}
+            <div className="mt-6 pt-5 border-t border-slate-900 bg-slate-900/40 p-4 rounded-2xl border border-slate-800/60">
+              <div className="flex items-center gap-2 mb-2 text-blue-400">
+                <FaInfoCircle className="text-xs" />
+                <h4 className="text-[10px] font-black uppercase tracking-wider">Guide d'interprétation</h4>
+              </div>
+              <ul className="space-y-2 text-[10px] text-slate-400 font-semibold uppercase tracking-tight">
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-500 font-black">•</span>
+                  <span><strong>Histogramme :</strong> Représente les commissions nettes générées par les frais SaaS prélevés sur chaque réservation par agence.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-emerald-500 font-black">•</span>
+                  <span><strong>Camembert :</strong> Analyse la répartition des volumes financiers selon les canaux utilisés (Orange Money, M-Pesa, Airtel, Espèces).</span>
+                </li>
+              </ul>
+            </div>
           </div>
-          <div className="mt-6 pt-4 border-t border-slate-900 text-center">
+
+          <div className="mt-6 text-center">
             <p className="text-[9px] text-slate-600 uppercase font-black tracking-widest">GariConnect SaaS Engine v1.0</p>
           </div>
         </div>

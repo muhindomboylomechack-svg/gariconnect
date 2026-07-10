@@ -1,403 +1,419 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  FaPlus, FaTimes, FaUserAlt, FaEnvelope, 
-  FaSearch, FaTrash, FaSync, FaCheckCircle, FaBuilding, FaPhoneAlt, FaFilter,
-  FaLock, FaLockOpen
+  FaPlus, FaTimes, FaUserAlt, FaSearch, FaTrash, FaSync, 
+  FaCheckCircle, FaBuilding, FaChartLine, FaWallet, 
+  FaUsers, FaTicketAlt, FaCreditCard, FaCheck, FaBan 
 } from 'react-icons/fa';
 import api from '../../services/api'; 
 
+// Importation du hook de thème global
+import { useTheme } from '../../App';
+
 const GestionUtilisateurs = () => {
+  // Récupération du thème actuel
+  const { theme: currentTheme } = useTheme();
+  const isDarkMode = currentTheme === 'dark';
+
+  // Navigation par onglets
+  const [activeTab, setActiveTab] = useState('dashboard'); 
+  
+  // États pour les données de l'API
   const [users, setUsers] = useState([]);
   const [agencies, setAgencies] = useState([]);
+  const [financeStats, setFinanceStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  
+  // Filtres
   const [searchTerm, setSearchTerm] = useState("");
   const [filterRole, setFilterRole] = useState("TOUS");
   
-  // Nouveaux états pour gérer le code secret généré
+  // Accès générés et formulaires
   const [generatedCode, setGeneratedCode] = useState(null);
-  const [copied, setCopied] = useState(false);
-
   const [formData, setFormData] = useState({ 
     nom: '', 
+    prenom: '', 
     email: '', 
     telephone: '', 
-    role: 'AGENCY_ADMIN', // 🔒 Rôle verrouillé pour le Super Admin
-    statut: 'ACTIF' 
+    role: 'CLIENT',
+    typeOffre: 'COMMISSION_10'
   });
 
-  const fetchUsers = async () => {
+  // Chargement centralisé des données
+  const fetchAllData = async () => {
     setLoading(true);
     try {
-      const response = await api.get('/admin/users');
-      setUsers(response.data);
-    } catch (error) {
-      console.error("Erreur chargement utilisateurs:", error);
+      const financeRes = await api.get('/admin/finances/stats');
+      setFinanceStats(financeRes.data);
+      
+      const usersRes = await api.get('/users');
+      setUsers(usersRes.data || []);
+      
+      if (Array.isArray(usersRes.data)) {
+        const listAgences = usersRes.data.filter(u => u.role === 'AGENCY_ADMIN');
+        setAgencies(listAgences);
+      }
+    } catch (err) {
+      console.error("Erreur lors de la synchronisation :", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchAgencies = async () => {
-    try {
-      const response = await api.get('/users/agencies'); 
-      setAgencies(response.data);
-    } catch (error) {
-      console.error("Erreur chargement agences:", error);
-    }
-  };
-
   useEffect(() => {
-    fetchUsers();
-    fetchAgencies();
+    fetchAllData();
   }, []);
 
-  const handleSubmit = async (e) => {
+  // Soumission du formulaire de création d'agence / utilisateur
+  const handleCreateUser = async (e) => {
     e.preventDefault();
-    
     try {
-      // Le Super Admin ne crée que des AGENCY_ADMIN (Agences)
-      const response = await api.post('/admin/users/create', formData);
-      
-      // Si le backend renvoie le code d'accès généré
-      if (response.data && response.data.codeAcces) {
-          setGeneratedCode(response.data.codeAcces);
-      } else {
-          setIsModalOpen(false);
+      const res = await api.post('/users/create', formData);
+      if (res.data && res.data.codeAcces) {
+        setGeneratedCode(res.data.codeAcces);
       }
-      
-      setFormData({ nom: '', email: '', telephone: '', role: 'AGENCY_ADMIN', statut: 'ACTIF' });
-      fetchUsers();
-      fetchAgencies();
-    } catch (error) {
-      alert("Erreur : " + (error.response?.data?.message || "Données invalides"));
+      fetchAllData();
+    } catch (err) {
+      console.error("Erreur de création :", err);
     }
   };
 
-  const handleActivateUser = async (id) => {
-    if (window.confirm("Valider l'inscription de cet utilisateur ?")) {
-      try {
-        await api.put(`/admin/users/${id}/valider`);
-        fetchUsers();
-      } catch (error) {
-        console.error("Erreur activation:", error);
-      }
+  // ACTION CORRIGÉE : Valider un utilisateur ou un chauffeur
+  const handleValidateUser = async (userId) => {
+    try {
+      // Correspond à @PutMapping("/valider-chauffeur/{id}") du backend
+      await api.put(`/users/valider-chauffeur/${userId}`);
+      fetchAllData(); 
+    } catch (err) {
+      console.error("Erreur lors de la validation :", err);
     }
   };
 
-  // 🟢 CORRIGÉ : Ajout de l'espace sur la variable const isActif
+  // ACTION CORRIGÉE : Basculer entre Bloquer (INACTIF) et Débloquer (ACTIF)
   const handleToggleBlockUser = async (user) => {
-    const isActif = user.statut === 'ACTIF'; // <-- Espace corrigé ici
-    const actionMessage = isActif 
-      ? `Voulez-vous suspendre temporairement le compte de ${user.nom || user.email} ?`
-      : `Voulez-vous réactiver le compte de ${user.nom || user.email} ?`;
+    try {
+      if (user.statut === 'ACTIF') {
+        // Correspond à @PutMapping("/{id}/bloquer") du backend
+        await api.put(`/users/${user.id}/bloquer`);
+      } else {
+        // Si l'utilisateur est INACTIF, on le réactive via valider-chauffeur
+        await api.put(`/users/valider-chauffeur/${user.id}`);
+      }
+      fetchAllData(); 
+    } catch (err) {
+      System.err.println("Erreur lors du changement de statut :" + err);
+    }
+  };
 
-    if (window.confirm(actionMessage)) {
+  // Suppression définitive d'un compte
+  const handleDeleteUser = async (userId) => {
+    if (window.confirm("Voulez-vous vraiment supprimer cet utilisateur ?")) {
       try {
-        // Envoi du nouveau statut au backend (BLOQUE ou ACTIF)
-        const nouveauStatut = isActif ? 'BLOQUE' : 'ACTIF';
-        await api.put(`/admin/users/${user.id}/statut`, { statut: nouveauStatut });
-        
-        // Rafraîchir localement la liste
-        setUsers(users.map(u => u.id === user.id ? { ...u, statut: nouveauStatut } : u));
-      } catch (error) {
-        alert("Erreur lors de la modification du statut : " + (error.response?.data?.message || "Impossible de modifier"));
+        // Correspond à @DeleteMapping("/{id}") du backend
+        await api.delete(`/users/${userId}`);
+        fetchAllData();
+      } catch (err) {
+        console.error("Erreur lors de la suppression :", err);
       }
     }
   };
 
-  const handleDelete = async (id) => {
-    if (window.confirm("Supprimer définitivement ce compte ?")) {
-      try {
-        await api.delete(`/admin/users/${id}`);
-        setUsers(users.filter(u => u.id !== id));
-      } catch (error) {
-        alert("Erreur lors de la suppression.");
-      }
-    }
+  // Thèmes dynamiques 
+  const themeStyles = {
+    bg: isDarkMode ? 'bg-slate-900 text-slate-100' : 'bg-slate-50 text-slate-800',
+    card: isDarkMode ? 'bg-slate-800/50 border-slate-800/80' : 'bg-white border-slate-200 shadow-sm',
+    cardHeader: isDarkMode ? 'bg-slate-800/10 border-slate-800' : 'bg-slate-100/50 border-slate-200',
+    input: isDarkMode ? 'bg-slate-800/50 border-slate-800 text-white' : 'bg-slate-100 border-slate-300 text-slate-900',
+    navBar: isDarkMode ? 'bg-slate-800/40 border-slate-800' : 'bg-slate-200/60 border-slate-300',
+    textMuted: isDarkMode ? 'text-slate-400' : 'text-slate-500',
+    title: isDarkMode ? 'text-white' : 'text-slate-900',
+    trHover: isDarkMode ? 'hover:bg-slate-800/20' : 'hover:bg-slate-100',
+    border: isDarkMode ? 'border-slate-800' : 'border-slate-200',
+    tableHeader: isDarkMode ? 'bg-slate-800/10 text-slate-400' : 'bg-slate-100 text-slate-500'
   };
-
-  const handleCopyCode = () => {
-    if (generatedCode) {
-      navigator.clipboard.writeText(generatedCode);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
-    setGeneratedCode(null);
-    setCopied(false);
-  };
-
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = (user.nom || "").toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          (user.email || "").toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = filterRole === "TOUS" || user.role === filterRole;
-    return matchesSearch && matchesRole;
-  });
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className={`min-h-screen p-6 font-sans transition-colors duration-300 ${themeStyles.bg}`}>
       
-      {/* HEADER DE SECTION */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      {/* HEADER DE LA PAGE */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
         <div>
-          <h1 className="text-4xl font-black text-slate-900 dark:text-white uppercase italic tracking-tighter">
-            Membres <span className="text-blue-600">GariConnect</span>
+          <h1 className={`text-2xl font-black tracking-wider uppercase ${themeStyles.title}`}>
+            GariConnect <span className="text-blue-500">Super Admin Portal</span>
           </h1>
-          <p className="text-slate-400 dark:text-slate-500 font-bold text-xs uppercase tracking-[0.2em] mt-1">
-            Contrôle centralisé des accès et privilèges (Super Admin)
+          <p className={`${themeStyles.textMuted} text-xs font-medium`}>
+            Supervision globale, contrôle des flux financiers et gestion multi-tenant en temps réel.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        
+        <div className="flex items-center gap-3 self-start md:self-auto">
           <button 
-            onClick={fetchUsers} 
-            className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-400 hover:text-blue-600 shadow-sm transition-all active:rotate-180"
+            onClick={() => { setGeneratedCode(null); setIsModalOpen(true); }}
+            className="flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-[1.2rem] font-black text-xs uppercase tracking-wider transition-all shadow-lg"
           >
-            <FaSync className={loading ? "animate-spin" : ""} />
-          </button>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center gap-3 shadow-xl shadow-blue-600/20 transition-transform active:scale-95"
-          >
-            <FaPlus /> Créer une Agence
+            <FaPlus size={12} /> Ajouter une Agence / Admin
           </button>
         </div>
       </div>
 
-      {/* FILTRES DYNAMIQUES */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 bg-white dark:bg-slate-900 p-4 rounded-[2.5rem] shadow-sm border border-slate-100 dark:border-slate-800">
-        <div className="relative lg:col-span-3">
-          <FaSearch className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-600" />
-          <input 
-            type="text"
-            placeholder="Rechercher un membre par nom ou email..."
-            className="w-full pl-14 pr-4 py-4 bg-slate-50 dark:bg-slate-800/50 border-none rounded-2xl font-bold text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30 transition-all"
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <div className="relative">
-          <FaFilter className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300 dark:text-slate-600 pointer-events-none" />
-          <select 
-            className="w-full pl-14 pr-4 py-4 bg-slate-50 dark:bg-slate-800/50 border-none rounded-2xl font-black text-[11px] text-slate-500 uppercase tracking-widest outline-none appearance-none cursor-pointer"
-            onChange={(e) => setFilterRole(e.target.value)}
-          >
-            <option value="TOUS">Tous les rôles</option>
-            <option value="CLIENT">Clients</option>
-            <option value="AGENCY_ADMIN">Entrepreneurs Agence</option>
-            <option value="AGENCY_MANAGER">Managers Agence</option>
-            <option value="CHAUFFEUR">Chauffeurs</option>
-            <option value="SUPER_ADMIN">Super Admins</option>
-          </select>
-        </div>
+      {/* BARRE DE NAVIGATION PAR ONGLETS */}
+      <div className={`flex flex-wrap gap-2 mb-8 p-1.5 rounded-[1.4rem] border max-w-3xl ${themeStyles.navBar}`}>
+        <button 
+          onClick={() => setActiveTab('dashboard')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-[1.1rem] font-black text-xs uppercase tracking-wider transition-all ${activeTab === 'dashboard' ? 'bg-blue-600 text-white shadow-md' : `${themeStyles.textMuted} hover:text-blue-500`}`}
+        >
+          <FaChartLine size={12} /> Finances & KPIs
+        </button>
+        <button 
+          onClick={() => setActiveTab('users')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-[1.1rem] font-black text-xs uppercase tracking-wider transition-all ${activeTab === 'users' ? 'bg-blue-600 text-white shadow-md' : `${themeStyles.textMuted} hover:text-blue-500`}`}
+        >
+          <FaUsers size={12} /> Utilisateurs
+        </button>
+        <button 
+          onClick={() => setActiveTab('tenants')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-[1.1rem] font-black text-xs uppercase tracking-wider transition-all ${activeTab === 'tenants' ? 'bg-blue-600 text-white shadow-md' : `${themeStyles.textMuted} hover:text-blue-500`}`}
+        >
+          <FaBuilding size={12} /> Agences Partenaires
+        </button>
       </div>
 
-      {/* LISTE DES UTILISATEURS */}
-      <div className="bg-white dark:bg-slate-900 rounded-[3rem] shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/50 dark:bg-slate-800/30">
-                <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest">Utilisateur</th>
-                <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Profil</th>
-                <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">État du compte</th>
-                <th className="px-8 py-6 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Contrôle</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
-              {filteredUsers.map(user => (
-                <tr 
-                  key={user.id} 
-                  className={`hover:bg-slate-50/50 dark:hover:bg-blue-500/5 transition-colors group ${
-                    user.statut === 'BLOQUE' ? 'opacity-60 bg-red-50/10' : ''
-                  }`}
-                >
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-slate-400 group-hover:bg-blue-600 group-hover:text-white transition-all duration-300">
-                        {user.role === 'AGENCY_ADMIN' || user.role === 'AGENCY_MANAGER' ? <FaBuilding size={18} /> : <FaUserAlt size={16} />}
-                      </div>
-                      <div>
-                        <p className={`font-black uppercase text-sm tracking-tight ${user.statut === 'BLOQUE' ? 'line-through text-slate-400' : 'text-slate-800 dark:text-slate-200'}`}>{user.nom || 'Sans nom'}</p>
-                        <p className="text-xs text-slate-400 font-bold lowercase tracking-normal">{user.email}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5 text-center">
-                    <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-widest border ${
-                      user.role === 'SUPER_ADMIN' 
-                      ? 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-100 dark:border-purple-500/20' 
-                      : 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-100 dark:border-slate-700'
-                    }`}>
-                      {user.role}
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-center">
-                    <span className={`inline-flex items-center gap-2 font-black text-[9px] px-4 py-1.5 rounded-full uppercase tracking-widest ${
-                      user.statut === 'ACTIF' 
-                      ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' 
-                      : user.statut === 'BLOQUE'
-                      ? 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400'
-                      : 'bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                    }`}>
-                      <span className={`w-1.5 h-1.5 rounded-full ${user.statut === 'ACTIF' ? 'bg-emerald-500 animate-pulse' : user.statut === 'BLOQUE' ? 'bg-red-500' : 'bg-amber-500 animate-pulse'}`}></span>
-                      {user.statut ? user.statut.replace('_', ' ') : 'EN ATTENTE'}
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-right">
-                    <div className="flex justify-end gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
-                      {user.statut === 'EN_ATTENTE' && (
-                        <button 
-                          onClick={() => handleActivateUser(user.id)}
-                          className="flex items-center gap-2 bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-[10px] font-black hover:bg-emerald-600 shadow-lg shadow-emerald-500/20 transition-all active:scale-95"
-                        >
-                          <FaCheckCircle /> VALIDER
-                        </button>
-                      )}
-
-                      {/* 🟢 Bouton Bloquer / Débloquer */}
-                      {user.role !== 'SUPER_ADMIN' && (
-                        <button 
-                          onClick={() => handleToggleBlockUser(user)}
-                          title={user.statut === 'BLOQUE' ? "Réactiver le membre" : "Suspendre temporairement"}
-                          className={`p-3 rounded-xl transition-all ${
-                            user.statut === 'BLOQUE' 
-                              ? 'text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10' 
-                              : 'text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10'
-                          }`}
-                        >
-                          {user.statut === 'BLOQUE' ? <FaLockOpen size={14} /> : <FaLock size={14} />}
-                        </button>
-                      )}
-
-                      <button 
-                        onClick={() => handleDelete(user.id)} 
-                        className="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-all"
-                      >
-                        <FaTrash size={14} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <FaSync className="animate-spin text-blue-500" size={32} />
         </div>
-      </div>
-
-      {/* MODALE DE CRÉATION AGENCE */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex justify-center items-center p-4">
-            <div className="bg-white dark:bg-slate-900 w-full max-w-lg rounded-[3.5rem] shadow-2xl p-12 border border-slate-100 dark:border-slate-800 animate-in zoom-in duration-300">
-              <div className="flex justify-between items-start mb-10">
-                <div>
-                  <h3 className="text-3xl font-black text-slate-900 dark:text-white uppercase italic tracking-tighter">
-                    {generatedCode ? 'Succès' : 'Nouvelle '} <span className="text-blue-600">{generatedCode ? '!' : 'Agence'}</span>
+      ) : (
+        <>
+          {/* 1. ONGLET : DASHBOARD & FINANCES */}
+          {activeTab === 'dashboard' && (
+            <div className="space-y-8">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                
+                {/* 1. VOLUME D'AFFAIRES EN CDF */}
+                <div className={`border p-5 rounded-[1.5rem] relative overflow-hidden ${themeStyles.card}`}>
+                  <div className="absolute right-4 top-4 p-3 bg-blue-500/10 text-blue-500 rounded-xl"><FaWallet size={18} /></div>
+                  <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${themeStyles.textMuted}`}>Volume d'Affaires</p>
+                  <h3 className={`text-2xl font-black ${themeStyles.title}`}>
+                    {financeStats?.volumeAffairesTotal ? Number(financeStats.volumeAffairesTotal).toLocaleString('fr-FR') : '0'} CDF
                   </h3>
-                  <p className="text-slate-400 font-bold text-[10px] uppercase tracking-widest mt-1">
-                    {generatedCode ? 'Compte administrateur créé' : 'Génération de compte partenaire'}
-                  </p>
+                  <p className="text-[10px] text-emerald-400 font-bold mt-2">Flux total transité</p>
                 </div>
-                <button onClick={handleCloseModal} className="w-10 h-10 flex items-center justify-center bg-slate-50 dark:bg-slate-800 rounded-full text-slate-400 hover:text-red-500 transition-colors">
-                  <FaTimes size={18}/>
-                </button>
+
+                {/* 2. REVENUS NET EN CDF */}
+                <div className={`border p-5 rounded-[1.5rem] relative overflow-hidden ${themeStyles.card}`}>
+                  <div className="absolute right-4 top-4 p-3 bg-emerald-500/10 text-emerald-400 rounded-xl"><FaChartLine size={18} /></div>
+                  <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${themeStyles.textMuted}`}>Revenus Net</p>
+                  <h3 className="text-2xl font-black text-emerald-500">
+                    {financeStats?.revenusGariConnectNet ? Number(financeStats.revenusGariConnectNet).toLocaleString('fr-FR') : '0'} CDF
+                  </h3>
+                  <p className={`${themeStyles.textMuted} text-[10px] font-bold mt-2`}>Commissions perçues</p>
+                </div>
+
+                {/* 3. COMPTES UTILISATEURS */}
+                <div className={`border p-5 rounded-[1.5rem] relative overflow-hidden ${themeStyles.card}`}>
+                  <div className="absolute right-4 top-4 p-3 bg-indigo-500/10 text-indigo-500 rounded-xl"><FaUsers size={18} /></div>
+                  <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${themeStyles.textMuted}`}>Comptes Utilisateurs</p>
+                  <h3 className={`text-2xl font-black ${themeStyles.title}`}>{financeStats?.totalUsers || 0}</h3>
+                  <p className={`${themeStyles.textMuted} text-[10px] font-bold mt-2`}>Inscriptions globales</p>
+                </div>
+
+                {/* 4. BILLETS CONFIRMÉS EN DIRECT DES VRAIES DONNÉES */}
+                <div className={`border p-5 rounded-[1.5rem] relative overflow-hidden ${themeStyles.card}`}>
+                  <div className="absolute right-4 top-4 p-3 bg-amber-500/10 text-amber-500 rounded-xl"><FaTicketAlt size={18} /></div>
+                  <p className={`text-[10px] font-black uppercase tracking-widest mb-1 ${themeStyles.textMuted}`}>Billets Confirmés</p>
+                  <h3 className={`text-2xl font-black ${themeStyles.title}`}>
+                    {financeStats?.billetsConfirmes !== undefined ? Number(financeStats.billetsConfirmes).toLocaleString('fr-FR') : '0'}
+                  </h3>
+                  <p className={`${themeStyles.textMuted} text-[10px] font-bold mt-2`}>Réservations payées</p>
+                </div>
+
               </div>
-
-              {generatedCode ? (
-                /* AFFICHAGE DU CODE SECRET APRÈS CRÉATION */
-                <div className="p-2 text-center space-y-6">
-                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 shadow-inner">
-                    <FaCheckCircle size={28} />
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className={`border p-6 rounded-[1.8rem] ${themeStyles.card}`}>
+                  <h4 className={`text-xs font-black uppercase tracking-wider mb-4 flex items-center gap-2 ${themeStyles.title}`}>
+                    <FaChartLine className="text-blue-500" /> Évolution des Commissions
+                  </h4>
+                  <div className="space-y-3 h-52 overflow-y-auto pr-2">
+                    {financeStats?.chartData?.map((item, index) => (
+                      <div key={index} className={`flex items-center justify-between p-3 rounded-xl border ${themeStyles.card}`}>
+                        <span className="text-xs font-medium">{item.date}</span>
+                        <span className="text-xs font-black text-emerald-500">+{item.revenus ? Number(item.revenus).toLocaleString('fr-FR') : '0'} CDF</span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="space-y-4">
-                    <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">
-                      L'agence a été créée. Transmettez ce code de sécurité au nouveau propriétaire :
-                    </p>
-                    <div className="flex items-center justify-between bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl px-6 py-4 font-mono text-2xl font-bold text-blue-600 dark:text-blue-400 tracking-[0.2em] shadow-inner">
-                      <span>{generatedCode}</span>
-                      <button
-                        type="button"
-                        onClick={handleCopyCode}
-                        className={`text-xs px-4 py-2.5 rounded-xl font-sans font-black uppercase tracking-widest shadow-sm transition active:scale-95 ${
-                          copied
-                            ? 'bg-emerald-500 text-white'
-                            : 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        {copied ? "Copié" : "Copier"}
-                      </button>
-                    </div>
-                    <p className="text-[10px] text-amber-500 dark:text-amber-400 font-bold uppercase tracking-wider italic">
-                      * Le propriétaire devra modifier ce code à la connexion.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleCloseModal}
-                    className="w-full py-5 bg-slate-900 text-white dark:bg-blue-600 dark:hover:bg-blue-700 font-black text-xs uppercase tracking-[0.3em] rounded-[1.5rem] shadow-2xl transition-all active:scale-95 mt-4"
-                  >
-                    Fermer
-                  </button>
                 </div>
-              ) : (
-                /* FORMULAIRE DE CRÉATION */
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Nom de l'Agence</label>
-                      <div className="relative">
-                        <FaBuilding className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" />
-                        <input 
-                          required 
-                          value={formData.nom}
-                          className="w-full pl-14 pr-4 py-4 bg-slate-50 dark:bg-slate-800/50 border-none rounded-[1.5rem] font-bold text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition-all" 
-                          onChange={e => setFormData({...formData, nom: e.target.value})} 
-                        />
+                <div className={`border p-6 rounded-[1.8rem] ${themeStyles.card}`}>
+                  <h4 className={`text-xs font-black uppercase tracking-wider mb-4 flex items-center gap-2 ${themeStyles.title}`}>
+                    <FaCreditCard className="text-purple-500" /> Canaux de Paiement
+                  </h4>
+                  <div className="space-y-4">
+                    {financeStats?.paymentMethodsData?.map((method, index) => (
+                      <div key={index} className="space-y-1">
+                        <div className="flex justify-between text-[11px] font-bold">
+                          <span>{method.name}</span>
+                          <span className="text-blue-500">{method.value} tx</span>
+                        </div>
+                        <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                          <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-full" style={{ width: `${Math.min(method.value * 5, 100)}%` }}></div>
+                        </div>
                       </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Contact Mobile</label>
-                      <div className="relative">
-                        <FaPhoneAlt className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" />
-                        <input 
-                          value={formData.telephone}
-                          className="w-full pl-14 pr-4 py-4 bg-slate-50 dark:bg-slate-800/50 border-none rounded-[1.5rem] font-bold text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition-all" 
-                          placeholder="+243..."
-                          onChange={e => setFormData({...formData, telephone: e.target.value})} 
-                        />
-                      </div>
-                    </div>
+                    ))}
                   </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Adresse Mail (Propriétaire)</label>
-                    <div className="relative">
-                      <FaEnvelope className="absolute left-5 top-1/2 -translate-y-1/2 text-slate-300" />
-                      <input 
-                        type="email" required 
-                        value={formData.email}
-                        className="w-full pl-14 pr-4 py-4 bg-slate-50 dark:bg-slate-800/50 border-none rounded-[1.5rem] font-bold text-slate-700 dark:text-white outline-none focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/40 transition-all" 
-                        onChange={e => setFormData({...formData, email: e.target.value})} 
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                      <label className="text-[10px] font-black text-slate-400 uppercase ml-2 tracking-widest italic">Attribution du Rôle</label>
-                      <div className="w-full px-6 py-5 bg-blue-50/50 dark:bg-slate-800/50 border border-blue-100 dark:border-slate-700 rounded-[1.5rem] font-black text-xs text-blue-600 dark:text-blue-400 uppercase tracking-[0.2em] text-center cursor-not-allowed">
-                        🏢 Administrateur d'Agence
-                      </div>
-                  </div>
-
-                  <button type="submit" className="w-full py-5 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs uppercase tracking-[0.3em] rounded-[1.5rem] shadow-2xl shadow-blue-600/30 transition-all active:scale-95 mt-4">
-                    Générer les accès de l'agence
-                  </button>
-                </form>
-              )}
+                </div>
+              </div>
             </div>
+          )}
+
+          {/* 2. ONGLET : GESTION DES UTILISATEURS */}
+          {activeTab === 'users' && (
+            <div className={`border rounded-[1.8rem] overflow-hidden ${themeStyles.card}`}>
+              <div className={`p-5 border-b flex flex-col sm:flex-row gap-4 items-center justify-between ${themeStyles.cardHeader}`}>
+                <div className="relative w-full sm:w-72">
+                  <FaSearch className="absolute left-3 top-3.5 text-slate-400" size={12} />
+                  <input 
+                    type="text" 
+                    placeholder="Rechercher un utilisateur..." 
+                    value={searchTerm}
+                    onChange={e => setSearchTerm(e.target.value)}
+                    className={`w-full pl-9 pr-4 py-2.5 rounded-xl text-xs outline-none focus:border-blue-500 font-medium ${themeStyles.input}`}
+                  />
+                </div>
+                <div>
+                  <select 
+                    value={filterRole} 
+                    onChange={e => setFilterRole(e.target.value)}
+                    className={`p-2.5 rounded-xl text-xs font-bold outline-none border ${themeStyles.input}`}
+                  >
+                    <option value="TOUS">Tous les rôles</option>
+                    <option value="SUPER_ADMIN">Super Admins</option>
+                    <option value="AGENCY_ADMIN">Admins Agences</option>
+                    <option value="CLIENT">Clients</option>
+                  </select>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className={`border-b text-[10px] font-black uppercase ${themeStyles.tableHeader}`}>
+                      <th className="p-4">Identité</th>
+                      <th className="p-4">Email / Contacts</th>
+                      <th className="p-4">Rôle</th>
+                      <th className="p-4">Statut Compte</th>
+                      <th className="p-4 text-center">Actions Système</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-xs divide-y divide-slate-200 dark:divide-slate-800/40">
+                    {users
+                      .filter(u => filterRole === "TOUS" || u.role === filterRole)
+                      .filter(u => u.nom?.toLowerCase().includes(searchTerm.toLowerCase()) || u.email?.toLowerCase().includes(searchTerm.toLowerCase()))
+                      .map((u) => (
+                        <tr key={u.id} className={`transition-all ${themeStyles.trHover}`}>
+                          <td className="p-4 font-bold">{u.nom} {u.prenom}</td>
+                          <td className="p-4">
+                            <span className="block font-medium">{u.email}</span>
+                            <span className={`text-[10px] ${themeStyles.textMuted}`}>{u.telephone || 'Aucun numéro'}</span>
+                          </td>
+                          <td className="p-4">
+                            <span className={`px-2.5 py-0.5 rounded-md text-[9px] font-black tracking-wider ${u.role === 'SUPER_ADMIN' ? 'bg-purple-500/10 text-purple-500' : u.role === 'AGENCY_ADMIN' ? 'bg-blue-500/10 text-blue-500' : 'bg-slate-500/10 text-slate-500'}`}>
+                              {u.role}
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            <span className={`px-2.5 py-1 rounded-full text-[9px] font-black tracking-wider uppercase ${u.statut === 'ACTIF' ? 'bg-emerald-500/10 text-emerald-500' : (u.statut === 'INACTIF' || u.statut === 'BLOQUE') ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                              {u.statut === 'INACTIF' ? 'BLOQUÉ' : (u.statut || (u.valide ? 'ACTIF' : 'EN_ATTENTE'))}
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            <div className="flex items-center justify-center gap-1.5">
+                              
+                              {/* 1. BOUTON VALIDER */}
+                              {u.statut !== 'ACTIF' && (
+                                <button 
+                                  onClick={() => handleValidateUser(u.id)}
+                                  title="Valider et activer le compte"
+                                  className="p-2 bg-emerald-500/10 hover:bg-emerald-500 hover:text-white text-emerald-500 rounded-lg transition-all"
+                                >
+                                  <FaCheck size={11} />
+                                </button>
+                              )}
+
+                              {/* 2. BOUTON BLOQUER / DÉBLOQUER */}
+                              <button 
+                                onClick={() => handleToggleBlockUser(u)}
+                                title={u.statut === 'INACTIF' ? "Débloquer l'accès" : "Bloquer l'accès temporairement"}
+                                className={`p-2 rounded-lg transition-all ${u.statut === 'INACTIF' ? 'bg-amber-500/10 text-amber-500 hover:bg-amber-500 hover:text-white' : 'bg-rose-500/10 text-rose-500 hover:bg-rose-500 hover:text-white'}`}
+                              >
+                                <FaBan size={11} />
+                              </button>
+
+                              {/* 3. BOUTON SUPPRIMER */}
+                              <button 
+                                onClick={() => handleDeleteUser(u.id)}
+                                title="Supprimer définitivement"
+                                className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
+                              >
+                                <FaTrash size={11} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* 3. ONGLET : AGENCES PARTENAIRES */}
+          {activeTab === 'tenants' && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {agencies.map((agency) => (
+                <div key={agency.id} className={`border p-5 rounded-[1.5rem] space-y-4 ${themeStyles.card}`}>
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 bg-blue-600/10 text-blue-500 rounded-xl"><FaBuilding size={16} /></div>
+                      <div>
+                        <h4 className="text-sm font-black">{agency.nom || "Agence sans nom"}</h4>
+                        <span className={`text-[10px] font-mono ${themeStyles.textMuted}`}>{agency.email}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* MODAL GLOBAL : AJOUT NOUVEL UTILISATEUR */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className={`border w-full max-w-lg rounded-[2rem] shadow-2xl p-6 relative overflow-hidden ${isDarkMode ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'}`}>
+            <button onClick={() => setIsModalOpen(false)} className="absolute right-5 top-5 text-slate-400 hover:text-slate-600 dark:hover:text-white"><FaTimes size={14} /></button>
+            <h3 className="text-md font-black uppercase tracking-wider mb-2">Créer un Compte</h3>
+            
+            {generatedCode ? (
+              <div className="bg-blue-950/40 border border-blue-900/50 p-6 rounded-2xl text-center space-y-4">
+                <FaCheckCircle className="text-emerald-500 mx-auto" size={42} />
+                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 font-mono text-xl text-blue-400 font-black tracking-widest">{generatedCode}</div>
+                <button onClick={() => setIsModalOpen(false)} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase">Fermer</button>
+              </div>
+            ) : (
+              <form onSubmit={handleCreateUser} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-wider">Raison Sociale ou Nom</label>
+                  <input type="text" required className={`w-full px-4 py-3 rounded-xl text-xs outline-none border ${themeStyles.input}`} placeholder="Nom de l'utilisateur ou entreprise" onChange={e => setFormData({...formData, nom: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black uppercase tracking-wider">Adresse Électronique</label>
+                  <input type="email" required className={`w-full px-4 py-3 rounded-xl text-xs outline-none border ${themeStyles.input}`} placeholder="exemple@domaine.com" onChange={e => setFormData({...formData, email: e.target.value})} />
+                </div>
+                <button type="submit" className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg mt-4">
+                  Valider et Enregistrer sur Supabase
+                </button>
+              </form>
+            )}
+          </div>
         </div>
       )}
     </div>

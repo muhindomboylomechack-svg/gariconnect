@@ -37,6 +37,10 @@ public class User {
     private Boolean mustChangePassword;
     private LocalDateTime dateInscription;
     private String typeAbonnement;
+    // À ajouter à l'intérieur de votre classe User.java :
+    public String getNomAgence() {
+        return this.nom; // ou return this.nomEntreprise; selon le nom de votre champ
+    }
     // ====================================================================
     // 🟢 LIAISON AVEC LES TRAJETS (Pour les Chauffeurs affectés)
     // ====================================================================
@@ -55,7 +59,8 @@ public class User {
     // M-Pesa
     private String numeroMpesa;
     private String nomMpesa;
-
+    @Column(name = "taux_echange_courant")
+    private Double tauxEchangeCourant = 2800.0; // Valeur par défaut initiale
     // Airtel Money
     private String numeroAirtel;
     private String nomAirtel;

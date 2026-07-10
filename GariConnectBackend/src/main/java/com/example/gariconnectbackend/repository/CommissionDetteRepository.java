@@ -38,4 +38,13 @@ public interface CommissionDetteRepository extends JpaRepository<CommissionDette
     // ==========================================
     @Query("SELECT COALESCE(SUM(c.montant), 0.0) FROM CommissionDette c WHERE c.agence.id = :agenceId AND c.reglee = true")
     Double totalRegleParAgence(@Param("agenceId") Long agenceId);
+
+    @Query("SELECT SUM(c.montantCommission) FROM CommissionDette c")
+    Double sumMontantCommissionTotal();
+
+    @Query("SELECT SUM(c.montantDu) FROM CommissionDette c WHERE c.agence.id = :agenceId AND c.reglee = :reglee")
+    Double sumMontantDuByAgenceAndReglee(@Param("agenceId") Long agenceId, @Param("reglee") boolean reglee);
+
+    @Query("SELECT CAST(c.dateCreation AS date), SUM(c.montantCommission), SUM(c.montant) FROM CommissionDette c GROUP BY CAST(c.dateCreation AS date) ORDER BY CAST(c.dateCreation AS date) ASC")
+    List<Object[]> findRevenusGroupedByDate();
 }

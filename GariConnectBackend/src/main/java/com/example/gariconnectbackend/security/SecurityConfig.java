@@ -18,7 +18,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import java.util.Arrays;
 
 @Configuration
-@EnableMethodSecurity // Assure le bon fonctionnement des annotations @PreAuthorize sur vos contrôleurs
+@EnableMethodSecurity // Assure le bon fonctionnement des annotations @PreAuthorize
 public class SecurityConfig {
 
     @Autowired
@@ -36,7 +36,7 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        // 🟢 Autoriser toutes les requêtes OPTIONS de pré-vérification (CORS) du navigateur
+                        // 🟢 Autoriser toutes les requêtes OPTIONS de pré-vérification (CORS)
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
                         // 1. 🔓 ROUTES STRICTEMENT PUBLIQUES (Page d'accueil & Consultation)
@@ -48,9 +48,19 @@ public class SecurityConfig {
                                 "/api/trajets/recherche"
                         ).permitAll()
 
-                        // 🟢 CORRECTIF CRUCIAL : Rendre publique la route de récupération d'un trajet par ID
-                        // Placé impérativement AVANT la règle restrictive générique du point 5
+                        // Route publique pour un trajet unique
                         .requestMatchers(HttpMethod.GET, "/api/trajets/{id}").permitAll()
+
+                        // =========================================================================
+                        // 🛠️ OPTION A (SÉCURISÉE - RECOMMANDÉE POUR LA PRODUCTION)
+                        // Seul le SUPER_ADMIN connecté avec son Token peut voir l'état du système.
+                        // =========================================================================
+                        .requestMatchers("/api/admin/system-health")
+                        .hasAnyAuthority("SUPER_ADMIN", "ROLE_SUPER_ADMIN")
+
+                        // 💡 NOTE DEV : Si vous testez encore sans Token JWT côté React, déplacez
+                        // temporairement la ligne "/api/admin/system-health" dans le bloc .permitAll() ci-dessus.
+                        // =========================================================================
 
                         // 2. Gestion des récupérations
                         .requestMatchers("/api/recuperations/**", "/api/recuperation/**")
@@ -68,7 +78,6 @@ public class SecurityConfig {
                                 "ROLE_SUPER_ADMIN", "ROLE_AGENCY_ADMIN", "ROLE_AGENCY_MANAGER")
 
                         // 5. 🔒 ROUTES PRIVÉES DES TRAJETS ET RÉSERVATIONS
-                        // N'impactera plus le GET d'un trajet unique grâce au permitAll positionné plus haut
                         .requestMatchers(
                                 "/api/trajets/**",
                                 "/api/reservations/**",

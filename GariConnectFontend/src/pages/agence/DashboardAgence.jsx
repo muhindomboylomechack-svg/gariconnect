@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
     FaBus, FaRoute, FaTicketAlt, FaWallet, FaUserTie, 
-    FaChartLine, FaPhone, FaEnvelope, FaTimes, FaWhatsapp, 
-    FaSearch, FaSync, FaCheckCircle, FaBoxOpen,
-    FaUserCheck, FaClock, FaFlagCheckered, FaBoxes, FaMailBulk
+    FaChartLine, FaPhone, FaTimes, FaWhatsapp, 
+    FaSync, FaCheckCircle, FaBoxOpen,
+    FaUserCheck, FaClock, FaFlagCheckered, FaBoxes, FaMailBulk, FaSearch
 } from 'react-icons/fa';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
@@ -27,11 +27,9 @@ const DashboardAgence = () => {
         chauffeurCount: 0,
         reservationCount: 0,
         revenuTotal: 0,
-        // Compteurs pour les chauffeurs
         chauffeursDisponibles: 0, 
         chauffeursEnCourse: 0,
         chauffeursTermines: 0,
-        // Compteurs pour les colis / courriers
         colisCount: 0,
         courrierCount: 0
     });
@@ -48,26 +46,46 @@ const DashboardAgence = () => {
     const fetchDashboardData = async () => {
         setLoading(true);
         try {
-            const resStats = await api.get('/agences/stats');
-            setStats(prev => ({
-                ...prev,
-                ...resStats.data,
-                chauffeursDisponibles: resStats.data.chauffeursDisponibles || 0,
-                chauffeursEnCourse: resStats.data.chauffeursEnCourse || 0,
-                chauffeursTermines: resStats.data.chauffeursTermines || 0,
-                colisCount: resStats.data.colisCount || 0,
-                courrierCount: resStats.data.courrierCount || 0
-            }));
+            // 1. Récupération des statistiques générales
+            try {
+                const resStats = await api.get('/agences/stats');
+                setStats(prev => ({
+                    ...prev,
+                    ...resStats.data,
+                    chauffeursDisponibles: resStats.data.chauffeursDisponibles || 0,
+                    chauffeursEnCourse: resStats.data.chauffeursEnCourse || 0,
+                    chauffeursTermines: resStats.data.chauffeursTermines || 0
+                }));
+            } catch (err) {
+                console.warn("Erreur Stats Générales:", err);
+            }
 
+            // 2. 🟢 RÉCUPÉRATION ET COMPTAGE DES COLIS ET COURRIERS
+            try {
+                const resCourriers = await api.get('/courriers');
+                const listeLogistique = Array.isArray(resCourriers.data) ? resCourriers.data : [];
+                
+                // On filtre selon le type défini dans votre Backend (Courrier.java)
+                const nbColis = listeLogistique.filter(c => c.type === 'COLIS').length;
+                const nbCourriers = listeLogistique.filter(c => c.type === 'COURRIER').length;
+                
+                setStats(prev => ({
+                    ...prev,
+                    colisCount: nbColis,
+                    courrierCount: nbCourriers
+                }));
+            } catch (err) {
+                console.error("Erreur lors de la récupération des courriers:", err);
+            }
+
+            // 3. Récupération des données graphiques
             try {
                 const resGraph = await api.get('/agences/stats-paiements-semaine');
                 setGraphData(Array.isArray(resGraph.data) ? resGraph.data : []);
             } catch (graphErr) {
-                console.error("Erreur Graphique:", graphErr);
+                console.warn("Erreur Graphique:", graphErr);
                 setGraphData([]);
             }
-        } catch (error) {
-            console.error("Erreur stats globales:", error);
         } finally {
             setLoading(false);
         }
@@ -118,7 +136,7 @@ const DashboardAgence = () => {
         }
     };
 
-    if (loading && stats.busCount === 0) return (
+    if (loading && stats.busCount === 0 && stats.colisCount === 0) return (
         <div className="h-[60vh] flex flex-col justify-center items-center">
             <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             <p className="mt-4 text-slate-400 font-bold text-xs uppercase tracking-widest">Synchronisation Agence...</p>
@@ -135,7 +153,7 @@ const DashboardAgence = () => {
                 </div>
                 <button 
                     onClick={fetchDashboardData} 
-                    className="p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl hover:text-blue-600 transition-all shadow-sm"
+                    className="p-4 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl hover:text-blue-600 transition-all shadow-sm active:scale-95"
                 >
                     <FaSync className={loading ? "animate-spin" : ""} />
                 </button>
@@ -180,32 +198,41 @@ const DashboardAgence = () => {
                     </div>
                 </div>
 
-                {/* 2. Flux Colis */}
-                <div className="lg:col-span-1 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between">
-                    <div>
+                {/* 2. 🟢 Flux Colis & Courriers (Design Amélioré) */}
+                <div className="lg:col-span-1 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between overflow-hidden relative">
+                    <div className="absolute -top-10 -right-10 w-40 h-40 bg-orange-500/5 dark:bg-orange-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                    <div className="relative z-10">
                         <h3 className="font-black text-slate-800 dark:text-slate-100 mb-6 flex items-center gap-2 uppercase text-xs tracking-widest">
-                            <FaBoxOpen className="text-orange-500" /> Flux Colis
+                            <FaBoxOpen className="text-orange-500" /> Logistique & Messagerie
                         </h3>
-                        <div className="space-y-3">
-                            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex justify-between items-center border border-slate-100 dark:border-slate-800">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-orange-500/10 rounded-xl text-orange-500">
-                                        <FaBoxes size={14} />
+                        <div className="space-y-4">
+                            
+                            {/* Carte Colis */}
+                            <div className="p-5 bg-gradient-to-br from-orange-50 to-white dark:from-orange-950/20 dark:to-slate-900 rounded-2xl flex justify-between items-center border border-orange-100 dark:border-orange-900/30 shadow-sm hover:scale-[1.02] transition-transform">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-500/30">
+                                        <FaBoxes size={18} />
                                     </div>
-                                    <span className="text-[10px] font-black text-slate-400 uppercase">Nombre de colis</span>
+                                    <div>
+                                        <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Total Colis</span>
+                                        <span className="font-black text-slate-800 dark:text-white text-2xl">{stats.colisCount}</span>
+                                    </div>
                                 </div>
-                                <span className="font-black text-orange-500 text-lg">{stats.colisCount}</span>
                             </div>
 
-                            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl flex justify-between items-center border border-slate-100 dark:border-slate-800">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-cyan-500/10 rounded-xl text-cyan-500">
-                                        <FaMailBulk size={14} />
+                            {/* Carte Courrier */}
+                            <div className="p-5 bg-gradient-to-br from-cyan-50 to-white dark:from-cyan-950/20 dark:to-slate-900 rounded-2xl flex justify-between items-center border border-cyan-100 dark:border-cyan-900/30 shadow-sm hover:scale-[1.02] transition-transform">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-cyan-500 text-white rounded-xl shadow-lg shadow-cyan-500/30">
+                                        <FaMailBulk size={18} />
                                     </div>
-                                    <span className="text-[10px] font-black text-slate-400 uppercase">Nombre de courriers</span>
+                                    <div>
+                                        <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest block">Total Courriers</span>
+                                        <span className="font-black text-slate-800 dark:text-white text-2xl">{stats.courrierCount}</span>
+                                    </div>
                                 </div>
-                                <span className="font-black text-cyan-500 text-lg">{stats.courrierCount}</span>
                             </div>
+                            
                         </div>
                     </div>
                 </div>
@@ -216,11 +243,11 @@ const DashboardAgence = () => {
                         <FaUserTie className="text-indigo-500" /> Mon Personnel
                     </h3>
                     <div className="space-y-4">
-                        <button onClick={() => setShowMap(true)} className="w-full flex justify-between items-center p-5 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-900/30 group">
+                        <button onClick={() => setShowMap(true)} className="w-full flex justify-between items-center p-5 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-900/30 group transition-colors hover:bg-blue-100 dark:hover:bg-blue-900/40">
                             <span className="text-xs font-black text-blue-700 dark:text-blue-400 uppercase italic">Géo-suivi</span>
                             <span className="font-black text-blue-700 dark:text-blue-400 group-hover:underline">Carte Live</span>
                         </button>
-                        <button onClick={handleOuvrirChauffeurs} className="w-full p-5 bg-slate-900 dark:bg-blue-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl">
+                        <button onClick={handleOuvrirChauffeurs} className="w-full p-5 bg-slate-900 dark:bg-blue-600 hover:bg-slate-800 dark:hover:bg-blue-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl transition-all active:scale-[0.98]">
                             Annuaire Chauffeurs
                         </button>
                     </div>

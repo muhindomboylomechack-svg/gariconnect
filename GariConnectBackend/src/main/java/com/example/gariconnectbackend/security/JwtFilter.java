@@ -27,7 +27,6 @@ public class JwtFilter extends OncePerRequestFilter {
 
     @Autowired
     private UserRepository userRepository; // 🟢 AJOUT : Injecter le repository pour vérifier le statut
-
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
@@ -41,14 +40,24 @@ public class JwtFilter extends OncePerRequestFilter {
 
                 if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
 
-                    // 🟢 NOUVEAU : Vérifier si l'utilisateur est bloqué en BDD
+                    // 🚨 VÉRIFICATION STRICTE EN BASE DE DONNÉES 🚨
                     Optional<User> userOpt = userRepository.findByEmail(email);
-                    if (userOpt.isPresent() && "BLOQUE".equals(userOpt.get().getStatut())) {
-                        // Si l'utilisateur est bloqué, on renvoie une erreur 403 Forbidden immédiatement
-                        response.setStatus(HttpStatus.FORBIDDEN.value());
-                        response.setContentType("application/json");
-                        response.getWriter().write("{\"message\": \"Votre compte a été suspendu. Contactez l'administrateur.\"}");
-                        return; // Arrête la chaîne de traitement ici
+
+                    if (userOpt.isPresent()) {
+                        String statutDb = userOpt.get().getStatut();
+
+                        // On vérifie toutes les possibilités (Bloqué, bloqué, INACTIF, etc.)
+                        if (statutDb != null && (
+                                statutDb.equalsIgnoreCase("BLOQUE") ||
+                                        statutDb.equalsIgnoreCase("BLOQUÉ") ||
+                                        statutDb.equalsIgnoreCase("INACTIF")
+                        )) {
+                            // ⛔ BLOCAGE IMMÉDIAT : On rejette la requête avec un code 403
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN); // 403
+                            response.setContentType("application/json;charset=UTF-8");
+                            response.getWriter().write("{\"error\": \"Accès refusé\", \"message\": \"Votre compte a été suspendu par le Super Admin.\"}");
+                            return; // 🛑 On coupe la connexion ici, on ne va pas plus loin !
+                        }
                     }
 
                     String role = jwtUtil.extractClaim(token, claims -> claims.get("role", String.class));
@@ -72,6 +81,50 @@ public class JwtFilter extends OncePerRequestFilter {
 
         filterChain.doFilter(request, response);
     }
+//    @Override
+//    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
+//            throws ServletException, IOException {
+//
+//        String authHeader = request.getHeader("Authorization");
+//
+//        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+//            String token = authHeader.substring(7);
+//            try {
+//                String email = jwtUtil.extractEmail(token);
+//
+//                if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+//
+//                    // 🟢 NOUVEAU : Vérifier si l'utilisateur est bloqué en BDD
+//                    Optional<User> userOpt = userRepository.findByEmail(email);
+//                    if (userOpt.isPresent() && "BLOQUE".equals(userOpt.get().getStatut())) {
+//                        // Si l'utilisateur est bloqué, on renvoie une erreur 403 Forbidden immédiatement
+//                        response.setStatus(HttpStatus.FORBIDDEN.value());
+//                        response.setContentType("application/json");
+//                        response.getWriter().write("{\"message\": \"Votre compte a été suspendu. Contactez l'administrateur.\"}");
+//                        return; // Arrête la chaîne de traitement ici
+//                    }
+//
+//                    String role = jwtUtil.extractClaim(token, claims -> claims.get("role", String.class));
+//
+//                    if (role != null) {
+//                        String cleanRole = role.replace("ROLE_", "");
+//                        SimpleGrantedAuthority authority = new SimpleGrantedAuthority("ROLE_" + cleanRole);
+//
+//                        UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+//                                email, null, Collections.singletonList(authority)
+//                        );
+//
+//                        authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
+//                        SecurityContextHolder.getContext().setAuthentication(authToken);
+//                    }
+//                }
+//            } catch (Exception e) {
+//                System.err.println("JWT Authentication Error: " + e.getMessage());
+//            }
+//        }
+//
+//        filterChain.doFilter(request, response);
+//    }
 }
 //package com.example.gariconnectbackend.security;
 //

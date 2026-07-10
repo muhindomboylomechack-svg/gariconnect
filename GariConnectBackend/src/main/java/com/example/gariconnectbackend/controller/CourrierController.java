@@ -393,36 +393,36 @@ public class CourrierController {
         return ResponseEntity.ok(nouveauCourrier);
     }
 
-
-    @PutMapping("/{id}/valider")
-    public ResponseEntity<?> validerColis(
-            @PathVariable Long id,
-            @RequestParam Double poidsReel,
-            @RequestParam String devise,
-            @RequestParam Double valeurEstimee,
-            @RequestParam(required = false, defaultValue = "1.0") Double tauxChange) { // 👈 Réception du paramètre taux
-
-        try {
-            // 1. Récupérer l'agent/agence connecté qui valide le colis
-            String email = SecurityContextHolder.getContext().getAuthentication().getName();
-            User utilisateur = userRepository.findByEmail(email)
-                    .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
-
-            User agenceConnectee = getAgencePourUtilisateur(utilisateur);
-            if (agenceConnectee == null) {
-                return ResponseEntity.badRequest().body(Map.of("message", "Votre compte n'est rattaché à aucune agence pour valider ce colis."));
-            }
-
-            // 2. Appel du service avec le paramètre du tauxChange transmis
-            Courrier courrierValide = courrierService.validerDemande(id, poidsReel, devise, valeurEstimee, tauxChange, agenceConnectee);
-            return ResponseEntity.ok(courrierValide);
-
-        } catch (RuntimeException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "Erreur lors de la validation : " + e.getMessage()));
-        }
-    }
+//
+//    @PutMapping("/{id}/valider")
+//    public ResponseEntity<?> validerColis(
+//            @PathVariable Long id,
+//            @RequestParam Double poidsReel,
+//            @RequestParam String devise,
+//            @RequestParam Double valeurEstimee,
+//            @RequestParam(required = false, defaultValue = "1.0") Double tauxChange) { // 👈 Réception du paramètre taux
+//
+//        try {
+//            // 1. Récupérer l'agent/agence connecté qui valide le colis
+//            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+//            User utilisateur = userRepository.findByEmail(email)
+//                    .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+//
+//            User agenceConnectee = getAgencePourUtilisateur(utilisateur);
+//            if (agenceConnectee == null) {
+//                return ResponseEntity.badRequest().body(Map.of("message", "Votre compte n'est rattaché à aucune agence pour valider ce colis."));
+//            }
+//
+//            // 2. Appel du service avec le paramètre du tauxChange transmis
+//            Courrier courrierValide = courrierService.validerDemande(id, poidsReel, devise, valeurEstimee, tauxChange, agenceConnectee);
+//            return ResponseEntity.ok(courrierValide);
+//
+//        } catch (RuntimeException e) {
+//            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
+//        } catch (Exception e) {
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "Erreur lors de la validation : " + e.getMessage()));
+//        }
+//    }
 
     /**
      * 🔍 GET : Récupérer les courriers filtrés par statut pour l'agence connectée
@@ -469,6 +469,105 @@ public class CourrierController {
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Erreur lors du chargement des colis par statut : " + e.getMessage()));
+        }
+    }
+
+
+
+    /**
+     * ⚙️ PUT : Valider un colis et synchroniser le taux de l'agence
+     */
+    @PutMapping("/{id}/valider")
+    public ResponseEntity<?> validerColis(
+            @PathVariable Long id,
+            @RequestParam Double poidsReel,
+            @RequestParam String devise,
+            @RequestParam Double valeurEstimee,
+            @RequestParam(required = false, defaultValue = "1.0") Double tauxChange) {
+
+        try {
+            // 1. Récupérer l'agent/agence connecté qui valide le colis
+            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+            User utilisateur = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+
+            User agenceConnectee = getAgencePourUtilisateur(utilisateur);
+            if (agenceConnectee == null) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Votre compte n'est rattaché à aucune agence pour valider ce colis."));
+            }
+
+            // 2. MISE À JOUR MULTI-TENANT : Sauvegarder également le taux saisi comme le taux par défaut de l'agence
+            if (tauxChange != null && tauxChange > 1.0) {
+                agenceConnectee.setTauxEchangeCourant(tauxChange);
+                userRepository.save(agenceConnectee);
+            }
+
+            // 3. Appel du service avec le paramètre du tauxChange transmis pour figer le taux sur le colis
+            Courrier courrierValide = courrierService.validerDemande(id, poidsReel, devise, valeurEstimee, tauxChange, agenceConnectee);
+            return ResponseEntity.ok(courrierValide);
+
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "Erreur lors de la validation : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 🔍 GET : Récupérer le taux de change courant de l'agence
+     */
+    @GetMapping("/agences/taux-change")
+    public ResponseEntity<?> getTauxAgence() {
+        try {
+            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+            User utilisateur = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+
+            User agence = getAgencePourUtilisateur(utilisateur);
+            if (agence == null) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Aucune agence rattachée."));
+            }
+
+            // Si le taux n'est pas encore défini en base de données, on renvoie 2800 par défaut
+            Double taux = agence.getTauxEchangeCourant() != null ? agence.getTauxEchangeCourant() : 2800.0;
+            return ResponseEntity.ok(Map.of("valeur", taux));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Erreur lors de la récupération du taux : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 🔄 PUT : Modifier le taux de change de l'agence (Multi-tenant)
+     */
+    @PutMapping("/agences/taux-change")
+    public ResponseEntity<?> modifierTauxAgence(@RequestBody Map<String, Double> payload) {
+        try {
+            Double tauxChange = payload.get("valeur");
+            if (tauxChange == null || tauxChange <= 0) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Le taux de change doit être supérieur à 0."));
+            }
+
+            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+            User utilisateur = userRepository.findByEmail(email).orElseThrow();
+            User agenceConnectee = getAgencePourUtilisateur(utilisateur);
+
+            if (agenceConnectee == null) {
+                return ResponseEntity.badRequest().body(Map.of("message", "Aucune agence rattachée."));
+            }
+
+            agenceConnectee.setTauxEchangeCourant(tauxChange);
+            userRepository.save(agenceConnectee);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Taux mis à jour avec succès.",
+                    "valeur", tauxChange
+            ));
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Erreur lors de la mise à jour du taux."));
         }
     }
 }

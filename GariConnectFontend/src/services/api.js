@@ -66,6 +66,24 @@ api.interceptors.response.use(
             window.location.href = '/login';
         }
       }
+
+      // 🟢 AJOUT : Si l'erreur est 403 (Compte bloqué en BDD intercepté par Spring Boot)
+      if (status === 403) {
+        console.warn("Accès refusé ou utilisateur suspendu (Erreur 403). Activation de l'écran de verrouillage...");
+
+        // On extrait l'utilisateur actuel pour mettre à jour son statut localement
+        const localUser = JSON.parse(localStorage.getItem('user') || '{}');
+        localUser.statut = 'BLOQUE';
+        localStorage.setItem('user', JSON.stringify(localUser));
+
+        // Suppression immédiate du token pour bloquer tout futur appel API
+        localStorage.removeItem('token');
+
+        // Redirection forcée vers l'écran d'affichage sécurisé si on n'y est pas déjà
+        if (window.location.pathname !== '/compte-bloque') {
+          window.location.href = '/compte-bloque';
+        }
+      }
     }
 
     return Promise.reject(error);

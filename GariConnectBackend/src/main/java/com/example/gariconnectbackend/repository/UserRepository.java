@@ -58,4 +58,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     List<User> findByAgenceEmployeurIdOrId(Long agenceEmployeurId, Long id);
 
     List<User> findByAgenceEmployeurId(Long agenceId);
+
+
+    long countByRoleAndStatut(Role role, String statut);
+
 }

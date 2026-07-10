@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
     FaBox, FaSearch, FaPlus, FaTimes, FaTrash, FaEdit, 
     FaEnvelopeOpenText, FaWeightHanging, FaRobot, 
-    FaSpinner, FaClipboardList, FaCheck, FaMoneyBillWave, FaPrint
+    FaSpinner, FaClipboardList, FaCheck, FaMoneyBillWave, FaPrint, FaSave
 } from 'react-icons/fa';
 import api from '../../services/api'; 
 import StatutActions from '../../component/StatutActions';
@@ -25,6 +25,7 @@ const CourriersPage = () => {
     const [aiReport, setAiReport] = useState(null);
     const [trajets, setTrajets] = useState([]);
     const [tauxEchange, setTauxEchange] = useState(2800);
+    const [updatingTaux, setUpdatingTaux] = useState(false);
     
     const [selectedColis, setSelectedColis] = useState(null);
     const [formData, setFormData] = useState({
@@ -37,7 +38,45 @@ const CourriersPage = () => {
         fetchTrajets();
         fetchCourriers();
         fetchDemandesAttente();
+        fetchTauxEchange();
     }, []);
+
+    // 🟢 LECTURE DU TAUX DE CHANGE DE L'AGENCE (Méthode GET)
+    const fetchTauxEchange = async () => {
+        try {
+            const response = await api.get('/courriers/agences/taux-change');
+            if (response.data && response.data.valeur) {
+                setTauxEchange(response.data.valeur);
+            } else if (typeof response.data === 'number') {
+                setTauxEchange(response.data);
+            }
+        } catch (error) {
+            if (error.response && error.response.status === 404) {
+                console.warn("L'endpoint /api/courriers/agences/taux-change est introuvable (404). Conservation du taux par défaut.");
+            } else {
+                console.error("Erreur de chargement du taux de change", error);
+            }
+        }
+    };
+
+    // 🟢 SAUVEGARDE DU TAUX DE CHANGE (Méthode PUT)
+    const handleSaveTauxEchange = async () => {
+        setUpdatingTaux(true);
+        try {
+            const taux = parseFloat(tauxEchange);
+            if (isNaN(taux) || taux <= 0) {
+                alert("Veuillez entrer un taux de change valide supérieur à 0.");
+                return;
+            }
+            await api.put('/courriers/agences/taux-change', { valeur: taux });
+            alert("Taux de change mis à jour avec succès pour l'agence !");
+        } catch (error) {
+            console.error("Erreur lors de la sauvegarde du taux de change", error);
+            alert("Impossible de sauvegarder le taux de change. Vérifiez votre connexion au serveur.");
+        } finally {
+            setUpdatingTaux(false);
+        }
+    };
 
     const fetchTrajets = async () => {
         try {
@@ -79,7 +118,6 @@ const CourriersPage = () => {
         }
     };
 
-    // Fonction de validation et pré-remplissage automatique
     const handleValiderDemande = async (colis) => {
         setSubmittingValidation(prev => ({ ...prev, [colis.id]: true }));
         try {
@@ -98,7 +136,6 @@ const CourriersPage = () => {
                 }
             );
             
-            // Remplissage des états avec les informations du colis à éditer/compléter
             setSelectedColis(colis);
             setFormData({
                 nomExpediteur: colis.nomExpediteur || '',
@@ -123,7 +160,6 @@ const CourriersPage = () => {
                 });
                 setIsAiMode(true);
             }
-            // Ouvre la boîte de dialogue
             setShowModal(true);
             
             await fetchCourriers();
@@ -243,13 +279,11 @@ const CourriersPage = () => {
         }
     };
 
-    // Nouvelle fonction d'impression pour le ticket d'un colis
     const handlePrintTicket = (colis) => {
         const ticketWindow = window.open('', '_blank', 'width=400,height=600');
         const formattedPrice = renderDoubleDevise(colis.prix, colis.devise);
         const trajetLabel = colis.trajet ? (colis.trajet.label || `${colis.trajet.depart || ''} → ${colis.trajet.destination || ''}`) : 'Non assigné';
         const dateTicket = new Date().toLocaleDateString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-
         ticketWindow.document.write(`
             <html>
             <head>
@@ -286,30 +320,24 @@ const CourriersPage = () => {
                         <div class="code-title">Code de Retrait</div>
                         <div class="code-value">${colis.codeRetrait || '---'}</div>
                     </div>
-
                     <div class="row"><span class="label">Type:</span><span class="value">${colis.type}</span></div>
                     <div class="row"><span class="label">Trajet:</span><span class="value">${trajetLabel}</span></div>
-
                     <div class="section-title">Expéditeur</div>
                     <div class="row"><span class="label">Nom:</span><span class="value">${colis.nomExpediteur}</span></div>
                     <div class="row"><span class="label">Tél:</span><span class="value">${colis.telExpediteur}</span></div>
-
                     <div class="section-title">Destinataire</div>
                     <div class="row"><span class="label">Nom:</span><span class="value">${colis.nomDestinataire}</span></div>
                     <div class="row"><span class="label">Tél:</span><span class="value">${colis.telDestinataire}</span></div>
-
                     <div class="section-title">Détails Colis</div>
                     <div class="row"><span class="label">Poids:</span><span class="value">${colis.poidsKg} kg</span></div>
                     <div class="row"><span class="label">Description:</span><span class="value">${colis.description}</span></div>
-                    ${colis.estFragile ? '<div style="text-align:center;"><span class="fragile">⚠️ ATTENTION: FRAGILE</span></div>' : ''}
-
+                    ${colis.estFragile ? '<div style="text-align:center;"><span class="fragile"> ⚠️  ATTENTION: FRAGILE</span></div>' : ''}
                     <div class="total-box">
                         <div class="total-row">
                             <span>TOTAL NET:</span>
                             <span>${formattedPrice}</span>
                         </div>
                     </div>
-
                     <div class="footer">
                         Merci pour votre confiance !<br>
                         Conservez ce ticket pour le retrait du colis.
@@ -348,7 +376,7 @@ const CourriersPage = () => {
                     </h1>
                     <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">Espace de transit de l'agence.</p>
                 </div>
-                
+
                 {/* Taux */}
                 <div className="flex items-center gap-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 px-4 py-2 rounded-xl text-amber-800 dark:text-amber-400">
                     <FaMoneyBillWave className="text-xl text-amber-600 dark:text-amber-500 shrink-0" />
@@ -356,30 +384,41 @@ const CourriersPage = () => {
                         <div className="text-gray-400 dark:text-gray-500 text-[10px] uppercase font-bold tracking-wider">Taux Courant</div>
                         <div className="flex items-center gap-1.5 font-bold text-sm mt-0.5">
                             <span>1 USD = </span>
-                            <input 
-                                type="number" 
-                                value={tauxEchange}
-                                onChange={(e) => setTauxEchange(e.target.value)}
-                                className="w-20 bg-white dark:bg-gray-700 border border-amber-300 dark:border-amber-800 rounded px-1.5 py-0.5 text-center text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-500" 
-                            />
+                            <div className="relative flex items-center gap-1">
+                                <input
+                                    type="number"
+                                    value={tauxEchange}
+                                    onChange={(e) => setTauxEchange(e.target.value)}
+                                    className="w-20 bg-white dark:bg-gray-700 border border-amber-300 dark:border-amber-800 rounded px-1.5 py-0.5 text-center text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-amber-500"
+                                />
+                                <button
+                                    onClick={handleSaveTauxEchange}
+                                    disabled={updatingTaux}
+                                    title="Sauvegarder le taux"
+                                    className="p-1 bg-amber-600 text-white rounded hover:bg-amber-700 transition-colors disabled:opacity-50 text-xs flex items-center justify-center"
+                                >
+                                    {updatingTaux ? <FaSpinner className="animate-spin" /> : <FaSave />}
+                                </button>
+                            </div>
                             <span>FC</span>
                         </div>
                     </div>
                 </div>
-                <button 
+                <button
                     onClick={() => setShowModal(true)}
                     className="flex items-center justify-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-medium hover:bg-indigo-700 transition-all shadow-sm"
                 >
                     <FaPlus className="text-sm" /> Nouveau Colis
                 </button>
             </div>
+            
             {/* Onglets */}
             <div className="flex gap-4 mb-6 border-b border-gray-200 dark:border-gray-700 pb-px">
                 <button
                     onClick={() => setViewMode('liste')}
                     className={`pb-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
-                        viewMode === 'liste' 
-                            ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400' 
+                        viewMode === 'liste'
+                            ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
                             : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700'
                     }`}
                 >
@@ -388,28 +427,30 @@ const CourriersPage = () => {
                 <button
                     onClick={() => setViewMode('validation')}
                     className={`pb-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-2 ${
-                        viewMode === 'validation' 
-                            ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400' 
+                        viewMode === 'validation'
+                            ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
                             : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700'
                     }`}
                 >
-                    <FaClipboardList className="text-xs" /> Hub de Validation Agence 
+                    <FaClipboardList className="text-xs" /> Hub de Validation Agence
                     <span className="bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-400 text-xs px-2 py-0.5 rounded-full font-bold">
                         {filteredDemandes.length}
                     </span>
                 </button>
             </div>
+            
             {/* Barre de recherche */}
             <div className="mb-6 bg-white dark:bg-gray-800 p-4 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-3">
                 <FaSearch className="text-gray-400 dark:text-gray-500" />
-                <input 
-                    type="text" 
+                <input
+                    type="text"
                     placeholder="Rechercher par expéditeur, destinataire ou code de retrait..."
                     className="w-full bg-transparent border-none outline-none text-gray-700 dark:text-gray-200 text-sm"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                 />
             </div>
+            
             {/* TABLEAU 1 : Liste Générale */}
             {viewMode === 'liste' && (
                 <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
@@ -457,7 +498,7 @@ const CourriersPage = () => {
                                                 <div className="max-w-[200px] truncate font-medium">{colis.description}</div>
                                                 <div className="flex items-center gap-3 text-xs text-gray-500 mt-1">
                                                     <span className="flex items-center gap-1"><FaWeightHanging className="text-[10px]" /> {colis.poidsKg} kg</span>
-                                                    {colis.estFragile && <span className="text-red-500 font-medium">⚠️ Fragile</span>}
+                                                    {colis.estFragile && <span className="text-red-500 font-medium"> ⚠️  Fragile</span>}
                                                 </div>
                                             </td>
                                             <td className="py-4 px-6 text-gray-600 dark:text-gray-400 font-medium whitespace-nowrap">
@@ -494,6 +535,7 @@ const CourriersPage = () => {
                     </div>
                 </div>
             )}
+            
             {/* TABLEAU 2 : Hub de Validation */}
             {viewMode === 'validation' && (
                 <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm overflow-hidden">
@@ -579,6 +621,7 @@ const CourriersPage = () => {
                                 <button type="button" onClick={() => setIsAiMode(false)} className={`flex-1 text-center py-2 text-xs font-semibold rounded-lg transition-all ${!isAiMode ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500'}`}>Mode Standard</button>
                                 <button type="button" onClick={() => { setIsAiMode(true); setStep(1); }} className={`flex-1 text-center py-2 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${isAiMode ? 'bg-indigo-600 text-white shadow-sm' : 'text-gray-500'}`}><FaRobot /> Tarification Assistée par IA</button>
                             </div>
+                            
                             {(!isAiMode || step === 1) && (
                                 <div className="space-y-4">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -605,13 +648,13 @@ const CourriersPage = () => {
                                         <div>
                                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Type</label>
                                             <select name="type" value={formData.type} onChange={handleChange} className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm">
-                                                <option value="COLIS">Colis (Marchandise)</option>
-                                                <option value="COURRIER">Courrier (Document)</option>
+                                                <option value="COLIS">Colis</option>
+                                                <option value="COURRIER">Courrier</option>
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Poids (Kg)</label>
-                                            <input type="number" step="0.01" name="poidsKg" required value={formData.poidsKg} onChange={handleChange} className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm" />
+                                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Poids (kg)</label>
+                                            <input type="number" step="0.1" name="poidsKg" required value={formData.poidsKg} onChange={handleChange} className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm" />
                                         </div>
                                         <div>
                                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Trajet</label>
@@ -638,50 +681,63 @@ const CourriersPage = () => {
                                     </div>
                                     <div>
                                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Description du contenu</label>
-                                        <textarea name="description" required rows="2" value={formData.description} onChange={handleChange} className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm"></textarea>
+                                        <textarea name="description" rows="2" required value={formData.description} onChange={handleChange} className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm" placeholder="Ex: Vêtements, pièces de rechange, documents officiels..."></textarea>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <input type="checkbox" id="estFragile" name="estFragile" checked={formData.estFragile} onChange={handleChange} className="rounded text-indigo-600 focus:ring-indigo-500" />
-                                        <label htmlFor="estFragile" className="text-sm font-medium text-gray-700 dark:text-gray-300">Ce colis contient des objets fragiles</label>
+                                    <div className="flex items-center gap-2 py-2">
+                                        <input type="checkbox" name="estFragile" id="estFragile" checked={formData.estFragile} onChange={handleChange} className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500" />
+                                        <label htmlFor="estFragile" className="text-sm font-medium text-gray-700 dark:text-gray-300 select-none">Ce colis contient des objets fragiles</label>
                                     </div>
                                     {!isAiMode && (
-                                        <div className="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl border border-dashed border-gray-200 dark:border-gray-600">
-                                            <label className="block text-xs font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider mb-2">Prix Fixé Manuellement</label>
-                                            <input type="number" name="prix" required={!isAiMode} value={formData.prix} onChange={handleChange} placeholder="Saisir le montant de la course..." className="w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm font-semibold" />
+                                        <div>
+                                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Prix d'expédition fixé</label>
+                                            <input type="number" name="prix" required value={formData.prix} onChange={handleChange} className="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-2.5 text-sm" />
                                         </div>
+                                    )}
+                                    {isAiMode && (
+                                        <button type="button" onClick={handleAiAnalysis} disabled={loading} className="w-full flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl transition-all disabled:opacity-50">
+                                            {loading ? <FaSpinner className="animate-spin" /> : <FaRobot />} Lancer l'analyse et l'estimation IA
+                                        </button>
                                     )}
                                 </div>
                             )}
-                            {isAiMode && step === 1 && (
-                                <button type="button" onClick={handleAiAnalysis} disabled={loading} className="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2">
-                                    {loading ? <FaSpinner className="animate-spin" /> : <FaRobot />} Lancer l'analyse du Colis
-                                </button>
-                            )}
                             {isAiMode && step === 2 && aiReport && (
-                                <div className="space-y-4 bg-indigo-50/50 dark:bg-indigo-950/20 p-5 rounded-xl border border-indigo-100 dark:border-indigo-900/40">
-                                    <div className="flex items-center justify-between">
-                                        <h3 className="text-sm font-bold text-indigo-950 dark:text-indigo-300 flex items-center gap-2"><FaRobot /> Rapport de l'Assistant IA</h3>
-                                        <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${
-                                            aiReport.niveauRisqueIa === 'HAUT' ? 'bg-red-100 text-red-800' : aiReport.niveauRisqueIa === 'MOYEN' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                                        }`}>Risque IA : {aiReport.niveauRisqueIa}</span>
+                                <div className="space-y-4 bg-indigo-50/50 dark:bg-indigo-950/10 p-5 rounded-2xl border border-indigo-100 dark:border-indigo-900/40">
+                                    <div className="flex items-start gap-3">
+                                        <div className="p-2 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl shrink-0"><FaRobot className="text-xl" /></div>
+                                        <div>
+                                            <h3 className="font-bold text-gray-900 dark:text-white">Rapport d'Analyse Automatique</h3>
+                                            <p className="text-xs text-gray-500 mt-0.5">Généré instantanément sur la base des caractéristiques du colis.</p>
+                                        </div>
                                     </div>
-                                    <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed bg-white dark:bg-gray-800 p-3 rounded-lg border border-indigo-100/50">{aiReport.explication}</p>
+                                    <div className="grid grid-cols-2 gap-4 mt-2">
+                                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Évaluation Risque</span>
+                                            <span className={`inline-flex items-center gap-1 text-sm font-bold mt-1 ${aiReport.niveauRisqueIa === 'ELEVE' || aiReport.niveauRisqueIA === 'ELEVE' ? 'text-red-500' : 'text-emerald-500'}`}>{aiReport.niveauRisqueIa || aiReport.niveauRisqueIA || 'NON_EVALUE'}</span>
+                                        </div>
+                                        <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Prix Suggéré IA</span>
+                                            <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400 mt-1 block">{aiReport.prixSuggereIa || aiReport.prixSuggereIA || 'N/A'} {formData.devise}</span>
+                                        </div>
+                                    </div>
+                                    <div className="bg-white dark:bg-gray-800 p-4 rounded-xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Justificatif de l'estimation</span>
+                                        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">{aiReport.explication || aiReport.explicationIA || 'Aucune justification fournie.'}</p>
+                                    </div>
                                     <div>
-                                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Tarif suggéré retenu (Modifiable)</label>
-                                        <input type="number" name="prix" value={formData.prix} onChange={handleChange} className="w-full bg-white dark:bg-gray-800 border border-indigo-200 rounded-xl px-4 py-2.5 text-sm font-bold text-indigo-700 dark:text-indigo-300" />
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Ajuster ou Confirmer le Prix final ({formData.devise})</label>
+                                        <input type="number" name="prix" required value={formData.prix} onChange={handleChange} className="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-2.5 text-sm font-semibold" />
                                     </div>
                                     <div className="flex gap-3 pt-2">
-                                        <button type="button" onClick={() => setStep(1)} className="px-4 py-2 text-xs font-semibold text-gray-600 bg-white border rounded-xl hover:bg-gray-50">Modifier les données</button>
+                                        <button type="button" onClick={() => setStep(1)} className="flex-1 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-700 dark:text-gray-200 font-medium py-2.5 rounded-xl transition-all text-sm">Retour aux champs</button>
                                     </div>
                                 </div>
                             )}
-                            <div className="pt-4 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3">
-                                <button type="button" onClick={handleCloseModal} className="px-5 py-2.5 text-sm font-medium text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition-all">Annuler</button>
-                                {(!isAiMode || step === 2) && (
-                                    <button type="submit" className="px-5 py-2.5 text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl shadow-sm transition-all">
-                                        {selectedColis ? 'Enregistrer les modifications' : 'Expédier le colis'}
-                                    </button>
-                                )}
+                            <div className="flex justify-end gap-3 mt-6 pt-4 border-t border-gray-100 dark:border-gray-700">
+                                <button type="button" onClick={handleCloseModal} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">Annuler</button>
+                                <button type="submit" disabled={isAiMode && step === 1} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 flex items-center gap-2 disabled:opacity-50">
+                                    {loading ? <FaSpinner className="animate-spin" /> : <FaSave />}
+                                    {selectedColis ? 'Sauvegarder les modifications' : 'Enregistrer'}
+                                </button>
                             </div>
                         </form>
                     </div>

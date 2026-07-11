@@ -286,4 +286,42 @@ public class TrajetService {
                 })
                 .collect(Collectors.toList());
     }
+
+    /**
+     * 🟢 DÉMARRER LE TRAJET (Déclenché par le chauffeur)
+     */
+    @Transactional
+    public Trajet demarrerTrajet(Long trajetId) {
+        Trajet trajet = trajetRepository.findById(trajetId)
+                .orElseThrow(() -> new RuntimeException("Trajet introuvable"));
+
+        // On passe le statut à EN_ROUTE
+        trajet.setStatut("EN_ROUTE");
+
+        // Optionnel : Notifier l'agence ou le chauffeur que le trajet a commencé
+        envoyerNotificationChauffeur(
+                trajet.getChauffeur(),
+                "Bon voyage ! Le suivi GPS est activé pour votre trajet vers " + trajet.getDestination()
+        );
+
+        return trajetRepository.save(trajet);
+    }
+
+    /**
+     * 📍 METTRE À JOUR LA LOCALISATION (Appelé toutes les minutes par le Frontend)
+     */
+    @Transactional
+    public void mettreAJourLocalisation(Long trajetId, Double latitude, Double longitude) {
+        Trajet trajet = trajetRepository.findById(trajetId)
+                .orElseThrow(() -> new RuntimeException("Trajet introuvable"));
+
+        // Sécurité : On met à jour les coordonnées UNIQUEMENT si le trajet est en cours
+        if ("EN_ROUTE".equals(trajet.getStatut())) {
+            trajet.setLatitudeActuelle(latitude);
+            trajet.setLongitudeActuelle(longitude);
+
+            // Note : le champ updatedAt sera automatiquement actualisé par Hibernate grâce à @UpdateTimestamp
+            trajetRepository.save(trajet);
+        }
+    }
 }

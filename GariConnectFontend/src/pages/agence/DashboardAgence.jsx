@@ -6,7 +6,7 @@ import {
     FaUserCheck, FaClock, FaFlagCheckered, FaBoxes, FaMailBulk, FaSearch
 } from 'react-icons/fa';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from '../../services/api';
@@ -18,6 +18,29 @@ const busIcon = new L.Icon({
     iconAnchor: [20, 40],
     popupAnchor: [0, -40],
 });
+
+// 🟢 COMPOSANT CORRIGÉ : Centre sur les véhicules UNE SEULE FOIS au chargement
+const RecenterAutomatically = ({ trajets }) => {
+    const map = useMap();
+    const [hasCentered, setHasCentered] = useState(false);
+
+    useEffect(() => {
+        // On ne recentre que si on ne l'a pas encore fait et qu'il y a des trajets valides
+        if (trajets && trajets.length > 0 && !hasCentered) {
+            const activeTrajets = trajets.filter(t => t.latitude && t.longitude);
+            
+            if (activeTrajets.length > 0) {
+                // Calcule la zone englobant tous les véhicules
+                const bounds = L.latLngBounds(activeTrajets.map(t => [t.latitude, t.longitude]));
+                // Ajuste la vue avec un peu d'espace (padding) et limite le zoom max
+                map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
+                setHasCentered(true); // Empêche le recentrage lors des prochaines mises à jour GPS
+            }
+        }
+    }, [trajets, map, hasCentered]);
+
+    return null;
+};
 
 const DashboardAgence = () => {
     // --- ÉTATS ---
@@ -60,12 +83,11 @@ const DashboardAgence = () => {
                 console.warn("Erreur Stats Générales:", err);
             }
 
-            // 2. 🟢 RÉCUPÉRATION ET COMPTAGE DES COLIS ET COURRIERS
+            // 2. RÉCUPÉRATION ET COMPTAGE DES COLIS ET COURRIERS
             try {
                 const resCourriers = await api.get('/courriers');
                 const listeLogistique = Array.isArray(resCourriers.data) ? resCourriers.data : [];
                 
-                // On filtre selon le type défini dans votre Backend (Courrier.java)
                 const nbColis = listeLogistique.filter(c => c.type === 'COLIS').length;
                 const nbCourriers = listeLogistique.filter(c => c.type === 'COURRIER').length;
                 
@@ -95,7 +117,7 @@ const DashboardAgence = () => {
         fetchDashboardData();
     }, []);
 
-    // --- SUIVI GPS ---
+    // --- SUIVI GPS EN TEMPS RÉEL ---
     useEffect(() => {
         let interval;
         if (showMap) {
@@ -107,8 +129,9 @@ const DashboardAgence = () => {
                     console.error("Erreur GPS:", error);
                 }
             };
-            updatePositions();
-            interval = setInterval(updatePositions, 15000);
+            
+            updatePositions(); // Appel immédiat à l'ouverture
+            interval = setInterval(updatePositions, 8000); // Rafraîchissement toutes les 8s pour le live
         }
         return () => clearInterval(interval);
     }, [showMap]);
@@ -177,7 +200,6 @@ const DashboardAgence = () => {
                             <FaCheckCircle className="text-blue-500" /> Mes Chauffeurs
                         </h3>
                         
-                        {/* États temps réel des chauffeurs */}
                         <div className="grid grid-cols-3 gap-2">
                             <div className="p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 rounded-2xl text-center">
                                 <FaUserCheck className="text-emerald-500 mx-auto mb-1" size={14} />
@@ -198,7 +220,7 @@ const DashboardAgence = () => {
                     </div>
                 </div>
 
-                {/* 2. 🟢 Flux Colis & Courriers (Design Amélioré) */}
+                {/* 2. Flux Colis & Courriers */}
                 <div className="lg:col-span-1 bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col justify-between overflow-hidden relative">
                     <div className="absolute -top-10 -right-10 w-40 h-40 bg-orange-500/5 dark:bg-orange-500/10 rounded-full blur-3xl pointer-events-none"></div>
                     <div className="relative z-10">
@@ -206,8 +228,6 @@ const DashboardAgence = () => {
                             <FaBoxOpen className="text-orange-500" /> Logistique & Messagerie
                         </h3>
                         <div className="space-y-4">
-                            
-                            {/* Carte Colis */}
                             <div className="p-5 bg-gradient-to-br from-orange-50 to-white dark:from-orange-950/20 dark:to-slate-900 rounded-2xl flex justify-between items-center border border-orange-100 dark:border-orange-900/30 shadow-sm hover:scale-[1.02] transition-transform">
                                 <div className="flex items-center gap-4">
                                     <div className="p-3 bg-orange-500 text-white rounded-xl shadow-lg shadow-orange-500/30">
@@ -220,7 +240,6 @@ const DashboardAgence = () => {
                                 </div>
                             </div>
 
-                            {/* Carte Courrier */}
                             <div className="p-5 bg-gradient-to-br from-cyan-50 to-white dark:from-cyan-950/20 dark:to-slate-900 rounded-2xl flex justify-between items-center border border-cyan-100 dark:border-cyan-900/30 shadow-sm hover:scale-[1.02] transition-transform">
                                 <div className="flex items-center gap-4">
                                     <div className="p-3 bg-cyan-500 text-white rounded-xl shadow-lg shadow-cyan-500/30">
@@ -232,7 +251,6 @@ const DashboardAgence = () => {
                                     </div>
                                 </div>
                             </div>
-                            
                         </div>
                     </div>
                 </div>
@@ -287,7 +305,7 @@ const DashboardAgence = () => {
                 </div>
             </div>
 
-            {/* --- MODAL CHAUFFEURS DIRECTEMENT INTÉGRÉ --- */}
+            {/* --- MODAL CHAUFFEURS --- */}
             {showSupport && (
                 <div className="fixed inset-0 z-[50] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[85vh]">
@@ -351,7 +369,7 @@ const DashboardAgence = () => {
                 </div>
             )}
 
-            {/* --- MODAL CARTES GPS --- */}
+            {/* --- MODAL CARTES GPS CORRIGÉE --- */}
             {showMap && (
                 <div className="fixed inset-0 z-[50] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-white dark:bg-slate-900 w-full max-w-4xl h-[75vh] rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col">
@@ -364,11 +382,28 @@ const DashboardAgence = () => {
                                 <FaTimes size={14} />
                             </button>
                         </div>
-                        <div className="flex-1 relative z-10">
-                            <MapContainer center={[-2.5, 28.8]} zoom={6} style={{ height: '100%', width: '100%' }}>
-                                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                        
+                        <div className="flex-1 relative z-10 w-full h-full">
+                            <MapContainer 
+                                center={[-1.6785, 29.2273]} 
+                                zoom={10} 
+                                style={{ height: '100%', width: '100%' }}
+                                scrollWheelZoom={true}
+                            >
+                                <TileLayer 
+                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
+                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                                />
+                                
+                                {/* Composant invisible gérant le centrage auto initial */}
+                                <RecenterAutomatically trajets={trajetsEnRoute} />
+
                                 {trajetsEnRoute.filter(t => t.latitude && t.longitude).map((trajet) => (
-                                    <Marker key={trajet.id} position={[trajet.latitude, trajet.longitude]} icon={busIcon}>
+                                    <Marker 
+                                        key={trajet.id} // La clé stable permet de voir le mouvement sans scintillement
+                                        position={[trajet.latitude, trajet.longitude]} 
+                                        icon={busIcon}
+                                    >
                                         <Popup>
                                             <div className="p-2 font-sans">
                                                 <h4 className="font-black text-slate-800 uppercase text-xs tracking-tight">{trajet.depart} → {trajet.destination}</h4>

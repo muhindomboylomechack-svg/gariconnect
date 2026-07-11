@@ -1,5 +1,6 @@
 package com.example.gariconnectbackend.controller;
 
+import com.example.gariconnectbackend.dto.PositionDTO;
 import com.example.gariconnectbackend.dto.TrajetDTO;
 import com.example.gariconnectbackend.model.*;
 import com.example.gariconnectbackend.repository.TrajetRepository;
@@ -280,4 +281,64 @@ public class TrajetController {
     }
 
 
+
+
+    /**
+     * Endpoint pour démarrer le trajet
+     */
+    @PutMapping("/{id}/demarrer") // 🟢 CORRECTION: Retrait du "/trajets" redondant
+    // @PreAuthorize("hasAnyRole('CHAUFFEUR', 'AGENCY_ADMIN')")
+    public ResponseEntity<?> demarrerTrajet(@PathVariable Long id) {
+        try {
+            Trajet trajetActif = trajetService.demarrerTrajet(id);
+            return ResponseEntity.ok(trajetActif);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "Erreur lors du démarrage : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 📍 1. MISE À JOUR DE LA POSITION GPS (Appelée en continu quand le trajet est EN_ROUTE)
+     * URL cible : PUT http://localhost:8080/api/trajets/{id}/localisation
+     */
+    @PutMapping("/{id}/localisation") // 🟢 CORRECTION: Retrait du "/trajets" redondant
+    // @PreAuthorize("hasRole('CHAUFFEUR')")
+    public ResponseEntity<?> mettreAJourLocalisation(@PathVariable Long id, @RequestBody PositionDTO position) {
+        try {
+            if (position == null || position.getLatitude() == null || position.getLongitude() == null) {
+                return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                        .body(Map.of("message", "Données GPS invalides : latitude ou longitude manquante."));
+            }
+
+            trajetService.mettreAJourLocalisation(id, position.getLatitude(), position.getLongitude());
+
+            return ResponseEntity.ok(Map.of("message", "Localisation mise à jour avec succès."));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "Erreur lors de la mise à jour GPS : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * 🔄 2. MISE À JOUR DU STATUT DU TRAJET (PROGRAMME, EN_ROUTE, TERMINE, DISPONIBLE)
+     * URL cible : PUT http://localhost:8080/api/trajets/{id}/statut?statut=EN_ROUTE
+     */
+    @PutMapping("/{id}/statut") // 🟢 CORRECTION: Retrait du "/trajets" redondant pour correspondre à l'appel d'Axios
+    // @PreAuthorize("hasRole('CHAUFFEUR')")
+    public ResponseEntity<?> mettreAJourStatut(
+            @PathVariable Long id,
+            @RequestParam("statut") String statut) {
+        try {
+            trajetService.mettreAJourStatut(id, statut);
+
+            return ResponseEntity.ok(Map.of(
+                    "message", "Statut du trajet mis à jour avec succès.",
+                    "nouveauStatut", statut
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "Erreur lors de la mise à jour du statut : " + e.getMessage()));
+        }
+    }
 }

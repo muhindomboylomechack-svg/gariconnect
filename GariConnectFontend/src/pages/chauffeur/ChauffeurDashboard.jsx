@@ -52,20 +52,65 @@ const EspaceChauffeur = () => {
         initData();
     }, [initData]);
 
-    // 🟢 CORRECTION ICI : Changement du verbe de PATCH à PUT et passage du statut dans la Query String (?statut=)
+    // Trouver s'il y a un trajet actuellement "EN_ROUTE"
+    const trajetActif = trajets.find(t => t.statut === 'EN_ROUTE');
+
+    // 📍 Effet pour suivre la localisation GPS en temps réel
+    useEffect(() => {
+        let watchId;
+
+        // Si un trajet est actif, on démarre le tracking GPS
+        if (trajetActif) {
+            if ('geolocation' in navigator) {
+                watchId = navigator.geolocation.watchPosition(
+                    async (position) => {
+                        const { latitude, longitude } = position.coords;
+                        try {
+                            // Envoi des coordonnées au backend
+                            await api.put(`/trajets/${trajetActif.id}/localisation`, {
+                                latitude: latitude,
+                                longitude: longitude
+                            });
+                            console.log("📍 Position mise à jour :", latitude, longitude);
+                        } catch (err) {
+                            console.error("Erreur lors de l'envoi de la position GPS :", err);
+                        }
+                    },
+                    (error) => {
+                        console.error("Erreur GPS :", error.message);
+                    },
+                    {
+                        enableHighAccuracy: true, // Demande la puce GPS pour plus de précision
+                        maximumAge: 10000,
+                        timeout: 5000
+                    }
+                );
+            } else {
+                console.error("La géolocalisation n'est pas supportée par ce navigateur.");
+            }
+        }
+
+        // Nettoyage : Coupe le GPS quand le trajet se termine ou change
+        return () => {
+            if (watchId) {
+                navigator.geolocation.clearWatch(watchId);
+            }
+        };
+    }, [trajetActif]);
+
+    // 🟢 CORRECTION APPORTÉE ICI : Retour à ton endpoint initial qui fonctionne
     const handleUpdateStatus = async (id, nouveauStatut) => {
         try {
+            // On utilise ta route unique et validée par ton backend pour tous les statuts
             await api.put(`/trajets/${id}/statut?statut=${nouveauStatut}`);
+            
             alert("Statut mis à jour !");
-            initData(); // Rechargement pour rafraîchir l'interface
+            initData(); // Rechargement pour mettre à jour l'état global et activer le GPS si nécessaire
         } catch (err) {
             console.error("Erreur mise à jour statut:", err);
             alert("Erreur lors de la mise à jour : " + (err.response?.data?.message || err.response?.data?.error || "Serveur indisponible"));
         }
     };
-
-    // Trouver s'il y a un trajet actuellement "EN_ROUTE" pour l'affichage du widget Option 2
-    const trajetActif = trajets.find(t => t.statut === 'EN_ROUTE');
 
     if (loading && !user) return (
         <div className="min-h-screen flex items-center justify-center bg-[#f0f2f5] dark:bg-slate-950">
@@ -101,7 +146,7 @@ const EspaceChauffeur = () => {
             {/* Corps de la page */}
             <div className="px-5 -mt-16 space-y-5">
                 
-                {/* 🚀 INTEGRATION OPTION 2 : Widget dynamique de Course en Cours */}
+                {/* Widget dynamique de Course en Cours */}
                 <AnimatePresence>
                     {trajetActif && (
                         <motion.div
@@ -116,12 +161,12 @@ const EspaceChauffeur = () => {
                                     <FaMapMarkerAlt size={20} className="animate-pulse text-white" />
                                 </div>
                                 <div className="min-w-0">
-                                    <span className="inline-block px-2 py-0.5 bg-white/20 rounded-md text-[9px] font-black uppercase tracking-wider mb-1">
-                                        Course active
+                                    <span className="inline-block px-2 py-0.5 bg-white/20 rounded-md text-[9px] font-black uppercase tracking-wider mb-1 flex items-center gap-2">
+                                        Course active <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping"></span>
                                     </span>
                                     <h4 className="font-bold text-base truncate">{trajetActif.depart} → {trajetActif.destination}</h4>
                                     <p className="text-emerald-100 text-xs mt-0.5 flex items-center gap-1">
-                                        Suivi des passagers et arrêts en cours
+                                        GPS en direct • Suivi des passagers
                                     </p>
                                 </div>
                             </div>
@@ -146,7 +191,11 @@ const EspaceChauffeur = () => {
                                 key={t.id}
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
-                                className="p-6 rounded-[2rem] shadow-lg border border-white dark:border-slate-800 bg-white dark:bg-slate-900"
+                                className={`p-6 rounded-[2rem] shadow-lg border transition-all ${
+                                    t.statut === 'EN_ROUTE' 
+                                        ? "border-emerald-500 shadow-emerald-500/10 bg-emerald-50/50 dark:bg-emerald-900/10" 
+                                        : "border-white dark:border-slate-800 bg-white dark:bg-slate-900"
+                                }`}
                             >
                                 <div className="flex justify-between items-start mb-4">
                                     <div>
@@ -173,11 +222,10 @@ const EspaceChauffeur = () => {
                                         <FaQrcode size={14}/> Scanner passager
                                     </button>
 
-                                    {/* Si le trajet individuel est en route, on propose un raccourci d'action direct */}
                                     {t.statut === 'EN_ROUTE' && (
                                         <button 
                                             onClick={() => navigate('/chauffeur/course-actuelle')}
-                                            className="px-4 bg-indigo-600 text-white rounded-2xl text-xs font-black flex items-center justify-center active:scale-95 transition-transform shadow-lg shadow-indigo-600/20"
+                                            className="px-4 bg-emerald-500 text-white rounded-2xl text-xs font-black flex items-center justify-center active:scale-95 transition-transform shadow-lg shadow-emerald-500/20"
                                             title="Ouvrir le suivi de course"
                                         >
                                             Suivre

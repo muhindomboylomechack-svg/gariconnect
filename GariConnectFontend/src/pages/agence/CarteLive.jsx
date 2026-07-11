@@ -19,17 +19,20 @@ const CarteLive = () => {
 
     const fetchPositions = async () => {
         try {
-            const res = await api.get('/trajets/en-route');
+            // 🔥 CORRECTION DE L'ENDPOINT : Correspond à AgenceController (@GetMapping("/trajets/en-route-agence"))
+            const res = await api.get('/agences/trajets/en-route-agence');
             setBusEnRoute(res.data);
-            setLoading(false);
         } catch (err) {
-            console.error("Erreur GPS:", err);
+            console.error("Erreur lors de la récupération des trajets GPS:", err);
+        } finally {
+            setLoading(false);
         }
     };
 
     useEffect(() => {
         fetchPositions();
-        const interval = setInterval(fetchPositions, 10000); // Mise à jour toutes les 10 secondes pour optimiser
+        // Mise à jour toutes les 10 secondes
+        const interval = setInterval(fetchPositions, 10000); 
         return () => clearInterval(interval);
     }, []);
 
@@ -44,7 +47,7 @@ const CarteLive = () => {
                     </span>
                 </div>
                 <button 
-                    onClick={fetchPositions}
+                    onClick={() => { setLoading(true); fetchPositions(); }}
                     className="p-2 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg transition-colors"
                 >
                     <FaSyncAlt className={loading ? 'animate-spin' : ''} />
@@ -70,15 +73,18 @@ const CarteLive = () => {
                     center={[-4.322447, 15.307045]} 
                     zoom={6} 
                     className="h-full w-full"
-                    zoomControl={false} // On le cache pour plus de propreté
+                    zoomControl={false}
                 >
                     <TileLayer 
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" 
                         attribution='&copy; OpenStreetMap'
                     />
                     
-                    {busEnRoute.map(trajet => (
-                        trajet.latitudeActuelle && trajet.longitudeActuelle && (
+                    {busEnRoute.map(trajet => {
+                        // 🔒 SÉCURITÉ : Ne rendre le marqueur que si les coordonnées sont valides
+                        if (!trajet.latitudeActuelle || !trajet.longitudeActuelle) return null;
+
+                        return (
                             <Marker 
                                 key={trajet.id} 
                                 position={[trajet.latitudeActuelle, trajet.longitudeActuelle]} 
@@ -118,15 +124,15 @@ const CarteLive = () => {
                                     </div>
                                 </Popup>
                             </Marker>
-                        )
-                    ))}
+                        );
+                    })}
                 </MapContainer>
 
                 {/* Petit indicateur de localisation flottant */}
                 <div className="absolute bottom-6 left-6 z-[400] bg-white dark:bg-slate-900 px-4 py-2 rounded-full shadow-2xl border border-slate-100 dark:border-slate-800 flex items-center gap-2">
                     <FaMapMarkerAlt className="text-red-500" />
                     <span className="text-xs font-black text-slate-800 dark:text-white uppercase">
-                        RDC - Kinshasa
+                        RDC - Tracking
                     </span>
                 </div>
             </div>

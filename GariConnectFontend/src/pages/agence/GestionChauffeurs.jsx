@@ -13,14 +13,10 @@ const GestionChauffeurs = () => {
     const [showModal, setShowModal] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
     
-    // 🔐 GESTION DES DROITS (À adapter selon ton système de Auth)
-    // Ici on récupère le rôle, par défaut on suppose que c'est un AGENT s'il n'est pas défini
+    // 🔐 GESTION DES DROITS
     const userRole = localStorage.getItem("role") || "ROLE_AGENT";
-    
-    // Seuls les admins ou managers d'agence peuvent modifier
     const canEdit = userRole === "ROLE_AGENCY_ADMIN" || userRole === "ROLE_AGENCY_MANAGER" || userRole === "ROLE_SUPER_ADMIN";
 
-    // Trois onglets : ACTIF (opérationnels), EN_ATTENTE (inscriptions & recrutements), INACTIF (bloqués)
     const [activeTab, setActiveTab] = useState("ACTIF"); 
     
     const [countryCode, setCountryCode] = useState("243"); 
@@ -46,11 +42,6 @@ const GestionChauffeurs = () => {
         try {
             setLoading(true);
             const response = await api.get('/chauffeurs/mes-chauffeurs'); 
-            
-            // 🔥 DIAGNOSTIC BDD : Lignes ajoutées pour inspecter le contenu exact reçu du Backend
-            console.log("Données brutes reçues du Backend :", response.data);
-            console.log("Est-ce un tableau direct (Array.isArray) ? :", Array.isArray(response.data));
-            
             setChauffeurs(Array.isArray(response.data) ? response.data : []);
         } catch (error) {
             console.error("Erreur chargement chauffeurs:", error);
@@ -63,7 +54,6 @@ const GestionChauffeurs = () => {
         e.preventDefault();
         const fullPhone = `+${countryCode}${phoneMain.replace(/\s+/g, '')}`;
         
-        // Tout nouveau chauffeur créé par un agent est d'office "EN_ATTENTE" de l'admin
         const dataToSend = { 
             ...currentChauffeur, 
             telephone: fullPhone, 
@@ -76,7 +66,6 @@ const GestionChauffeurs = () => {
                 setShowModal(false);
                 alert("✅ Profil du chauffeur mis à jour avec succès !");
             } else {
-                // Endpoint de recrutement de l'agence
                 const response = await api.post('/agences/recruter-chauffeur', dataToSend);
                 setTempCode(response.data.code); 
             }
@@ -89,7 +78,6 @@ const GestionChauffeurs = () => {
     const handleBloquer = async (id) => {
         if (window.confirm("Voulez-vous suspendre ce chauffeur ? Il ne pourra plus effectuer de trajets jusqu'à sa réactivation.")) {
             try {
-                // Utilisation de la nouvelle route de blocage logique (statut -> INACTIF)
                 await api.put(`/users/${id}/bloquer`);
                 alert("🛑 Chauffeur suspendu avec succès.");
                 fetchChauffeurs();
@@ -97,6 +85,13 @@ const GestionChauffeurs = () => {
                 alert("❌ Erreur lors de la suspension : " + (error.response?.data?.message || "Action impossible"));
             }
         }
+    };
+
+    // 🟢 NOUVELLE LOGIQUE : Fonction centralisée pour déterminer si un chauffeur est opérationnel
+    const isOperationnel = (statut) => {
+        const s = statut ? statut.toUpperCase() : "EN_ATTENTE";
+        // Ajout des statuts "DISPONIBLE" et "ALIGNE A UN TRAJET" générés par le Backend
+        return ["ACTIF", "VALIDE", "DISPONIBLE", "ALIGNE A UN TRAJET", "ALIGNÉ A UN TRAJET"].includes(s);
     };
 
     // Filtrage sur mesure selon la recherche et l'onglet d'état
@@ -108,7 +103,7 @@ const GestionChauffeurs = () => {
         
         let matchesTab = false;
         if (activeTab === "ACTIF") {
-            matchesTab = statutC === "ACTIF" || statutC === "VALIDE";
+            matchesTab = isOperationnel(statutC); // Utilisation de la nouvelle condition
         } else if (activeTab === "EN_ATTENTE") {
             matchesTab = statutC === "EN_ATTENTE";
         } else if (activeTab === "INACTIF") {
@@ -161,7 +156,8 @@ const GestionChauffeurs = () => {
                         onClick={() => setActiveTab("ACTIF")}
                         className={`flex-1 px-6 py-3 rounded-xl md:rounded-[1.8rem] font-black text-[10px] md:text-xs whitespace-nowrap transition-all ${activeTab === "ACTIF" ? "bg-white dark:bg-slate-700 text-blue-600 shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
                     >
-                        OPÉRATIONNELS ({chauffeurs.filter(c => c.statut?.toUpperCase() === "ACTIF" || c.statut?.toUpperCase() === "VALIDE").length})
+                        {/* Application de la fonction pour le compteur dynamique */}
+                        OPÉRATIONNELS ({chauffeurs.filter(c => isOperationnel(c.statut)).length})
                     </button>
                     <button 
                         onClick={() => setActiveTab("EN_ATTENTE")}
@@ -222,8 +218,8 @@ const GestionChauffeurs = () => {
                                                 <FaUserSlash /> Suspendu / Bloqué
                                             </span>
                                         ) : (
-                                            <span className="inline-flex items-center gap-1 text-emerald-500 text-[10px] font-black uppercase bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                                                <FaCheckCircle /> Opérationnel
+                                            <span className={`inline-flex items-center gap-1 text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${chauf.statut === "Aligné a un trajet" ? "text-amber-500 bg-amber-50 dark:bg-amber-500/10" : "text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10"}`}>
+                                                <FaCheckCircle /> {chauf.statut === "Aligné a un trajet" ? "En Mission" : "Opérationnel"}
                                             </span>
                                         )}
                                     </div>

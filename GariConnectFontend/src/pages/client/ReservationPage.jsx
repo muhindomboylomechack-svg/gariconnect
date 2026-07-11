@@ -34,10 +34,20 @@ const ReservationPage = () => {
         referenceTransaction: '' 
     });
 
-    const placesDisponibles = trajet?.placesDisponibles ?? trajet?.places_disponible ?? trajet?.places_disponibles ?? 0;
+    const placesDisponibles = trajet?.placesDisponibles ?? trajet?.places_disponible ?? trajet?.places_dispombles ?? 0;
     const isFull = placesDisponibles <= 0;
     const prixUnitaire = trajet?.prix || 0;
     const prixTotalBillet = prixUnitaire * nombrePlaces;
+
+    // Fonction utilitaire pour extraire l'ID peu importe la structure renvoyée par Spring Boot
+    const getReservationId = (response) => {
+        if (!response || !response.data) return null;
+        return response.data.id || 
+               response.data.data?.id || 
+               response.data.body?.id || 
+               response.data.reservation?.id ||
+               null;
+    };
 
     useEffect(() => {
         const handleSyncTheme = (e) => {
@@ -164,15 +174,22 @@ const ReservationPage = () => {
                 longitude: parseFloat(recuperationData.longitudeClient) || 0.0,
                 coutRecuperation: parseFloat(recuperationData.coutRecuperation) || 0.0
             };
+
+            console.log("🚀 Payload envoyé au Backend (VIP) :", reservationPayload);
             const resReservation = await api.post('/reservations/creer', reservationPayload);
-            if (!resReservation.data || !resReservation.data.id) {
-                throw new Error("Erreur de génération de la réservation VIP.");
+            
+            console.log("🔍 Réponse brute du serveur (VIP) :", resReservation.data);
+            const reservationId = getReservationId(resReservation);
+
+            if (!reservationId) {
+                throw new Error("Le serveur Spring Boot n'a pas renvoyé d'identifiant (ID) de réservation valide.");
             }
+
             alert("Succès ! Vos places ont été bloquées (En attente de paiement) et vos coordonnées de récupération GPS ont bien été enregistrées.");
             navigate('/client/historique');
         } catch (error) {
             console.error("Erreur cycle VIP :", error);
-            const errorMessage = error.response?.data?.erreur || error.response?.data?.message || "Erreur de connexion avec le serveur.";
+            const errorMessage = error.response?.data?.erreur || error.response?.data?.message || error.message || "Erreur de connexion avec le serveur.";
             alert("Échec de la demande VIP : " + errorMessage);
             fetchInitialData(); 
         } finally {
@@ -198,9 +215,16 @@ const ReservationPage = () => {
                  reservationPayload.arretMontage = { id: parseInt(selectedArret) };
             }
             
+            console.log("🚀 Payload envoyé au Backend (STANDARD) :", reservationPayload);
             const resReservation = await api.post('/reservations/creer', reservationPayload);
-            const reservationId = resReservation.data.id;
             
+            console.log("🔍 Réponse brute du serveur (STANDARD) :", resReservation.data);
+            const reservationId = getReservationId(resReservation);
+            
+            if (!reservationId) {
+                throw new Error("Le serveur Spring Boot n'a pas renvoyé d'identifiant (ID) de réservation valide.");
+            }
+
             if (isCash) {
                 await api.post(`/reservations/${reservationId}/intention-cash`, {
                     modePaiement: "CASH"
@@ -218,8 +242,8 @@ const ReservationPage = () => {
             navigate('/client/historique'); 
             
         } catch (error) {
-            console.error("Détails de l'erreur:", error.response);
-            const errorMessage = error.response?.data?.error || error.response?.data?.message || error.response?.data || "Erreur lors de la procédure.";
+            console.error("Détails de l'erreur:", error.response || error);
+            const errorMessage = error.response?.data?.error || error.response?.data?.message || error.message || "Erreur lors de la procédure.";
             let alertMsg = errorMessage;
             if (typeof errorMessage === 'object') {
                  alertMsg = JSON.stringify(errorMessage);

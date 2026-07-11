@@ -34,16 +34,183 @@ public class ReservationController {
 
     @Autowired
     private TrajetRepository trajetRepository;
-
+    @Autowired
+    private ArretBusRepository arretBusRepository;
     @Autowired
     private DemandeRecuperationRepository demandeRecuperationRepository;
-
+//    /**
+//     * 🟢 1. CRÉATION DE LA RÉSERVATION (STANDARD OU VIP)
+//     */
+//    @PostMapping("/creer")
+//    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CLIENT', 'USER')")
+//    public ResponseEntity<?> creerReservation(@RequestBody Map<String, Object> payload) {
+//        try {
+//            Reservation nouvelleReservation = new Reservation();
+//
+//            // 1. Mapping du Trajet (Obligatoire)
+//            if (payload.get("trajetId") != null) {
+//                Trajet trajet = new Trajet();
+//                trajet.setId(Long.valueOf(payload.get("trajetId").toString()));
+//                nouvelleReservation.setTrajet(trajet);
+//            } else if (payload.get("trajet") != null && payload.get("trajet") instanceof Map) {
+//                Map<String, Object> trajetMap = (Map<String, Object>) payload.get("trajet");
+//                Trajet trajet = new Trajet();
+//                trajet.setId(Long.valueOf(trajetMap.get("id").toString()));
+//                nouvelleReservation.setTrajet(trajet);
+//            } else {
+//                return ResponseEntity.badRequest().body(Map.of("error", "L'identifiant du trajet (trajetId) est obligatoire."));
+//            }
+//
+//            // 🟢 2. CORRECTION CRUCIALE : Récupération de l'arrêt de bus depuis le JSON de React
+//            // Si le frontend envoie { "arretMontageId": 3 }
+//            if (payload.get("arretMontageId") != null && !payload.get("arretMontageId").toString().isEmpty()) {
+//                ArretBus arret = new ArretBus();
+//                arret.setId(Long.valueOf(payload.get("arretMontageId").toString()));
+//                nouvelleReservation.setArretMontage(arret);
+//            }
+//            // Alternative : Si le frontend envoie { "arretMontage": { "id": 3 } }
+//            else if (payload.get("arretMontage") != null && payload.get("arretMontage") instanceof Map) {
+//                Map<String, Object> arretMap = (Map<String, Object>) payload.get("arretMontage");
+//                if (arretMap.get("id") != null) {
+//                    ArretBus arret = new ArretBus();
+//                    arret.setId(Long.valueOf(arretMap.get("id").toString()));
+//                    nouvelleReservation.setArretMontage(arret);
+//                }
+//            }
+//
+//            // 3. Mapping des informations passager
+//            if (payload.get("nombrePlaces") != null) {
+//                nouvelleReservation.setNombrePlaces(Integer.parseInt(payload.get("nombrePlaces").toString()));
+//            }
+//            if (payload.get("numeroSiege") != null && !payload.get("numeroSiege").toString().isEmpty()) {
+//                nouvelleReservation.setNumeroSiege(Integer.parseInt(payload.get("numeroSiege").toString()));
+//            }
+//            if (payload.get("typeReservation") != null) {
+//                nouvelleReservation.setTypeReservation(payload.get("typeReservation").toString());
+//            }
+//
+//            // 4. Appel au Service (qui va maintenant correctement détecter l'arrêt et initialiser le statut)
+//            Reservation savedReservation = reservationService.creerReservation(nouvelleReservation);
+//
+//            return ResponseEntity.ok(Map.of(
+//                    "message", "Réservation créée avec succès",
+//                    "reservation", savedReservation
+//            ));
+//
+//        } catch (Exception e) {
+//            e.printStackTrace(); // Loggue l'erreur pour faciliter le débug
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                    .body(Map.of("error", "Erreur lors de la création : " + e.getMessage()));
+//        }
+//    }
     /**
      * 🟢 1. CRÉATION DE LA RÉSERVATION (STANDARD OU VIP)
      */
+//    @PostMapping("/creer")
+//    public ResponseEntity<?> creerReservation(@RequestBody Map<String, Object> payload) {
+//        try {
+//            Map<String, Object> trajetMap = (Map<String, Object>) payload.get("trajet");
+//            if (trajetMap == null || trajetMap.get("id") == null) {
+//                return ResponseEntity.badRequest().body(Map.of("erreur", "L'ID du trajet est obligatoire."));
+//            }
+//            Long trajetId = Long.valueOf(trajetMap.get("id").toString());
+//
+//            Trajet trajet = trajetRepository.findById(trajetId)
+//                    .orElseThrow(() -> new RuntimeException("Trajet introuvable"));
+//
+//            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+//            User client = userRepository.findByEmail(email)
+//                    .orElseThrow(() -> new RuntimeException("Client non trouvé"));
+//
+//            int nombrePlaces = payload.containsKey("nombrePlaces") && payload.get("nombrePlaces") != null
+//                    ? Integer.parseInt(payload.get("nombrePlaces").toString())
+//                    : 1;
+//
+//            if (trajet.getPlacesDisponibles() < nombrePlaces) {
+//                return ResponseEntity.badRequest().body(Map.of("erreur", "Désolé, il ne reste que " + trajet.getPlacesDisponibles() + " place(s) disponible(s)."));
+//            }
+//
+//            Reservation reservation = new Reservation();
+//            reservation.setTrajet(trajet);
+//            reservation.setClient(client);
+//            reservation.setDateReservation(LocalDateTime.now());
+//            reservation.setNombrePlaces(nombrePlaces);
+//
+//            reservation.setStatut("EN_ATTENTE_DE_PAIEMENT");
+//            reservation.setEstPaye(false);
+//            reservation.setMontantPaye(0.0);
+//
+//            reservation.setCodeTicket("TICK-" + System.currentTimeMillis());
+//
+//            String typeRes = payload.containsKey("typeReservation") ? payload.get("typeReservation").toString() : "STANDARD";
+//            reservation.setTypeReservation(typeRes);
+//
+//            if (payload.containsKey("numeroSiege") && payload.get("numeroSiege") != null) {
+//                reservation.setNumeroSiege(Integer.valueOf(payload.get("numeroSiege").toString()));
+//            } else {
+//                reservation.setNumeroSiege(1);
+//            }
+//
+//            trajet.setPlacesDisponibles(trajet.getPlacesDisponibles() - nombrePlaces);
+//            trajetRepository.save(trajet);
+//
+//            double prixUnitaire = trajet.getPrix() != null ? trajet.getPrix() : 0.0;
+//            double prixTotalBillet = prixUnitaire * nombrePlaces;
+//            reservation.setMontantCommission(prixTotalBillet * 0.10);
+//            reservation.setPartAgence(prixTotalBillet * 0.90);
+//
+//            Reservation savedReservation = reservationRepository.save(reservation);
+//
+//            if ("VIP".equalsIgnoreCase(typeRes)) {
+//                DemandeRecuperation demande = new DemandeRecuperation();
+//                demande.setReservation(savedReservation);
+//
+//                demande.setClient(client);
+//                demande.setReservationId(savedReservation.getId());
+//
+//                String adresse = (payload.containsKey("adresseRecuperation") && payload.get("adresseRecuperation") != null)
+//                        ? payload.get("adresseRecuperation").toString()
+//                        : "Adresse non spécifiée";
+//                demande.setAdresseTextuelle(adresse);
+//
+//                Double cout = 0.0;
+//                if (payload.containsKey("coutRecuperation") && payload.get("coutRecuperation") != null) {
+//                    cout = Double.valueOf(payload.get("coutRecuperation").toString());
+//                }
+//                demande.setPrixSupplementaire(cout);
+//
+//                Double lat = 0.0;
+//                Double lon = 0.0;
+//                if (payload.containsKey("latitude") && payload.get("latitude") != null) {
+//                    lat = Double.valueOf(payload.get("latitude").toString());
+//                }
+//                if (payload.containsKey("longitude") && payload.get("longitude") != null) {
+//                    lon = Double.valueOf(payload.get("longitude").toString());
+//                }
+//                demande.setLatitudeClient(lat);
+//                demande.setLongitudeClient(lon);
+//
+//                demande.setStatut(StatutRecuperation.EN_ATTENTE_COTATION);
+//
+//                demandeRecuperationRepository.save(demande);
+//                savedReservation.setDemandeRecuperation(demande);
+//            }
+//
+//            return ResponseEntity.ok(savedReservation);
+//
+//        } catch (Exception e) {
+//            e.printStackTrace();
+//            return ResponseEntity.badRequest().body(Map.of("erreur", e.getMessage()));
+//        }
+//    }
+    /**
+     * 🟢 1. CRÉATION DE LA RÉSERVATION UNIFIÉE (STANDARD OU VIP + ARRÊT DE BUS)
+     */
     @PostMapping("/creer")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CLIENT', 'USER')")
     public ResponseEntity<?> creerReservation(@RequestBody Map<String, Object> payload) {
         try {
+            // 1. Mapping et vérification du Trajet
             Map<String, Object> trajetMap = (Map<String, Object>) payload.get("trajet");
             if (trajetMap == null || trajetMap.get("id") == null) {
                 return ResponseEntity.badRequest().body(Map.of("erreur", "L'ID du trajet est obligatoire."));
@@ -53,10 +220,12 @@ public class ReservationController {
             Trajet trajet = trajetRepository.findById(trajetId)
                     .orElseThrow(() -> new RuntimeException("Trajet introuvable"));
 
+            // 2. Identification du Client connecté
             String email = SecurityContextHolder.getContext().getAuthentication().getName();
             User client = userRepository.findByEmail(email)
                     .orElseThrow(() -> new RuntimeException("Client non trouvé"));
 
+            // 3. Vérification des places disponibles
             int nombrePlaces = payload.containsKey("nombrePlaces") && payload.get("nombrePlaces") != null
                     ? Integer.parseInt(payload.get("nombrePlaces").toString())
                     : 1;
@@ -65,18 +234,35 @@ public class ReservationController {
                 return ResponseEntity.badRequest().body(Map.of("erreur", "Désolé, il ne reste que " + trajet.getPlacesDisponibles() + " place(s) disponible(s)."));
             }
 
+            // 4. Initialisation de la Réservation
             Reservation reservation = new Reservation();
             reservation.setTrajet(trajet);
             reservation.setClient(client);
             reservation.setDateReservation(LocalDateTime.now());
             reservation.setNombrePlaces(nombrePlaces);
-
             reservation.setStatut("EN_ATTENTE_DE_PAIEMENT");
             reservation.setEstPaye(false);
             reservation.setMontantPaye(0.0);
-
             reservation.setCodeTicket("TICK-" + System.currentTimeMillis());
 
+            // 🟢 Initialisation forcée du statut d'embarquement à l'arrêt
+            reservation.setStatutEmbarquement(StatutPassagerArret.EN_ATTENTE_A_L_ARRET);
+
+            // 🟢 5. INTÉGRATION DE L'ARRÊT DE BUS (Fusion de l'ancienne méthode)
+            if (payload.get("arretMontageId") != null && !payload.get("arretMontageId").toString().isEmpty()) {
+                Long arretId = Long.valueOf(payload.get("arretMontageId").toString());
+                ArretBus arret = arretBusRepository.findById(arretId).orElse(null);
+                reservation.setArretMontage(arret);
+            } else if (payload.get("arretMontage") != null && payload.get("arretMontage") instanceof Map) {
+                Map<String, Object> arretMap = (Map<String, Object>) payload.get("arretMontage");
+                if (arretMap.get("id") != null) {
+                    Long arretId = Long.valueOf(arretMap.get("id").toString());
+                    ArretBus arret = arretBusRepository.findById(arretId).orElse(null);
+                    reservation.setArretMontage(arret);
+                }
+            }
+
+            // 6. Gestion du Type de Réservation et du Siège
             String typeRes = payload.containsKey("typeReservation") ? payload.get("typeReservation").toString() : "STANDARD";
             reservation.setTypeReservation(typeRes);
 
@@ -86,20 +272,23 @@ public class ReservationController {
                 reservation.setNumeroSiege(1);
             }
 
+            // 7. Mise à jour des places du trajet
             trajet.setPlacesDisponibles(trajet.getPlacesDisponibles() - nombrePlaces);
             trajetRepository.save(trajet);
 
+            // 8. Calcul des Finances (Commissions)
             double prixUnitaire = trajet.getPrix() != null ? trajet.getPrix() : 0.0;
             double prixTotalBillet = prixUnitaire * nombrePlaces;
             reservation.setMontantCommission(prixTotalBillet * 0.10);
             reservation.setPartAgence(prixTotalBillet * 0.90);
 
+            // 💾 SAUVEGARDE PRINCIPALE DE LA RÉSERVATION
             Reservation savedReservation = reservationRepository.save(reservation);
 
+            // 🟢 9. LOGIQUE VIP : Gestion de la demande de récupération
             if ("VIP".equalsIgnoreCase(typeRes)) {
                 DemandeRecuperation demande = new DemandeRecuperation();
                 demande.setReservation(savedReservation);
-
                 demande.setClient(client);
                 demande.setReservationId(savedReservation.getId());
 
@@ -128,6 +317,8 @@ public class ReservationController {
                 demande.setStatut(StatutRecuperation.EN_ATTENTE_COTATION);
 
                 demandeRecuperationRepository.save(demande);
+
+                // Attacher la demande à la réservation renvoyée au frontend
                 savedReservation.setDemandeRecuperation(demande);
             }
 
@@ -138,7 +329,6 @@ public class ReservationController {
             return ResponseEntity.badRequest().body(Map.of("erreur", e.getMessage()));
         }
     }
-
     /**
      * 💵 2. ENCAISSER LE PAIEMENT
      */

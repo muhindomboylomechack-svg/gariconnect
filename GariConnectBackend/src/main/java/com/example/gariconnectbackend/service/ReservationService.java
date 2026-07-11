@@ -466,6 +466,17 @@ public class ReservationService {
         reservation.setStatut("EN_ATTENTE_DE_PAIEMENT");
         reservation.setMontantPaye(0.0);
 
+        // 🟢 MODIFICATION 1 : Vérification et attachement sécurisé de l'arrêt de bus (ArretBus)
+        if (reservation.getArretMontage() != null && reservation.getArretMontage().getId() != null) {
+            ArretBus arret = arretBusRepository.findById(reservation.getArretMontage().getId())
+                    .orElseThrow(() -> new RuntimeException("Arrêt de bus spécifié introuvable"));
+            reservation.setArretMontage(arret);
+        }
+
+        // 🟢 MODIFICATION 2 : Initialisation forcée du statut pour le traitement au quai/guichet
+        // Évite que le champ soit stocké à NULL en Base de Données
+        reservation.setStatutEmbarquement(StatutPassagerArret.EN_ATTENTE_A_L_ARRET);
+
         if (reservation.getTypeReservation() == null || reservation.getTypeReservation().trim().isEmpty()) {
             reservation.setTypeReservation("STANDARD");
         } else {
@@ -485,7 +496,6 @@ public class ReservationService {
 
         return savedReservation;
     }
-
     @Transactional
     public Reservation finaliserPaiementGlobal(Long reservationId, Map<String, Object> payload) {
         Reservation reservation = reservationRepository.findById(reservationId)

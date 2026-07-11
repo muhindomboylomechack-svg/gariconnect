@@ -77,7 +77,6 @@ public class Reservation {
     @Column(name = "nombre_places", columnDefinition = "integer default 1")
     private Integer nombrePlaces = 1;
 
-    // ... vos autres champs ...
 
     // 💵 CALCUL DYNAMIQUE DU MONTANT TOTAL (Mis à jour)
     @Transient

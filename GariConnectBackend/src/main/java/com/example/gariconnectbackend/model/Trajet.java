@@ -1,5 +1,6 @@
 package com.example.gariconnectbackend.model;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
@@ -23,7 +24,7 @@ public class Trajet {
 
     private String depart;
     private String destination;
-    private LocalDateTime dateHeureDepart;
+    //private LocalDateTime dateHeureDepart;
     private String joursSemaine;
     private Double prix;
 
@@ -48,7 +49,8 @@ public class Trajet {
     @JoinColumn(name = "chauffeur_id")
     @JsonIgnoreProperties({"trajets", "password", "agenceEmployeur"})
     private User chauffeur;
-
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime dateHeureDepart;
     @ManyToOne
     @JoinColumn(name = "vehicule_id")
     @JsonIgnoreProperties({"trajets", "agence"})

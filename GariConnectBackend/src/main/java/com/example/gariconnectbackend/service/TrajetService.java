@@ -28,32 +28,7 @@ public class TrajetService {
     @Autowired private VehiculeRepository vehiculeRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private NotificationRepository notificationRepository;
-    @Transactional
-    public Trajet creerTrajet(Trajet trajet, Long agenceId) {
-        // Validation et liaison de l'agence propriétaire (L'entreprise AGENCY_ADMIN)
-        User agence = userRepository.findById(agenceId)
-                .orElseThrow(() -> new EntityNotFoundException("Agence introuvable avec l'ID: " + agenceId));
-        trajet.setAgence(agence);
-
-        // Validation du véhicule si présent
-        if (trajet.getVehicule() != null && trajet.getVehicule().getId() != null) {
-            Vehicule v = vehiculeRepository.findById(trajet.getVehicule().getId())
-                    .orElseThrow(() -> new EntityNotFoundException("Véhicule introuvable"));
-            trajet.setVehicule(v);
-        }
-
-        // Validation du chauffeur si présent
-        if (trajet.getChauffeur() != null && trajet.getChauffeur().getId() != null) {
-            User chauffeur = userRepository.findById(trajet.getChauffeur().getId())
-                    .orElseThrow(() -> new EntityNotFoundException("Chauffeur introuvable"));
-            trajet.setChauffeur(chauffeur);
-        }
-
-        trajet.setStatut("PROGRAMME");
-        return trajetRepository.save(trajet);
-    }
-
-    @Transactional
+       @Transactional
     public Trajet modifierTrajet(Long id, Trajet details, Long agenceId) {
         Trajet trajet = trajetRepository.findById(id)
                 .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable"));
@@ -105,137 +80,7 @@ public class TrajetService {
         }
     }
 
-//    /**
-//     * 🟢 1. CRÉER UN TRAJET : Verrouillage du Véhicule et du Chauffeur
-//     */
-//    @Transactional
-//    public Trajet creerTrajet(Trajet trajet, Long agenceId) {
-//        // 1. Verrouillage du Véhicule
-//        if (trajet.getVehicule() != null && trajet.getVehicule().getId() != null) {
-//            Vehicule vehicule = vehiculeRepository.findById(trajet.getVehicule().getId())
-//                    .orElseThrow(() -> new EntityNotFoundException("Véhicule introuvable"));
-//
-//            vehicule.setStatut("Aligné a un trajet"); // 🔥 VERROUILLAGE
-//            vehiculeRepository.save(vehicule);
-//            trajet.setVehicule(vehicule);
-//
-//            if (trajet.getPlacesDisponibles() == null) {
-//                trajet.setPlacesDisponibles(vehicule.getCapacite());
-//            }
-//        }
-//
-//        // 2. Verrouillage du Chauffeur
-//        User chauffeurConnecte = null;
-//        if (trajet.getChauffeur() != null && trajet.getChauffeur().getId() != null) {
-//            chauffeurConnecte = userRepository.findById(trajet.getChauffeur().getId())
-//                    .orElseThrow(() -> new EntityNotFoundException("Chauffeur introuvable"));
-//
-//            chauffeurConnecte.setStatut("Aligné a un trajet"); // 🔥 VERROUILLAGE
-//            userRepository.save(chauffeurConnecte);
-//            trajet.setChauffeur(chauffeurConnecte);
-//        }
-//
-//        if (trajet.getStatut() == null) {
-//            trajet.setStatut("PROGRAMME");
-//        }
-//
-//        Trajet nouveauTrajet = trajetRepository.save(trajet);
-//
-//        // 3. Notification
-//        if (chauffeurConnecte != null) {
-//            envoyerNotificationChauffeur(
-//                    chauffeurConnecte,
-//                    "Nouvelle mission assignée : " + trajet.getDepart() + " ➔ " + trajet.getDestination()
-//            );
-//        }
-//
-//        return nouveauTrajet;
-//    }
 
-//    /**
-//     * 🔄 2. MODIFIER UN TRAJET : Gestion intelligente des échanges de ressources
-//     */
-//    @Transactional
-//    public Trajet modifierTrajet(Long id, Trajet trajetDetails, Long agenceId) {
-//        Trajet trajet = trajetRepository.findById(id)
-//                .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable"));
-//
-//        if (!trajet.getAgence().getId().equals(agenceId)) {
-//            throw new SecurityException("Vous n'êtes pas autorisé à modifier ce trajet.");
-//        }
-//
-//        // 1. Changement de Véhicule (Libérer l'ancien, verrouiller le nouveau)
-//        if (trajetDetails.getVehicule() != null && trajetDetails.getVehicule().getId() != null) {
-//            if (trajet.getVehicule() == null || !trajet.getVehicule().getId().equals(trajetDetails.getVehicule().getId())) {
-//                // Libérer l'ancien
-//                if (trajet.getVehicule() != null) {
-//                    Vehicule ancienVehicule = trajet.getVehicule();
-//                    ancienVehicule.setStatut("DISPONIBLE");
-//                    vehiculeRepository.save(ancienVehicule);
-//                }
-//                // Verrouiller le nouveau
-//                Vehicule nouveauVehicule = vehiculeRepository.findById(trajetDetails.getVehicule().getId()).orElseThrow();
-//                nouveauVehicule.setStatut("Aligné a un trajet");
-//                vehiculeRepository.save(nouveauVehicule);
-//                trajet.setVehicule(nouveauVehicule);
-//            }
-//        }
-//
-//        // 2. Changement de Chauffeur (Libérer l'ancien, verrouiller le nouveau)
-//        if (trajetDetails.getChauffeur() != null && trajetDetails.getChauffeur().getId() != null) {
-//            if (trajet.getChauffeur() == null || !trajet.getChauffeur().getId().equals(trajetDetails.getChauffeur().getId())) {
-//                // Libérer l'ancien
-//                if (trajet.getChauffeur() != null) {
-//                    User ancienChauffeur = trajet.getChauffeur();
-//                    ancienChauffeur.setStatut("DISPONIBLE");
-//                    userRepository.save(ancienChauffeur);
-//                }
-//                // Verrouiller le nouveau
-//                User nouveauChauffeur = userRepository.findById(trajetDetails.getChauffeur().getId()).orElseThrow();
-//                nouveauChauffeur.setStatut("Aligné a un trajet");
-//                userRepository.save(nouveauChauffeur);
-//                trajet.setChauffeur(nouveauChauffeur);
-//            }
-//        }
-//
-//        trajet.setDepart(trajetDetails.getDepart());
-//        trajet.setDestination(trajetDetails.getDestination());
-//        trajet.setDateHeureDepart(trajetDetails.getDateHeureDepart());
-//        trajet.setJoursSemaine(trajetDetails.getJoursSemaine());
-//        trajet.setPrix(trajetDetails.getPrix());
-//        trajet.setPlacesDisponibles(trajetDetails.getPlacesDisponibles());
-//
-//        if (trajetDetails.getStatut() != null) {
-//            trajet.setStatut(trajetDetails.getStatut());
-//        }
-//
-//        return trajetRepository.save(trajet);
-//    }
-
-    /**
-     * 🛑 3. SUPPRIMER UN TRAJET : Libération des ressources
-     */
-//    @Transactional
-//    public void supprimerTrajet(Long id, Long agenceId) {
-//        Trajet trajet = trajetRepository.findById(id)
-//                .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable"));
-//
-//        if (!trajet.getAgence().getId().equals(agenceId)) {
-//            throw new SecurityException("Vous n'êtes pas autorisé à supprimer ce trajet.");
-//        }
-//
-//        // 🔓 LIBÉRATION DES RESSOURCES
-//        if (trajet.getVehicule() != null) {
-//            trajet.getVehicule().setStatut("DISPONIBLE");
-//            vehiculeRepository.save(trajet.getVehicule());
-//        }
-//        if (trajet.getChauffeur() != null) {
-//            trajet.getChauffeur().setStatut("DISPONIBLE");
-//            userRepository.save(trajet.getChauffeur());
-//        }
-//
-//        trajetRepository.delete(trajet);
-//    }
 // 🚀 AJOUTER CETTE MÉTHODE :
     public List<Trajet> getAllTrajets() {
         return trajetRepository.findAll();
@@ -323,5 +168,42 @@ public class TrajetService {
             // Note : le champ updatedAt sera automatiquement actualisé par Hibernate grâce à @UpdateTimestamp
             trajetRepository.save(trajet);
         }
+    }
+
+    @Transactional
+    public Trajet creerTrajet(Trajet trajet, Long agenceId) {
+        // Validation et liaison de l'agence propriétaire (L'entreprise AGENCY_ADMIN)
+        User agence = userRepository.findById(agenceId)
+                .orElseThrow(() -> new EntityNotFoundException("Agence introuvable avec l'ID: " + agenceId));
+        trajet.setAgence(agence);
+
+        LocalDateTime dateDepart = trajet.getDateHeureDepart();
+
+        // Validation du véhicule si présent
+        if (trajet.getVehicule() != null && trajet.getVehicule().getId() != null) {
+            // 🟢 VÉRIFICATION STRICTE DES DOUBLONS PAR DATE
+            if (dateDepart != null && trajetRepository.isVehiculeOccupeADate(trajet.getVehicule().getId(), dateDepart)) {
+                throw new RuntimeException("Opération refusée : Ce véhicule est déjà assigné à un autre trajet ce même jour.");
+            }
+
+            Vehicule v = vehiculeRepository.findById(trajet.getVehicule().getId())
+                    .orElseThrow(() -> new EntityNotFoundException("Véhicule introuvable"));
+            trajet.setVehicule(v);
+        }
+
+        // Validation du chauffeur si présent
+        if (trajet.getChauffeur() != null && trajet.getChauffeur().getId() != null) {
+            // 🟢 VÉRIFICATION STRICTE DES DOUBLONS PAR DATE
+            if (dateDepart != null && trajetRepository.isChauffeurOccupeADate(trajet.getChauffeur().getId(), dateDepart)) {
+                throw new RuntimeException("Opération refusée : Ce chauffeur est déjà assigné à un autre trajet ce même jour.");
+            }
+
+            User chauffeur = userRepository.findById(trajet.getChauffeur().getId())
+                    .orElseThrow(() -> new EntityNotFoundException("Chauffeur introuvable"));
+            trajet.setChauffeur(chauffeur);
+        }
+
+        trajet.setStatut("PROGRAMME");
+        return trajetRepository.save(trajet);
     }
 }

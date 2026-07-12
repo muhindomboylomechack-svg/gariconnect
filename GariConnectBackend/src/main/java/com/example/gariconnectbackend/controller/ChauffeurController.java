@@ -2,8 +2,10 @@ package com.example.gariconnectbackend.controller;
 
 import com.example.gariconnectbackend.model.Role;
 import com.example.gariconnectbackend.model.User;
+import com.example.gariconnectbackend.repository.TrajetRepository;
 import com.example.gariconnectbackend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -11,6 +13,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -27,33 +30,35 @@ public class ChauffeurController {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+    @Autowired
+    private TrajetRepository trajetRepository; // 🟢 À AJOUTER
 
     /**
      * 🟢 RÉCUPÉRER UNIQUEMENT LES CHAUFFEURS LIBRES (POUR LA CRÉATION DE TRAJET)
      */
-    @GetMapping("/disponibles")
-    public ResponseEntity<?> getChauffeursDisponibles() {
-        try {
-            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
-            User utilisateurConnecte = userRepository.findByEmail(emailConnecte)
-                    .orElseThrow(() -> new RuntimeException("Utilisateur non authentifié"));
-
-            Long agenceId = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
-                    ? utilisateurConnecte.getId()
-                    : utilisateurConnecte.getAgenceEmployeur().getId();
-
-            // Filtrage strict : on exclut ceux qui sont "Aligné a un trajet"
-            List<User> chauffeursLibres = userRepository.findByRoleAndAgenceEmployeur_Id(Role.CHAUFFEUR, agenceId).stream()
-                    .filter(c -> c.getStatut() == null || !c.getStatut().equalsIgnoreCase("Aligné a un trajet"))
-                    .collect(Collectors.toList());
-
-            return ResponseEntity.ok(chauffeursLibres);
-
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Erreur serveur : " + e.getMessage()));
-        }
-    }
+//    @GetMapping("/disponibles")
+//    public ResponseEntity<?> getChauffeursDisponibles() {
+//        try {
+//            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
+//            User utilisateurConnecte = userRepository.findByEmail(emailConnecte)
+//                    .orElseThrow(() -> new RuntimeException("Utilisateur non authentifié"));
+//
+//            Long agenceId = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
+//                    ? utilisateurConnecte.getId()
+//                    : utilisateurConnecte.getAgenceEmployeur().getId();
+//
+//            // Filtrage strict : on exclut ceux qui sont "Aligné a un trajet"
+//            List<User> chauffeursLibres = userRepository.findByRoleAndAgenceEmployeur_Id(Role.CHAUFFEUR, agenceId).stream()
+//                    .filter(c -> c.getStatut() == null || !c.getStatut().equalsIgnoreCase("Aligné a un trajet"))
+//                    .collect(Collectors.toList());
+//
+//            return ResponseEntity.ok(chauffeursLibres);
+//
+//        } catch (Exception e) {
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                    .body(Map.of("message", "Erreur serveur : " + e.getMessage()));
+//        }
+//    }
 
     @GetMapping("/mes-chauffeurs")
     public ResponseEntity<?> getMesChauffeurs() {
@@ -191,4 +196,36 @@ public class ChauffeurController {
         }
     }
 
+    /**
+     * 🟢 RÉCUPÉRER UNIQUEMENT LES CHAUFFEURS LIBRES À UNE DATE PRÉCISE
+     */
+    @GetMapping("/disponibles")
+    public ResponseEntity<?> getChauffeursDisponibles(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        try {
+            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
+            User utilisateurConnecte = userRepository.findByEmail(emailConnecte)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur non authentifié"));
+
+            Long agenceId = (utilisateurConnecte.getRole() == Role.AGENCY_ADMIN)
+                    ? utilisateurConnecte.getId()
+                    : utilisateurConnecte.getAgenceEmployeur().getId();
+
+            // 1. Récupérer les ID des chauffeurs occupés ce jour-là
+            List<Long> chauffeursOccupes = (date != null)
+                    ? trajetRepository.findBusyChauffeurIdsByDate(date)
+                    : List.of();
+
+            // 2. Filtrer et exclure les chauffeurs occupés
+            List<User> chauffeursLibres = userRepository.findByRoleAndAgenceEmployeur_Id(Role.CHAUFFEUR, agenceId).stream()
+                    .filter(c -> !chauffeursOccupes.contains(c.getId())) // Remplace l'ancien filtre textuel
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(chauffeursLibres);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Erreur serveur : " + e.getMessage()));
+        }
+    }
 }

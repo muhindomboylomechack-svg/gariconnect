@@ -125,15 +125,18 @@ package com.example.gariconnectbackend.controller;
 import com.example.gariconnectbackend.model.Role;
 import com.example.gariconnectbackend.model.User;
 import com.example.gariconnectbackend.model.Vehicule;
+import com.example.gariconnectbackend.repository.TrajetRepository;
 import com.example.gariconnectbackend.repository.VehiculeRepository;
 import com.example.gariconnectbackend.repository.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -149,7 +152,8 @@ public class VehiculeController {
 
     @Autowired
     private UserRepository userRepository;
-
+    @Autowired
+    private TrajetRepository trajetRepository;
     private User getAgenceCible() {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         User currentUser = userRepository.findByEmail(email)
@@ -166,24 +170,24 @@ public class VehiculeController {
     /**
      * 🟢 RÉCUPÉRER UNIQUEMENT LES VÉHICULES LIBRES (POUR LA CRÉATION DE TRAJET)
      */
-    @GetMapping("/disponibles")
-    public ResponseEntity<?> getVehiculesDisponibles() {
-        try {
-            User agence = getAgenceCible();
-            if (agence == null) return ResponseEntity.badRequest().body(Map.of("message", "Aucune agence rattachée."));
-
-            // Filtrage strict : on exclut ceux qui sont "Aligné a un trajet"
-            List<Vehicule> vehiculesLibres = vehiculeRepository.findByAgence(agence).stream()
-                    .filter(v -> v.getStatut() == null || !v.getStatut().equalsIgnoreCase("Aligné a un trajet"))
-                    .collect(Collectors.toList());
-
-            return ResponseEntity.ok(vehiculesLibres);
-
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("message", "Erreur lors de la récupération des véhicules : " + e.getMessage()));
-        }
-    }
+//    @GetMapping("/disponibles")
+//    public ResponseEntity<?> getVehiculesDisponibles() {
+//        try {
+//            User agence = getAgenceCible();
+//            if (agence == null) return ResponseEntity.badRequest().body(Map.of("message", "Aucune agence rattachée."));
+//
+//            // Filtrage strict : on exclut ceux qui sont "Aligné a un trajet"
+//            List<Vehicule> vehiculesLibres = vehiculeRepository.findByAgence(agence).stream()
+//                    .filter(v -> v.getStatut() == null || !v.getStatut().equalsIgnoreCase("Aligné a un trajet"))
+//                    .collect(Collectors.toList());
+//
+//            return ResponseEntity.ok(vehiculesLibres);
+//
+//        } catch (Exception e) {
+//            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+//                    .body(Map.of("message", "Erreur lors de la récupération des véhicules : " + e.getMessage()));
+//        }
+//    }
 
     @GetMapping({"/mes-vehicules", "/agence"})
     public ResponseEntity<?> getVehicules(@RequestParam(required = false) Long trajetId) {
@@ -266,5 +270,33 @@ public class VehiculeController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("message", "Erreur : " + e.getMessage()));
         }
     }
+   // 🟢 À AJOUTER
 
+    /**
+     * 🟢 RÉCUPÉRER UNIQUEMENT LES VÉHICULES LIBRES À UNE DATE PRÉCISE
+     */
+    @GetMapping("/disponibles")
+    public ResponseEntity<?> getVehiculesDisponibles(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        try {
+            User agence = getAgenceCible();
+            if (agence == null) return ResponseEntity.badRequest().body(Map.of("message", "Aucune agence rattachée."));
+
+            // 1. Récupérer les ID des véhicules occupés ce jour-là
+            List<Long> vehiculesOccupes = (date != null)
+                    ? trajetRepository.findBusyVehiculeIdsByDate(date)
+                    : List.of();
+
+            // 2. Filtrer : Prendre la flotte de l'agence SAUF ceux qui sont dans la liste des occupés
+            List<Vehicule> vehiculesLibres = vehiculeRepository.findByAgence(agence).stream()
+                    .filter(v -> !vehiculesOccupes.contains(v.getId())) // Remplace l'ancien filtre textuel
+                    .collect(Collectors.toList());
+
+            return ResponseEntity.ok(vehiculesLibres);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Erreur lors de la récupération des véhicules : " + e.getMessage()));
+        }
+    }
 }

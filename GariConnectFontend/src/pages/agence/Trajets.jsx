@@ -6,7 +6,6 @@ import {
   FaMapMarkerAlt, FaPlus, FaUsers, FaArrowRight, FaMoneyBillWave
 } from 'react-icons/fa';
 
-// Déclaration locale du sous-composant FormGroup pour éviter les erreurs de portée (Scope)
 const FormGroup = ({ label, icon, children }) => (
   <div className="space-y-2">
     <label className="flex items-center gap-2 ml-1 text-[10px] font-black text-slate-400 uppercase tracking-widest">
@@ -20,7 +19,7 @@ const Trajets = () => {
   const [trajets, setTrajets] = useState([]);
   const [vehicules, setVehicules] = useState([]);
   const [chauffeurs, setChauffeurs] = useState([]); 
-  const [agences, setAgences] = useState([]); // Pour le cas d'un SUPER_ADMIN
+  const [agences, setAgences] = useState([]); 
   const [showModal, setShowModal] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [currentId, setCurrentId] = useState(null);
@@ -41,10 +40,70 @@ const Trajets = () => {
 
   const userRole = localStorage.getItem('role') || localStorage.getItem('user_role');
 
+  const formaterDateLocale = (dateObj) => {
+    const year = dateObj.getFullYear();
+    const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+    const day = String(dateObj.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const obtenirDatePourJourSemaine = (jour) => {
+    const joursMap = {
+      'DIMANCHE': 0, 'LUNDI': 1, 'MARDI': 2, 'MERCREDI': 3,
+      'JEUDI': 4, 'VENDREDI': 5, 'SAMEDI': 6
+    };
+    const parsedJour = jour ? jour.replace(/_/g, ' ').toUpperCase() : '';
+    const targetDay = joursMap[parsedJour];
+    const d = new Date();
+    
+    if (targetDay === undefined) return formaterDateLocale(d); 
+    
+    const currentDay = d.getDay();
+    let diff = targetDay - currentDay;
+    if (diff < 0) diff += 7; 
+    d.setDate(d.getDate() + diff);
+    
+    return formaterDateLocale(d);
+  };
+
+  // 🟢 TON FILTRE CONSERVÉ ET SÉCURISÉ
+  const estRessourceOccupee = (ressourceId, type, jourSelectionne, trajetIdActuel) => {
+    if (!ressourceId || !jourSelectionne) return false;
+    
+    const jourChoisiNormalise = jourSelectionne.toUpperCase().replace(/_/g, ' ');
+
+    return trajets.some(t => {
+      if (t.id === trajetIdActuel) return false;
+
+      const ressourceTrajetId = type === 'vehicule' ? t.vehicule?.id : t.chauffeur?.id;
+      if (ressourceTrajetId !== ressourceId) return false;
+
+      const jourTrajetNormalise = (t.joursSemaine || '').toUpperCase().replace(/_/g, ' ');
+
+      if (jourChoisiNormalise === 'TOUS LES JOURS' || jourTrajetNormalise === 'TOUS LES JOURS') {
+        return true;
+      }
+
+      if (jourTrajetNormalise === jourChoisiNormalise && jourTrajetNormalise !== '') {
+        return true;
+      }
+
+      if (!jourTrajetNormalise && t.dateHeureDepart) {
+        const dateObj = new Date(t.dateHeureDepart);
+        const mapJours = ['DIMANCHE', 'LUNDI', 'MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI'];
+        if (mapJours[dateObj.getDay()] === jourChoisiNormalise) {
+          return true;
+        }
+      }
+
+      return false;
+    });
+  };
+
   useEffect(() => { 
     fetchTrajets();
     if (userRole === 'SUPER_ADMIN') {
-      fetchAgences(); // Charger les agences si l'utilisateur est un super administrateur
+      fetchAgences();
     }
   }, [userRole]);
 
@@ -82,22 +141,17 @@ const Trajets = () => {
       setVehicules([]);
       setChauffeurs([]);
     }
-  }, [showModal, isEditing, currentId]);
+  }, [showModal, isEditing, currentId, formData.joursSemaine]);
 
   const fetchRessourcesDisponibles = async () => {
     try {
       const token = localStorage.getItem('token');
       const headers = { Authorization: `Bearer ${token}` };
+      const dateFiltre = obtenirDatePourJourSemaine(formData.joursSemaine);
       
       const [resVehicules, resChauffeurs] = await Promise.all([
-          api.get('/vehicules/disponibles', { headers }).catch(err => {
-              console.warn("Erreur chargement véhicules", err);
-              return { data: [] };
-          }),
-          api.get('/chauffeurs/disponibles', { headers }).catch(err => {
-              console.warn("Erreur chargement chauffeurs", err);
-              return { data: [] };
-          })
+          api.get(`/vehicules/disponibles?date=${dateFiltre}`, { headers }).catch(() => ({ data: [] })),
+          api.get(`/chauffeurs/disponibles?date=${dateFiltre}`, { headers }).catch(() => ({ data: [] }))
       ]);
       
       let vDispo = Array.isArray(resVehicules.data) ? resVehicules.data : [];
@@ -139,24 +193,40 @@ const Trajets = () => {
         return;
     }
 
-    const today = new Date().toISOString().split('T')[0];
-    const dateIsoPropre = `${today}T${formData.heureDepart}:00`;
+    const prixParsed = parseFloat(formData.prix);
+    const placesParsed = parseInt(formData.placesDisponibles, 10);
+    const vIdParsed = parseInt(formData.vehiculeId, 10);
+    const cIdParsed = parseInt(formData.chauffeurId, 10);
 
+    const dateCible = obtenirDatePourJourSemaine(formData.joursSemaine);
+    // Utilisation d'un espace à la place du 'T' pour maximiser la compatibilité Java LocalDateTime
+    const dateFormattee = `${dateCible} ${formData.heureDepart}:00`;
+
+    // 🟢 PAYLOAD ROBUSTE COMPATIBLE DTO PLATS ET ENTITÉS IMBRIQUÉES
     const payload = {
       depart: formData.depart,
       destination: formData.destination,
       joursSemaine: formData.joursSemaine,
-      dateHeureDepart: dateIsoPropre, 
-      prix: parseFloat(formData.prix),
+      dateHeureDepart: dateFormattee, 
+      prix: prixParsed,
       statut: formData.statut,
-      placesDisponibles: parseInt(formData.placesDisponibles, 10),
-      vehicule: { id: parseInt(formData.vehiculeId, 10) },
-      chauffeur: { id: parseInt(formData.chauffeurId, 10) }
+      placesDisponibles: placesParsed,
+      // Format 1: Objets imbriqués
+      vehicule: { id: vIdParsed },
+      chauffeur: { id: cIdParsed },
+      // Format 2: Propriétés plates au cas où le DTO du backend l'exige
+      vehiculeId: vIdParsed,
+      chauffeurId: cIdParsed
     };
 
-    if (userRole === 'SUPER_ADMIN' && formData.agenceId) {
-      payload.agence = { id: parseInt(formData.agenceId, 10) };
+    if (formData.agenceId) {
+      const aIdParsed = parseInt(formData.agenceId, 10);
+      payload.agence = { id: aIdParsed };
+      payload.agenceId = aIdParsed;
     }
+
+    // Affichage de contrôle pour le développeur dans la console de debug
+    console.log("=== PAYLOAD ENVOYÉ AU SERVEUR ===", payload);
 
     try {
       const token = localStorage.getItem('token');
@@ -172,14 +242,37 @@ const Trajets = () => {
       setShowModal(false);
       fetchTrajets(); 
     } catch (err) {
-      console.error("Erreur détaillée du serveur :", err.response?.data);
-      const errorMsg = err.response?.data?.error || err.response?.data?.message || err.response?.data || "Erreur de traitement réseau";
-      alert("⚠️ " + errorMsg);
+      console.error("Erreur HTTP complète :", err);
+      const errorData = err.response?.data;
+      console.log("Détails renvoyés par Spring Boot :", errorData);
+
+      let msg = "Erreur 400 : Le serveur refuse les données transmises.";
+      
+      if (typeof errorData === 'object' && errorData !== null) {
+        if (errorData.errors && Array.isArray(errorData.errors)) {
+          msg = errorData.errors.map(e => `• ${e.field} : ${e.defaultMessage}`).join('\n');
+        } else if (!errorData.message && !errorData.error) {
+          msg = Object.entries(errorData).map(([k, v]) => `• ${k}: ${v}`).join('\n');
+        } else {
+          msg = errorData.message || errorData.error || JSON.stringify(errorData);
+        }
+      } else if (typeof errorData === 'string') {
+        msg = errorData;
+      }
+      alert("⚠️ Échec de l'enregistrement :\n\n" + msg);
     }
   };
 
   const handleEditClick = (trajet) => {
-    const heureExtraite = trajet.dateHeureDepart ? trajet.dateHeureDepart.substring(11, 16) : '';
+    // Extrait "HH:mm" depuis la chaîne de date brute
+    let heureExtraite = '';
+    if (trajet.dateHeureDepart) {
+      const chaineDate = trajet.dateHeureDepart;
+      const indexSeparateur = chaineDate.includes('T') ? chaineDate.indexOf('T') : chaineDate.indexOf(' ');
+      if (indexSeparateur !== -1) {
+        heureExtraite = chaineDate.substring(indexSeparateur + 1, indexSeparateur + 6);
+      }
+    }
 
     setFormData({
       depart: trajet.depart || '',
@@ -258,7 +351,7 @@ const Trajets = () => {
                 </div>
                 <div className="flex flex-col items-center">
                    <span className="text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full mb-1">
-                      {t.dateHeureDepart ? t.dateHeureDepart.substring(11, 16) : '--:--'}
+                      {t.dateHeureDepart ? (t.dateHeureDepart.includes('T') ? t.dateHeureDepart.substring(11, 16) : t.dateHeureDepart.substring(11, 16)) : '--:--'}
                    </span>
                    <FaArrowRight className="text-slate-300" />
                 </div>
@@ -336,7 +429,7 @@ const Trajets = () => {
                   <option value="VENDREDI">Vendredi</option>
                   <option value="SAMEDI">Samedi</option>
                   <option value="DIMANCHE">Dimanche</option>
-                  <option value="TOUS LES JOURS">Tous les jours</option>
+                  <option value="TOUS_LES_JOURS">Tous les jours</option>
                 </select>
               </FormGroup>
 
@@ -352,11 +445,20 @@ const Trajets = () => {
                   required
                 >
                   <option value="">Sélectionner un véhicule...</option>
-                  {vehicules.map(v => (
-                    <option key={v.id} value={v.id}>
-                      {v.plaqueImmatriculation || v.plaque_immatriculation} - {v.marque} {v.modele}
-                    </option>
-                  ))}
+                  {vehicules
+                    .filter(v => {
+                      if (isEditing && currentId) {
+                        const trajetActuel = trajets.find(t => t.id === currentId);
+                        if (trajetActuel && trajetActuel.vehicule?.id === v.id) return true;
+                      }
+                      return !estRessourceOccupee(v.id, 'vehicule', formData.joursSemaine, currentId);
+                    })
+                    .map(v => (
+                      <option key={v.id} value={v.id}>
+                        {v.plaqueImmatriculation || v.plaque_immatriculation} - {v.marque} {v.modele}
+                      </option>
+                    ))
+                  }
                 </select>
               </FormGroup>
 
@@ -368,11 +470,20 @@ const Trajets = () => {
                   required
                 >
                   <option value="">Sélectionner un chauffeur...</option>
-                  {chauffeurs.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.prenom ? `${c.prenom} ${c.nom}` : c.nom}
-                    </option>
-                  ))}
+                  {chauffeurs
+                    .filter(c => {
+                      if (isEditing && currentId) {
+                        const trajetActuel = trajets.find(t => t.id === currentId);
+                        if (trajetActuel && trajetActuel.chauffeur?.id === c.id) return true;
+                      }
+                      return !estRessourceOccupee(c.id, 'chauffeur', formData.joursSemaine, currentId);
+                    })
+                    .map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.prenom ? `${c.prenom} ${c.nom}` : c.nom}
+                      </option>
+                    ))
+                  }
                 </select>
               </FormGroup>
 

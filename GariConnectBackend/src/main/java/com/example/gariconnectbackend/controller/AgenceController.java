@@ -1,10 +1,7 @@
 
 package com.example.gariconnectbackend.controller;
 
-import com.example.gariconnectbackend.model.Notification;
-import com.example.gariconnectbackend.model.Role;
-import com.example.gariconnectbackend.model.Trajet;
-import com.example.gariconnectbackend.model.User;
+import com.example.gariconnectbackend.model.*;
 import com.example.gariconnectbackend.repository.*;
         import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -237,17 +234,71 @@ public class AgenceController {
         }
     }
 
+
     @GetMapping("/ma-commission")
     public ResponseEntity<?> getMaCommission() {
         try {
+            // 1. MULTI-TENANCY : Identifier l'agence connectée
             User agence = getAuthenticatedAgence();
-            Double totalDu = commissionRepo.totalDuParAgence(agence.getId());
-            return ResponseEntity.ok(Map.of("montantDu", totalDu != null ? totalDu : 0.0));
+
+            // 2. Récupérer le taux de commission de l'agence (ex: 10% par défaut)
+            Double tauxCommission = (agence.getTauxCommission() != null) ? agence.getTauxCommission() : 10.0;
+
+            // 3. CALCUL DES REVENUS - RÉSERVATIONS
+            // On récupère uniquement les réservations liées aux trajets de cette agence
+            List<Reservation> reservations = reservationRepository.findByTrajet_Agence(agence);
+            double totalVentesReservations = reservations.stream()
+                    .filter(r -> "PAYE".equalsIgnoreCase(r.getStatut()) || "CONFIRMEE".equalsIgnoreCase(r.getStatut()))
+                    .mapToDouble(r -> r.getMontantPaye() != null ? r.getMontantPaye() : 0.0)
+                    .sum();
+
+            // 4. CALCUL DES REVENUS - COURRIERS & COLIS
+            // On utilise la méthode existante du CourrierRepository pour filtrer par agence
+            List<Courrier> courriers = courrierRepository.findByAgenceOrigineOrderByIdDesc(agence);
+            double totalVentesCourriers = courriers.stream()
+                    // On exclut les courriers annulés ou non validés financièrement
+                    .filter(c -> c.getStatut() != null
+                            && !c.getStatut().equalsIgnoreCase("REJETE")
+                            && !c.getStatut().equalsIgnoreCase("EN_ATTENTE_DE_VALIDATION"))
+                    .mapToDouble(c -> c.getPrix() != null ? c.getPrix() : 0.0)
+                    .sum();
+
+            // 5. APPLICATION DE LA LOGIQUE DE COMMISSION
+            double revenusGlobaux = totalVentesReservations + totalVentesCourriers;
+            double commissionTotaleCalculee = (revenusGlobaux * tauxCommission) / 100.0;
+
+            // 6. SOUSTRACTION DES DETTES DÉJÀ RÉGLÉES
+            // Utilisation de votre méthode corrigée dans CommissionDetteRepository (reglee = true)
+            Double commissionsDejaReglees = commissionRepo.totalRegleParAgence(agence.getId());
+            if (commissionsDejaReglees == null) {
+                commissionsDejaReglees = 0.0;
+            }
+
+            // 7. RÉSULTAT FINAL (Dette réelle restante)
+            double montantDuReel = commissionTotaleCalculee - commissionsDejaReglees;
+
+            // Sécurité : Éviter d'afficher un montant négatif si l'agence a trop payé
+            if (montantDuReel < 0) {
+                montantDuReel = 0.0;
+            }
+
+            // Retour complet pour permettre au Frontend (React) d'afficher les détails du calcul
+            return ResponseEntity.ok(Map.of(
+                    "montantDu", montantDuReel,
+                    "tauxApplique", tauxCommission,
+                    "details", Map.of(
+                            "ventesReservations", totalVentesReservations,
+                            "ventesCourriers", totalVentesCourriers,
+                            "revenusTotaux", revenusGlobaux,
+                            "commissionsDejaReglees", commissionsDejaReglees
+                    )
+            ));
+
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body("Erreur accès commission");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Erreur lors du calcul de la commission : " + e.getMessage()));
         }
     }
-
     @GetMapping("/notifications")
     public ResponseEntity<?> getMesNotifications() {
         try {

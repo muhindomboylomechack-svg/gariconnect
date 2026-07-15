@@ -15,6 +15,9 @@ const FormGroup = ({ label, icon, children }) => (
   </div>
 );
 
+// 🟢 Constante Tailwind remplaçant l'ancien bloc <style>
+const inputClass = "w-full px-4 py-3.5 bg-slate-50 text-slate-800 rounded-[1.25rem] font-bold text-[0.85rem] border-2 border-transparent transition-all duration-200 focus:border-blue-600 focus:bg-white focus:shadow-[0_4px_12px_rgba(37,99,235,0.1)] focus:outline-none dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700 dark:focus:bg-slate-900 dark:focus:border-blue-500";
+
 const Trajets = () => {
   const [trajets, setTrajets] = useState([]);
   const [vehicules, setVehicules] = useState([]);
@@ -39,6 +42,62 @@ const Trajets = () => {
   });
 
   const userRole = localStorage.getItem('role') || localStorage.getItem('user_role');
+
+  const getUserAgenceId = () => {
+    let id = localStorage.getItem('agenceId') || localStorage.getItem('agence_id');
+    if (id) return id;
+
+    const storedUser = localStorage.getItem('user') || localStorage.getItem('userData');
+    if (storedUser) {
+      try {
+        const u = JSON.parse(storedUser);
+        const foundId = u.agenceId || u.agence?.id || u.agence_id;
+        if (foundId) {
+          localStorage.setItem('agenceId', foundId.toString());
+          return foundId.toString();
+        }
+      } catch (e) {
+        console.error("Erreur lecture user local :", e);
+      }
+    }
+
+    if (trajets && trajets.length > 0) {
+      const trajetAvecAgence = trajets.find(t => t.agence?.id);
+      if (trajetAvecAgence) {
+        const autoDetectedId = trajetAvecAgence.agence.id.toString();
+        localStorage.setItem('agenceId', autoDetectedId);
+        return autoDetectedId;
+      }
+    }
+
+    return null;
+  };
+
+  const userAgenceId = getUserAgenceId();
+
+  useEffect(() => {
+    const autoHealAgenceId = async () => {
+      const token = localStorage.getItem('token');
+      if (!token || userRole === 'SUPER_ADMIN' || userAgenceId) return;
+
+      try {
+        const res = await api.get('/trajets/session', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        const foundId = res.data?.agenceId;
+        if (foundId) {
+          console.log("🔹 [GariConnect] Agence ID récupéré et réparé automatiquement :", foundId);
+          localStorage.setItem('agenceId', foundId.toString());
+          fetchTrajets(); 
+        }
+      } catch (e) {
+        console.error("❌ Impossible de synchroniser la session de l'agence :", e);
+      }
+    };
+
+    autoHealAgenceId();
+  }, [userRole, userAgenceId]);
 
   const formaterDateLocale = (dateObj) => {
     const year = dateObj.getFullYear();
@@ -66,7 +125,6 @@ const Trajets = () => {
     return formaterDateLocale(d);
   };
 
-  // 🟢 TON FILTRE CONSERVÉ ET SÉCURISÉ
   const estRessourceOccupee = (ressourceId, type, jourSelectionne, trajetIdActuel) => {
     if (!ressourceId || !jourSelectionne) return false;
     
@@ -111,7 +169,9 @@ const Trajets = () => {
     try {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const res = await api.get('/trajets/tous', {
+      const endpoint = userRole === 'SUPER_ADMIN' ? '/trajets/tous' : '/trajets';
+
+      const res = await api.get(endpoint, {
           headers: { Authorization: `Bearer ${token}` }
       });
       setTrajets(Array.isArray(res.data) ? res.data : []);
@@ -188,21 +248,21 @@ const Trajets = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if(!formData.vehiculeId || !formData.chauffeurId) {
+    if (!formData.vehiculeId || !formData.chauffeurId) {
         alert("⚠️ Veuillez sélectionner un véhicule et un chauffeur.");
         return;
     }
 
-    const prixParsed = parseFloat(formData.prix);
-    const placesParsed = parseInt(formData.placesDisponibles, 10);
+    const prixParsed = parseFloat(formData.prix) || 0;
+    const placesParsed = parseInt(formData.placesDisponibles, 10) || 0;
     const vIdParsed = parseInt(formData.vehiculeId, 10);
     const cIdParsed = parseInt(formData.chauffeurId, 10);
 
     const dateCible = obtenirDatePourJourSemaine(formData.joursSemaine);
-    // Utilisation d'un espace à la place du 'T' pour maximiser la compatibilité Java LocalDateTime
+    
+    // 🟢 CORRECTION ICI : Remplacement du "T" par un espace (" ")
     const dateFormattee = `${dateCible} ${formData.heureDepart}:00`;
 
-    // 🟢 PAYLOAD ROBUSTE COMPATIBLE DTO PLATS ET ENTITÉS IMBRIQUÉES
     const payload = {
       depart: formData.depart,
       destination: formData.destination,
@@ -211,22 +271,26 @@ const Trajets = () => {
       prix: prixParsed,
       statut: formData.statut,
       placesDisponibles: placesParsed,
-      // Format 1: Objets imbriqués
       vehicule: { id: vIdParsed },
       chauffeur: { id: cIdParsed },
-      // Format 2: Propriétés plates au cas où le DTO du backend l'exige
       vehiculeId: vIdParsed,
       chauffeurId: cIdParsed
     };
 
-    if (formData.agenceId) {
+    if (userRole === 'SUPER_ADMIN' && formData.agenceId) {
       const aIdParsed = parseInt(formData.agenceId, 10);
       payload.agence = { id: aIdParsed };
       payload.agenceId = aIdParsed;
+    } else if (userRole !== 'SUPER_ADMIN') {
+      const resolvedAgenceId = getUserAgenceId();
+      if (resolvedAgenceId) {
+        const aIdParsed = parseInt(resolvedAgenceId, 10);
+        payload.agence = { id: aIdParsed };
+        payload.agenceId = aIdParsed;
+      } else {
+        console.warn("⚠️ agenceId manquant localement. Tentative de soumission par JWT.");
+      }
     }
-
-    // Affichage de contrôle pour le développeur dans la console de debug
-    console.log("=== PAYLOAD ENVOYÉ AU SERVEUR ===", payload);
 
     try {
       const token = localStorage.getItem('token');
@@ -244,27 +308,27 @@ const Trajets = () => {
     } catch (err) {
       console.error("Erreur HTTP complète :", err);
       const errorData = err.response?.data;
-      console.log("Détails renvoyés par Spring Boot :", errorData);
-
-      let msg = "Erreur 400 : Le serveur refuse les données transmises.";
+      
+      let msg = "Le serveur refuse les données transmises.";
       
       if (typeof errorData === 'object' && errorData !== null) {
         if (errorData.errors && Array.isArray(errorData.errors)) {
           msg = errorData.errors.map(e => `• ${e.field} : ${e.defaultMessage}`).join('\n');
+        } else if (errorData.message) {
+          msg = errorData.message;
         } else if (!errorData.message && !errorData.error) {
           msg = Object.entries(errorData).map(([k, v]) => `• ${k}: ${v}`).join('\n');
         } else {
-          msg = errorData.message || errorData.error || JSON.stringify(errorData);
+          msg = errorData.error || JSON.stringify(errorData);
         }
       } else if (typeof errorData === 'string') {
         msg = errorData;
       }
-      alert("⚠️ Échec de l'enregistrement :\n\n" + msg);
+      alert("⚠️ Échec de l'enregistrement (Erreur 400) :\n\n" + msg);
     }
   };
 
   const handleEditClick = (trajet) => {
-    // Extrait "HH:mm" depuis la chaîne de date brute
     let heureExtraite = '';
     if (trajet.dateHeureDepart) {
       const chaineDate = trajet.dateHeureDepart;
@@ -311,7 +375,7 @@ const Trajets = () => {
         <div>
           <h1 className="text-2xl md:text-3xl font-black text-slate-800 dark:text-white flex items-center gap-3">
             <div className="p-3 bg-blue-600 rounded-2xl shadow-xl">
-              <FaMapMarkerAlt className="text-white text-xl" />
+              <FaMapMarkerAlt className="text-white text-xl"/>
             </div>
             Planning GariConnect
           </h1>
@@ -325,7 +389,7 @@ const Trajets = () => {
           }}
           className="bg-blue-600 text-white px-6 py-4 rounded-2xl font-black shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-2"
         >
-          <FaPlus /> Nouvelle programmation
+          <FaPlus/> Nouvelle programmation
         </button>
       </div>
 
@@ -334,54 +398,62 @@ const Trajets = () => {
           <div className="col-span-full py-20 text-center">
             <div className="inline-block w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
           </div>
-        ) : trajets.map(t => (
-          <div key={t.id} className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 shadow-sm border border-slate-100 dark:border-slate-800">
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between">
-                <span className="px-4 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full text-[10px] font-black uppercase">
-                   {t.joursSemaine || (t.dateHeureDepart && new Date(t.dateHeureDepart).toLocaleDateString('fr-FR', { weekday: 'long' }))}
-                </span>
-                <span className="text-emerald-600 dark:text-emerald-400 font-black text-sm">{t.prix} FC</span>
-              </div>
+        ) : (
+          trajets
+            .filter(t => {
+              if (userRole === 'SUPER_ADMIN') return true; 
+              if (!userAgenceId) return true; 
+              return t.agence?.id === parseInt(userAgenceId, 10);
+            })
+            .map(t => (
+              <div key={t.id} className="bg-white dark:bg-slate-900 rounded-[2rem] p-6 shadow-sm border border-slate-100 dark:border-slate-800">
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center justify-between">
+                    <span className="px-4 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full text-[10px] font-black uppercase">
+                       {t.joursSemaine || (t.dateHeureDepart && new Date(t.dateHeureDepart).toLocaleDateString('fr-FR', { weekday: 'long' }))}
+                    </span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-black text-sm">{t.prix} FC</span>
+                  </div>
 
-              <div className="flex items-center gap-4">
-                <div className="flex-1">
-                  <p className="text-[9px] font-black text-slate-400 uppercase">Départ</p>
-                  <span className="font-black text-slate-800 dark:text-white uppercase">{t.depart}</span>
-                </div>
-                <div className="flex flex-col items-center">
-                   <span className="text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full mb-1">
-                      {t.dateHeureDepart ? (t.dateHeureDepart.includes('T') ? t.dateHeureDepart.substring(11, 16) : t.dateHeureDepart.substring(11, 16)) : '--:--'}
-                   </span>
-                   <FaArrowRight className="text-slate-300" />
-                </div>
-                <div className="flex-1 text-right">
-                  <p className="text-[9px] font-black text-slate-400 uppercase">Destination</p>
-                  <span className="font-black text-blue-600 dark:text-blue-400 uppercase">{t.destination}</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50 dark:border-slate-800">
-                <div className="flex flex-col gap-1">
-                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
-                      <FaBus className="text-blue-500"/> {t.vehicule ? `${t.vehicule.plaqueImmatriculation || t.vehicule.plaque_immatriculation} (${t.vehicule.marque})` : 'Non assigné'}
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1">
+                      <p className="text-[9px] font-black text-slate-400 uppercase">Départ</p>
+                      <span className="font-black text-slate-800 dark:text-white uppercase">{t.depart}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded w-fit">
-                      <FaUsers /> {t.placesDisponibles} places restantes
+                    <div className="flex flex-col items-center">
+                       <span className="text-xs font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full mb-1">
+                          {t.dateHeureDepart ? (t.dateHeureDepart.includes('T') ? t.dateHeureDepart.substring(11, 16) : t.dateHeureDepart.substring(11, 16)) : '--:--'}
+                       </span>
+                       <FaArrowRight className="text-slate-300"/>
                     </div>
-                </div>
-                <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 self-start">
-                  <FaUserTie className="text-blue-500"/> {t.chauffeur ? `${t.chauffeur.prenom || ''} ${t.chauffeur.nom}` : 'Non assigné'}
-                </div>
-              </div>
+                    <div className="flex-1 text-right">
+                      <p className="text-[9px] font-black text-slate-400 uppercase">Destination</p>
+                      <span className="font-black text-blue-600 dark:text-blue-400 uppercase">{t.destination}</span>
+                    </div>
+                  </div>
 
-              <div className="flex justify-end gap-2 mt-2">
-                <button onClick={() => handleEditClick(t)} className="p-3 bg-slate-100 dark:bg-slate-800 text-blue-500 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><FaEdit/></button>
-                <button onClick={() => handleDelete(t.id)} className="p-3 bg-slate-100 dark:bg-slate-800 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all"><FaTrash/></button>
+                  <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-50 dark:border-slate-800">
+                    <div className="flex flex-col gap-1">
+                         <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400">
+                           <FaBus className="text-blue-500"/> {t.vehicule ? `${t.vehicule.plaqueImmatriculation || t.vehicule.plaque_immatriculation} (${t.vehicule.marque})` : 'Non assigné'}
+                         </div>
+                         <div className="flex items-center gap-2 text-[10px] font-bold text-indigo-500 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20 px-2 py-1 rounded w-fit">
+                           <FaUsers/> {t.placesDisponibles} places restantes
+                         </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 self-start">
+                      <FaUserTie className="text-blue-500"/> {t.chauffeur ? `${t.chauffeur.prenom || ''} ${t.chauffeur.nom}` : 'Non assigné'}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end gap-2 mt-2">
+                    <button onClick={() => handleEditClick(t)} className="p-3 bg-slate-100 dark:bg-slate-800 text-blue-500 rounded-xl hover:bg-blue-600 hover:text-white transition-all"><FaEdit/></button>
+                    <button onClick={() => handleDelete(t.id)} className="p-3 bg-slate-100 dark:bg-slate-800 text-rose-500 rounded-xl hover:bg-rose-500 hover:text-white transition-all"><FaTrash/></button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-        ))}
+            ))
+        )}
       </div>
 
       {showModal && (
@@ -391,16 +463,16 @@ const Trajets = () => {
               <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase">
                 {isEditing ? "Editer le trajet" : "Nouveau trajet"}
               </h3>
-              <button onClick={() => setShowModal(false)} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-400"><FaTimes /></button>
+              <button onClick={() => setShowModal(false)} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-slate-400"><FaTimes/></button>
             </div>
 
             <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               
               {userRole === 'SUPER_ADMIN' && (
                 <div className="col-span-full">
-                  <FormGroup label="Agence propriétaire" icon={<FaUsers />}>
+                  <FormGroup icon={<FaUsers />} label="Agence propriétaire">
                     <select
-                      className="form-input-custom"
+                      className={inputClass}
                       value={formData.agenceId}
                       onChange={(e) => setFormData({ ...formData, agenceId: e.target.value })}
                       required
@@ -414,9 +486,9 @@ const Trajets = () => {
                 </div>
               )}
 
-              <FormGroup label="Jours de la semaine" icon={<FaCalendarAlt />}>
+              <FormGroup icon={<FaCalendarAlt />} label="Jours de la semaine">
                 <select 
-                  className="form-input-custom" 
+                  className={inputClass} 
                   value={formData.joursSemaine} 
                   onChange={(e) => setFormData({...formData, joursSemaine: e.target.value})} 
                   required
@@ -433,13 +505,13 @@ const Trajets = () => {
                 </select>
               </FormGroup>
 
-              <FormGroup label="Heure de départ" icon={<FaClock />}>
-                <input type="time" className="form-input-custom" value={formData.heureDepart} onChange={(e) => setFormData({...formData, heureDepart: e.target.value})} required />
+              <FormGroup icon={<FaClock />} label="Heure de départ">
+                <input type="time" className={inputClass} value={formData.heureDepart} onChange={(e) => setFormData({...formData, heureDepart: e.target.value})} required />
               </FormGroup>
 
-              <FormGroup label="Véhicule (Libre)" icon={<FaBus />}>
+              <FormGroup icon={<FaBus />} label="Véhicule (Libre)">
                 <select 
-                  className="form-input-custom" 
+                  className={inputClass} 
                   value={formData.vehiculeId} 
                   onChange={(e) => handleVehiculeChange(e.target.value)} 
                   required
@@ -462,9 +534,9 @@ const Trajets = () => {
                 </select>
               </FormGroup>
 
-              <FormGroup label="Chauffeur (Libre)" icon={<FaUserTie />}>
+              <FormGroup icon={<FaUserTie />} label="Chauffeur (Libre)">
                 <select 
-                  className="form-input-custom" 
+                  className={inputClass} 
                   value={formData.chauffeurId} 
                   onChange={(e) => setFormData({...formData, chauffeurId: e.target.value})} 
                   required
@@ -487,22 +559,22 @@ const Trajets = () => {
                 </select>
               </FormGroup>
 
-              <FormGroup label="Ville de Départ" icon={<FaMapMarkerAlt />}>
-                <input className="form-input-custom" value={formData.depart} onChange={(e) => setFormData({...formData, depart: e.target.value})} placeholder="Ex: Kinshasa" required />
+              <FormGroup icon={<FaMapMarkerAlt />} label="Ville de Départ">
+                <input className={inputClass} value={formData.depart} onChange={(e) => setFormData({...formData, depart: e.target.value})} placeholder="Ex: Kinshasa" required />
               </FormGroup>
               
-              <FormGroup label="Ville de Destination" icon={<FaArrowRight />}>
-                <input className="form-input-custom" value={formData.destination} onChange={(e) => setFormData({...formData, destination: e.target.value})} placeholder="Ex: Matadi" required />
+              <FormGroup icon={<FaArrowRight />} label="Ville de Destination">
+                <input className={inputClass} value={formData.destination} onChange={(e) => setFormData({...formData, destination: e.target.value})} placeholder="Ex: Matadi" required />
               </FormGroup>
 
-              <FormGroup label="Prix du ticket (FC)" icon={<FaMoneyBillWave />}>
-                <input type="number" className="form-input-custom" value={formData.prix} onChange={(e) => setFormData({...formData, prix: e.target.value})} required />
+              <FormGroup icon={<FaMoneyBillWave />} label="Prix du ticket (FC)">
+                <input type="number" className={inputClass} value={formData.prix} onChange={(e) => setFormData({...formData, prix: e.target.value})} required />
               </FormGroup>
 
-              <FormGroup label="Places Disponibles" icon={<FaUsers />}>
+              <FormGroup icon={<FaUsers />} label="Places Disponibles">
                 <input 
                   type="number" 
-                  className="form-input-custom bg-blue-50/50 dark:bg-blue-900/10" 
+                  className={`${inputClass} bg-blue-50/50 dark:bg-blue-900/10`} 
                   value={formData.placesDisponibles} 
                   onChange={(e) => setFormData({...formData, placesDisponibles: e.target.value})} 
                   placeholder="Se remplit automatiquement..."
@@ -511,47 +583,12 @@ const Trajets = () => {
               </FormGroup>
 
               <button type="submit" className="col-span-full py-4 bg-blue-600 text-white rounded-2xl font-black uppercase shadow-lg hover:bg-blue-700 transition-all flex items-center justify-center gap-3 mt-4">
-                <FaSave /> {isEditing ? "Enregistrer les modifications" : "Valider la programmation"}
+                <FaSave/> {isEditing ? "Enregistrer les modifications" : "Valider la programmation"}
               </button>
             </form>
           </div>
         </div>
       )}
-
-      <style>{`
-        .form-input-custom {
-          width: 100%;
-          padding: 0.875rem 1rem;
-          background: #f8fafc;
-          color: #1e293b;
-          border-radius: 1.25rem;
-          font-weight: 700;
-          font-size: 0.85rem;
-          border: 2px solid transparent;
-          transition: all 0.2s;
-        }
-        .form-input-custom:focus {
-          border-color: #2563eb;
-          background: white;
-          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
-          outline: none;
-        }
-        @media (prefers-color-scheme: dark) {
-          .form-input-custom {
-            background: #1e293b;
-            color: #f1f5f9;
-            border-color: #334155;
-          }
-          .form-input-custom:focus {
-            background: #0f172a;
-            border-color: #3b82f6;
-          }
-          select.form-input-custom option {
-            background: #1e293b;
-            color: #f1f5f9;
-          }
-        }
-      `}</style>
     </div>
   );
 };

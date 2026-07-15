@@ -1,6 +1,7 @@
 package com.example.gariconnectbackend.repository;
 import com.example.gariconnectbackend.model.DemandeRecuperation;
 import com.example.gariconnectbackend.model.StatutRecuperation;
+import com.example.gariconnectbackend.model.User;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 import java.util.List;
@@ -25,4 +26,9 @@ public interface DemandeRecuperationRepository extends JpaRepository<DemandeRecu
 
     // Tu peux aussi ajouter une méthode pour récupérer plusieurs statuts :
     List<DemandeRecuperation> findByStatutIn(List<StatutRecuperation> statuts);
+  // Filtrer les demandes en attente par agence
+  List<DemandeRecuperation> findByStatutAndReservation_Trajet_Agence(StatutRecuperation statut, User agence);
+
+  // Filtrer l'historique (plusieurs statuts) par agence
+  List<DemandeRecuperation> findByStatutInAndReservation_Trajet_Agence(List<StatutRecuperation> statuts, User agence);
 }

@@ -318,65 +318,7 @@ public class PaiementController {
      * 🔥 EXCLUSIF INTERFACE AGENT : Récupérer le calcul dynamique de la facture réelle (Billet + VIP)
      * Cela permet d'afficher les 19000 CDF au guichet de manière fiable !
      */
-    @GetMapping("/details-facture/{reservationId}")
-    @PreAuthorize("hasAnyRole('AGENCE', 'AGENCY_MANAGER', 'AGENCY_ADMIN')")
-    public ResponseEntity<?> obtenirDetailsFacturePourAgent(@PathVariable Long reservationId) {
-        Reservation res = reservationRepository.findById(reservationId)
-                .orElseThrow(() -> new RuntimeException("Réservation introuvable"));
 
-        double prixBillet = (res.getMontantPaye() != null && res.getMontantPaye() > 0)
-                ? res.getMontantPaye()
-                : (res.getTrajet() != null ? res.getTrajet().getPrix() : 0.0);
-
-        double fraisVIP = 0.0;
-
-        Optional<DemandeRecuperation> demandeOpt = demandeRecuperationRepository.findByReservationId(res.getId());
-        if (demandeOpt.isPresent() && demandeOpt.get().getPrixSupplementaire() != null) {
-            fraisVIP = demandeOpt.get().getPrixSupplementaire();
-        }
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("reservationId", res.getId());
-        response.put("codeTicket", res.getCodeTicket());
-        response.put("prixBilletNormal", prixBillet);
-        response.put("fraisRecuperationDomicile", fraisVIP);
-        response.put("montantTotalAEncaisser", (prixBillet + fraisVIP)); // Envoie les 19000
-        response.put("statutActuel", res.getStatut());
-
-        return ResponseEntity.ok(response);
-    }
-
-    /**
-     * 🔥 ACTION DIRECTE ENCAISSEMENT CASH AU GUICHET PAR L'AGENT
-     */
-    @PostMapping("/encaisser-guichet")
-    @PreAuthorize("hasAnyRole('AGENCE', 'AGENCY_MANAGER', 'AGENCY_ADMIN')")
-    public ResponseEntity<?> encaisserAuGuichet(@RequestBody Map<String, Object> payload) {
-        try {
-            Long reservationId = Long.valueOf(payload.get("reservationId").toString());
-            String mode = payload.get("modePaiement") != null ? payload.get("modePaiement").toString() : "CASH";
-            String referenceClient = payload.get("reference") != null ? payload.get("reference").toString() : "CASH-GUICHET";
-
-            Paiement paiementEffectue = paiementService.effectuerPaiement(reservationId, mode, referenceClient);
-
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "Facture complète enregistrée avec succès !",
-                    "montantEncaisse", paiementEffectue.getMontant(),
-                    "statutReservation", "Paye"
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
-        }
-    }
-
-    /**
-     * HISTORIQUE : Obtenir tous les paiements effectués
-     */
-    @GetMapping
-    public ResponseEntity<List<Paiement>> getAllPaiements() {
-        return ResponseEntity.ok(paiementRepository.findAll());
-    }
 
     /**
      * ENCAISSEMENT STANDARD (ANCIENNE MÉTHODE MOBILE MONEY / PROCESS DISTANT)
@@ -447,6 +389,115 @@ public class PaiementController {
 
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("message", "Erreur : " + e.getMessage()));
+        }
+    }
+
+
+    /**
+     * HISTORIQUE : Obtenir tous les paiements effectués avec cloisonnement par agence
+     */
+    @GetMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'AGENCE')")
+    public ResponseEntity<?> getAllPaiements() {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User userConnecte = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Utilisateur introuvable"));
+
+        // Le SUPER_ADMIN a une vision globale
+        if (userConnecte.getRole() == Role.SUPER_ADMIN) {
+            return ResponseEntity.ok(paiementRepository.findAll());
+        }
+
+        // Détermination de l'agence de rattachement
+        User agence = (userConnecte.getRole() == Role.AGENCY_ADMIN)
+                ? userConnecte
+                : userConnecte.getAgenceEmployeur();
+
+        if (agence == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Erreur : Vous n'êtes rattaché à aucune agence."));
+        }
+
+        // On retourne uniquement les paiements liés aux trajets appartenant à cette agence
+        List<Paiement> paiementsAgence = paiementRepository.findByReservation_Trajet_Agence(agence);
+        return ResponseEntity.ok(paiementsAgence);
+    }
+
+    /**
+     * 🔥 EXCLUSIF INTERFACE AGENT : Récupérer le calcul dynamique de la facture réelle avec SÉCURITÉ
+     */
+    @GetMapping("/details-facture/{reservationId}")
+    @PreAuthorize("hasAnyRole('AGENCE', 'AGENCY_MANAGER', 'AGENCY_ADMIN')")
+    public ResponseEntity<?> obtenirDetailsFacturePourAgent(@PathVariable Long reservationId) {
+        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+        User userConnecte = userRepository.findByEmail(email).orElseThrow();
+
+        Reservation res = reservationRepository.findById(reservationId)
+                .orElseThrow(() -> new RuntimeException("Réservation introuvable"));
+
+        // 🛑 SÉCURITÉ : Vérifier que la réservation appartient bien à l'agence de l'agent
+        User agenceAgent = (userConnecte.getRole() == Role.AGENCY_ADMIN) ? userConnecte : userConnecte.getAgenceEmployeur();
+        if (agenceAgent == null || !res.getTrajet().getAgence().getId().equals(agenceAgent.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Accès refusé : Cette réservation n'appartient pas à votre agence."));
+        }
+
+        double prixBillet = (res.getMontantPaye() != null && res.getMontantPaye() > 0)
+                ? res.getMontantPaye()
+                : (res.getTrajet() != null ? res.getTrajet().getPrix() : 0.0);
+
+        double fraisVIP = 0.0;
+
+        Optional<DemandeRecuperation> demandeOpt = demandeRecuperationRepository.findByReservationId(res.getId());
+        if (demandeOpt.isPresent() && demandeOpt.get().getPrixSupplementaire() != null) {
+            fraisVIP = demandeOpt.get().getPrixSupplementaire();
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("reservationId", res.getId());
+        response.put("codeTicket", res.getCodeTicket());
+        response.put("prixBilletNormal", prixBillet);
+        response.put("fraisRecuperationDomicile", fraisVIP);
+        response.put("montantTotalAEncaisser", (prixBillet + fraisVIP));
+        response.put("statutActuel", res.getStatut());
+
+        return ResponseEntity.ok(response);
+    }
+
+    /**
+     * 🔥 ACTION DIRECTE ENCAISSEMENT CASH AU GUICHET PAR L'AGENT AVEC VÉRIFICATION D'APPARTENANCE
+     */
+    @PostMapping("/encaisser-guichet")
+    @PreAuthorize("hasAnyRole('AGENCE', 'AGENCY_MANAGER', 'AGENCY_ADMIN')")
+    public ResponseEntity<?> encaisserAuGuichet(@RequestBody Map<String, Object> payload) {
+        try {
+            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+            User userConnecte = userRepository.findByEmail(email).orElseThrow();
+
+            Long reservationId = Long.valueOf(payload.get("reservationId").toString());
+
+            Reservation res = reservationRepository.findById(reservationId)
+                    .orElseThrow(() -> new RuntimeException("Réservation introuvable"));
+
+            // 🛑 SÉCURITÉ : Empêcher un agent d'encaisser l'argent d'une autre agence
+            User agenceAgent = (userConnecte.getRole() == Role.AGENCY_ADMIN) ? userConnecte : userConnecte.getAgenceEmployeur();
+            if (agenceAgent == null || !res.getTrajet().getAgence().getId().equals(agenceAgent.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body(Map.of("success", false, "message", "Action non autorisée : Cette réservation dépend d'une autre agence."));
+            }
+
+            String mode = payload.get("modePaiement") != null ? payload.get("modePaiement").toString() : "CASH";
+            String referenceClient = payload.get("reference") != null ? payload.get("reference").toString() : "CASH-GUICHET";
+
+            Paiement paiementEffectue = paiementService.effectuerPaiement(reservationId, mode, referenceClient);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Facture complète enregistrée avec succès !",
+                    "montantEncaisse", paiementEffectue.getMontant(),
+                    "statutReservation", "PAYE" // En majuscule pour correspondre à vos standards de statut
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
         }
     }
 }

@@ -40,17 +40,17 @@ public class DemandeRecuperationController {
         }
     }
 
-    // AGENT/ADMIN : Lister toutes les demandes en attente de prix (Cotation)
-    @GetMapping({"/recuperations/en-attente", "/agences/demandes-recuperation/en-attente"})
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
-    public ResponseEntity<?> obtenirDemandesEnAttente() {
-        try {
-            List<DemandeRecuperation> enAttente = recuperationService.obtenirDemandesEnAttente();
-            return ResponseEntity.ok(enAttente);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
-        }
-    }
+//    // AGENT/ADMIN : Lister toutes les demandes en attente de prix (Cotation)
+//    @GetMapping({"/recuperations/en-attente", "/agences/demandes-recuperation/en-attente"})
+//    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
+//    public ResponseEntity<?> obtenirDemandesEnAttente() {
+//        try {
+//            List<DemandeRecuperation> enAttente = recuperationService.obtenirDemandesEnAttente();
+//            return ResponseEntity.ok(enAttente);
+//        } catch (Exception e) {
+//            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+//        }
+//    }
 
     // CLIENT : Faire une demande de ramassage à domicile
     @PostMapping("/recuperations/demande")
@@ -89,17 +89,17 @@ public class DemandeRecuperationController {
     }
 // Dans DemandeRecuperationController.java
 
-    // AGENT/ADMIN : Lister l'historique des demandes traitées
-    @GetMapping({"/recuperations/traitees", "/agences/demandes-recuperation/traitees"})
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
-    public ResponseEntity<?> obtenirHistoriqueTraitees() {
-        try {
-            List<DemandeRecuperation> historique = recuperationService.obtenirHistoriqueTraitees();
-            return ResponseEntity.ok(historique);
-        } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of("message", "Erreur lors du chargement de l'historique : " + e.getMessage()));
-        }
-    }
+//    // AGENT/ADMIN : Lister l'historique des demandes traitées
+//    @GetMapping({"/recuperations/traitees", "/agences/demandes-recuperation/traitees"})
+//    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
+//    public ResponseEntity<?> obtenirHistoriqueTraitees() {
+//        try {
+//            List<DemandeRecuperation> historique = recuperationService.obtenirHistoriqueTraitees();
+//            return ResponseEntity.ok(historique);
+//        } catch (Exception e) {
+//            return ResponseEntity.badRequest().body(Map.of("message", "Erreur lors du chargement de l'historique : " + e.getMessage()));
+//        }
+//    }
     // SIMULATION / WEBHOOK PAIEMENT : Valider après paiement réussi du surplus
     @PutMapping("/recuperations/{id}/valider-paiement")
     public ResponseEntity<?> validerPaiement(@PathVariable Long id) {
@@ -187,6 +187,43 @@ public class DemandeRecuperationController {
             // Si le chauffeur n'a pas le droit, on renvoie une 400 Bad Request lisible pour React, pas un 403 muet
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", e.getMessage()));
+        }
+    }
+    // AGENT/ADMIN : Lister toutes les demandes en attente de prix (Cotation)
+    @GetMapping({"/recuperations/en-attente", "/agences/demandes-recuperation/en-attente"})
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> obtenirDemandesEnAttente() {
+        try {
+            // 1. Récupération des infos de l'utilisateur connecté
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            String email = auth.getName();
+            boolean isSuperAdmin = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().contains("SUPER_ADMIN"));
+
+            // 2. Appel avec les 2 arguments attendus
+            List<DemandeRecuperation> enAttente = recuperationService.obtenirDemandesEnAttente(email, isSuperAdmin);
+            return ResponseEntity.ok(enAttente);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    // AGENT/ADMIN : Lister l'historique des demandes traitées
+    @GetMapping({"/recuperations/traitees", "/agences/demandes-recuperation/traitees"})
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> obtenirHistoriqueTraitees() {
+        try {
+            // 1. Récupération des infos de l'utilisateur connecté
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            String email = auth.getName();
+            boolean isSuperAdmin = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().contains("SUPER_ADMIN"));
+
+            // 2. Appel avec les 2 arguments attendus
+            List<DemandeRecuperation> historique = recuperationService.obtenirHistoriqueTraitees(email, isSuperAdmin);
+            return ResponseEntity.ok(historique);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Erreur lors du chargement de l'historique : " + e.getMessage()));
         }
     }
 }

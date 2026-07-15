@@ -7,7 +7,6 @@ import L from 'leaflet';
 import api from '../../services/api';
 
 // --- CONFIGURATION DES ICONES PERSONNALISÉES ---
-// Icône pour l'Arrêt de bus du Client (Bleu/Vert distinctif)
 const arretIcon = new L.DivIcon({
     html: `<span style="background-color:#3b82f6; width:24px; height:24px; display:block; border-radius:50%; border:3px solid white; box-shadow: 0 0 10px rgba(0,0,0,0.3);"></span>`,
     className: 'custom-client-marker',
@@ -15,7 +14,6 @@ const arretIcon = new L.DivIcon({
     iconAnchor: [12, 12]
 });
 
-// Icône animée pour le Bus en mouvement (Jaune/Orange avec effet de pulsation)
 const busIcon = new L.DivIcon({
     html: `<div style="position:relative;">
             <span style="background-color:#f59e0b; width:28px; height:28px; display:flex; justify-content:center; align-items:center; border-radius:50%; border:2px solid white; box-shadow: 0 0 12px rgba(245,158,11,0.6); font-size:14px;">🚌</span>
@@ -25,12 +23,31 @@ const busIcon = new L.DivIcon({
     iconAnchor: [14, 14]
 });
 
+// NOUVEAU : Icône pour la position EXACTE du client (Point bleu pulsant en direct)
+const clientExactIcon = new L.DivIcon({
+    html: `<div style="position:relative; display:flex; justify-content:center; align-items:center; width:24px; height:24px;">
+            <span style="position:absolute; background-color:#3b82f6; width:100%; height:100%; border-radius:50%; opacity:0.5; animation: pulse 1.5s infinite;"></span>
+            <span style="background-color:#1d4ed8; width:12px; height:12px; display:block; border-radius:50%; border:2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4); z-index:2;"></span>
+           </div>
+           <style>
+             @keyframes pulse {
+               0% { transform: scale(1); opacity: 0.7; }
+               100% { transform: scale(2.5); opacity: 0; }
+             }
+           </style>`,
+    className: 'custom-live-client-marker',
+    iconSize: [24, 24],
+    iconAnchor: [12, 12]
+});
+
 const ApplicationClient = () => {
-    // États pour la réservation et le suivi
     const [reservation, setReservation] = useState(null);
     const [arretMontage, setArretMontage] = useState(null);
-    const [busPosition, setBusPosition] = useState(null); // Reçu via API / Futures WebSockets
+    const [busPosition, setBusPosition] = useState(null);
     const [detailsBus, setDetailsBus] = useState(null);
+    
+    // NOUVEAU : État pour stocker la vraie localisation en temps réel du client
+    const [positionExacteClient, setPositionExacteClient] = useState(null); 
     
     const [loading, setLoading] = useState(true);
     const [notification, setNotification] = useState("");
@@ -38,19 +55,16 @@ const ApplicationClient = () => {
 
     const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
 
-    // 1. Charger la réservation active du client connecté
     const chargerReservationActive = async () => {
         try {
-            // Utilisation de l'instance centralisée api à la place d'axios
             const response = await api.get('/reservations/active', { headers });
             const data = response.data;
             
             if (data) {
                 setReservation(data);
-                setArretMontage(data.arretMontage); // L'arrêt où le client attend
-                setDetailsBus(data.vehicule);       // Le bus assigné
+                setArretMontage(data.arretMontage);
+                setDetailsBus(data.vehicule);
                 
-                // Simuler ou lier les coordonnées initiales du bus
                 if (data.courseId) {
                     chargerPositionBus(data.courseId, data.arretMontage);
                 }
@@ -62,25 +76,20 @@ const ApplicationClient = () => {
         }
     };
 
-    // 2. Charger la position GPS actuelle du bus lié à la course
     const chargerPositionBus = async (courseId, arretClient) => {
         try {
-            // Utilisation de l'instance centralisée api à la place d'axios
             const response = await api.get(`/courses/${courseId}/position`, { headers })
                 .catch(() => ({
-                    // Fallback de démonstration si l'endpoint n'est pas encore prêt
                     data: { latitude: arretClient.latitude - 0.015, longitude: arretClient.longitude - 0.012 }
                 }));
 
             const posBus = response.data;
             setBusPosition([posBus.latitude, posBus.longitude]);
 
-            // Calcul de la distance à vol d'oiseau entre le bus et l'arrêt du client (Formule de Haversine)
             if (arretClient) {
                 const dist = calculerDistance(posBus.latitude, posBus.longitude, arretClient.latitude, arretClient.longitude);
                 setDistanceRestante(dist.toFixed(1));
 
-                // 🚨 SYSTÈME DE NOTIFICATION AUTOMATIQUE (Spécification 3.C)
                 if (dist <= 0.5 && reservation?.statut === "EN_ATTENTE_A_L_ARRET") {
                     setNotification(`📢 Votre bus approche de l'${arretClient.nom}, préparez-vous à embarquer !`);
                 } else if (reservation?.statut === "A_BORD") {
@@ -94,9 +103,8 @@ const ApplicationClient = () => {
         }
     };
 
-    // Formule mathématique pour calculer la distance entre deux coordonnées GPS (en Km)
     const calculerDistance = (lat1, lon1, lat2, lon2) => {
-        const R = 6371; // Rayon de la terre
+        const R = 6371;
         const dLat = (lat2 - lat1) * Math.PI / 180;
         const dLon = (lon2 - lon1) * Math.PI / 180;
         const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
@@ -106,7 +114,7 @@ const ApplicationClient = () => {
         return R * c;
     };
 
-    // Rafraîchissement automatique toutes les 5 secondes (Trame pour l'intégration WebSocket à venir)
+    // Rafraîchissement automatique du bus
     useEffect(() => {
         chargerReservationActive();
         const interval = setInterval(() => {
@@ -117,12 +125,27 @@ const ApplicationClient = () => {
         return () => clearInterval(interval);
     }, [reservation?.id]);
 
+    // NOUVEAU : Suivi de la position exacte du client via le GPS de l'appareil
+    useEffect(() => {
+        let watchId;
+        if (navigator.geolocation) {
+            watchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    setPositionExacteClient([pos.coords.latitude, pos.coords.longitude]);
+                },
+                (err) => console.warn("Suivi GPS client indisponible:", err),
+                { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+            );
+        }
+        return () => {
+            if (watchId) navigator.geolocation.clearWatch(watchId);
+        };
+    }, []);
+
     if (loading) return <div style={styles.loader}>📱 Chargement de votre espace passager GariConnect...</div>;
 
     return (
         <div style={styles.container}>
-            
-            {/* 🔔 BARRE DE NOTIFICATION DYNAMIQUE (Fixée en haut) */}
             {notification && (
                 <div style={{
                     ...styles.notificationBanner,
@@ -132,7 +155,6 @@ const ApplicationClient = () => {
                 </div>
             )}
 
-            {/* 🗺️ CARTE DE SUIVI EN DIRECT */}
             <div style={styles.mapWrapper}>
                 {arretMontage ? (
                     <MapContainer 
@@ -145,7 +167,7 @@ const ApplicationClient = () => {
                             attribution='&copy; OpenStreetMap contributors'
                         />
                         
-                        {/* Marqueur 1 : L'arrêt de montée du client */}
+                        {/* Marqueur de l'arrêt prévu */}
                         <Marker position={[arretMontage.latitude, arretMontage.longitude]} icon={arretIcon}>
                             <Popup>
                                 <strong>Votre arrêt de montée :</strong><br />
@@ -153,7 +175,14 @@ const ApplicationClient = () => {
                             </Popup>
                         </Marker>
 
-                        {/* Marqueur 2 : Le bus en approche (si position disponible) */}
+                        {/* NOUVEAU : Marqueur de la vraie position actuelle du client */}
+                        {positionExacteClient && (
+                            <Marker position={positionExacteClient} icon={clientExactIcon}>
+                                <Popup><strong>Vous êtes ici (Position exacte)</strong></Popup>
+                            </Marker>
+                        )}
+
+                        {/* Marqueur du bus */}
                         {busPosition && (
                             <>
                                 <Marker position={busPosition} icon={busIcon}>
@@ -163,7 +192,6 @@ const ApplicationClient = () => {
                                     </Popup>
                                 </Marker>
 
-                                {/* Ligne visuelle reliant le bus à l'arrêt du client */}
                                 <Polyline 
                                     positions={[busPosition, [arretMontage.latitude, arretMontage.longitude]]} 
                                     pathOptions={{ color: '#6366f1', weight: 3, dashArray: '5, 10' }} 
@@ -178,7 +206,6 @@ const ApplicationClient = () => {
                 )}
             </div>
 
-            {/* 🎫 CARTE DE TICKET / BOARDING PASS (PANNEAU DU BAS - Mobile First) */}
             <div style={styles.ticketPanel}>
                 {!reservation ? (
                     <div style={styles.noReservation}>
@@ -238,7 +265,6 @@ const ApplicationClient = () => {
     );
 };
 
-// Styles optimisés pour smartphone (Mobile-First / Responsive Web Design)
 const styles = {
     container: { display: 'flex', flexDirection: 'column', width: '100vw', height: '100vh', overflow: 'hidden', fontFamily: '"Segoe UI", sans-serif', backgroundColor: '#f8fafc' },
     loader: { display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', fontSize: '16px', fontWeight: 'bold', color: '#1e3a8a' },

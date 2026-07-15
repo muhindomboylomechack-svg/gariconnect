@@ -245,11 +245,6 @@ public class ReservationController {
         }
     }
 
-    @GetMapping
-    public ResponseEntity<List<Reservation>> listerToutes() {
-        return ResponseEntity.ok(reservationService.listerToutes());
-    }
-
     @GetMapping("/{id}")
     public ResponseEntity<?> recupererParId(@PathVariable Long id) {
         try {
@@ -399,5 +394,34 @@ public class ReservationController {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("error", "Erreur : " + e.getMessage()));
         }
     }
+    @GetMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> listerToutes() {
+        try {
+            // 1. Récupération de l'utilisateur actuellement connecté
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            String email = auth.getName();
 
+            User user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+
+            // 2. Vérification des privilèges
+            boolean isSuperAdmin = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().contains("SUPER_ADMIN"));
+
+            // 3. Logique de filtrage
+            if (isSuperAdmin) {
+                // 🟢 Le Super Admin a une vue globale sur toutes les réservations du système
+                return ResponseEntity.ok(reservationService.listerToutes());
+            } else {
+                // 🔵 Une agence (ou son employé) ne voit que les réservations liées à SES propres trajets
+                User agence = (user.getAgenceEmployeur() != null) ? user.getAgenceEmployeur() : user;
+                List<Reservation> reservationsAgence = reservationRepository.findByTrajet_Agence(agence);
+                return ResponseEntity.ok(reservationsAgence);
+            }
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("error", "Erreur lors de la récupération des réservations : " + e.getMessage()));
+        }
+    }
 }

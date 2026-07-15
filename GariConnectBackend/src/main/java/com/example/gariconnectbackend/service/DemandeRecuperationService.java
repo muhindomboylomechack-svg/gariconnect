@@ -147,13 +147,13 @@ public class DemandeRecuperationService {
 
         return demandeRepository.save(demande);
     }
-
-    /**
-     * 4. CONSULTATION AGENT : Récupérer les demandes en attente de prix (pour le guichet)
-     */
-    public List<DemandeRecuperation> obtenirDemandesEnAttente() {
-        return demandeRepository.findByStatut(StatutRecuperation.EN_ATTENTE_COTATION);
-    }
+//
+//    /**
+//     * 4. CONSULTATION AGENT : Récupérer les demandes en attente de prix (pour le guichet)
+//     */
+//    public List<DemandeRecuperation> obtenirDemandesEnAttente() {
+//        return demandeRepository.findByStatut(StatutRecuperation.EN_ATTENTE_COTATION);
+//    }
 
     /**
      * 🛠️ Méthode utilitaire privée pour créer et sauvegarder une notification rapidement
@@ -169,21 +169,21 @@ public class DemandeRecuperationService {
             notificationRepository.save(notification);
         }
     }
-
-
-    /**
-     * CONSULTATION AGENT : Récupérer l'historique des demandes traitées (Cotées ou Payées)
-     */
-    public List<DemandeRecuperation> obtenirHistoriqueTraitees() {
-        // On récupère les demandes qui ne sont plus en attente de cotation
-        return demandeRepository.findByStatutIn(
-                java.util.Arrays.asList(
-                        StatutRecuperation.EN_ATTENTE_PAIEMENT,
-                        StatutRecuperation.PAYE,
-                        StatutRecuperation.EFFECTUE
-                )
-        );
-    }
+//
+//
+//    /**
+//     * CONSULTATION AGENT : Récupérer l'historique des demandes traitées (Cotées ou Payées)
+//     */
+//    public List<DemandeRecuperation> obtenirHistoriqueTraitees() {
+//        // On récupère les demandes qui ne sont plus en attente de cotation
+//        return demandeRepository.findByStatutIn(
+//                java.util.Arrays.asList(
+//                        StatutRecuperation.EN_ATTENTE_PAIEMENT,
+//                        StatutRecuperation.PAYE,
+//                        StatutRecuperation.EFFECTUE
+//                )
+//        );
+//    }
     /**
      * ❌ SUPPRIMER/ANNULER UNE DEMANDE DE RÉCUPÉRATION
      */
@@ -280,6 +280,42 @@ public class DemandeRecuperationService {
 
             return data;
         }).collect(Collectors.toList());
+    }
+
+    /**
+     * CONSULTATION AGENT : Récupérer les demandes en attente de prix (pour le guichet)
+     */
+    public List<DemandeRecuperation> obtenirDemandesEnAttente(String emailConnecte, boolean isSuperAdmin) {
+        if (isSuperAdmin) {
+            return demandeRepository.findByStatut(StatutRecuperation.EN_ATTENTE_COTATION);
+        } else {
+            User user = userRepository.findByEmail(emailConnecte)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+            User agence = (user.getAgenceEmployeur() != null) ? user.getAgenceEmployeur() : user;
+
+            return demandeRepository.findByStatutAndReservation_Trajet_Agence(StatutRecuperation.EN_ATTENTE_COTATION, agence);
+        }
+    }
+
+    /**
+     * CONSULTATION AGENT : Récupérer l'historique des demandes traitées (Cotées ou Payées)
+     */
+    public List<DemandeRecuperation> obtenirHistoriqueTraitees(String emailConnecte, boolean isSuperAdmin) {
+        List<StatutRecuperation> statutsTraites = java.util.Arrays.asList(
+                StatutRecuperation.EN_ATTENTE_PAIEMENT,
+                StatutRecuperation.PAYE,
+                StatutRecuperation.EFFECTUE
+        );
+
+        if (isSuperAdmin) {
+            return demandeRepository.findByStatutIn(statutsTraites);
+        } else {
+            User user = userRepository.findByEmail(emailConnecte)
+                    .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+            User agence = (user.getAgenceEmployeur() != null) ? user.getAgenceEmployeur() : user;
+
+            return demandeRepository.findByStatutInAndReservation_Trajet_Agence(statutsTraites, agence);
+        }
     }
 }
 

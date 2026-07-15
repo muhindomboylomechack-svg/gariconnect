@@ -1,10 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import { FaMapMarkerAlt, FaCrosshairs, FaSpinner, FaExclamationTriangle, FaCheckCircle } from 'react-icons/fa';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// 🛠️ Correction de l'icône par défaut de Leaflet sous React
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
@@ -16,7 +15,6 @@ let DefaultIcon = L.icon({
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// 🗺️ Sous-composant pour intercepter les clics sur la carte
 const MapClickHandler = ({ onMapClick }) => {
   useMapEvents({
     click: (e) => {
@@ -26,7 +24,6 @@ const MapClickHandler = ({ onMapClick }) => {
   return null;
 };
 
-// 🔄 Sous-composant pour recentrer la carte
 const MapRecenter = ({ lat, lng }) => {
   const map = useMap();
   
@@ -47,16 +44,32 @@ const FormulaireRecuperation = ({ onDataChange }) => {
   const [adresseTextuelle, setAdresseTextuelle] = useState('');
   const [loadingGps, setLoadingGps] = useState(false);
   const [errorGps, setErrorGps] = useState(null);
-  
-  // Position visuelle initiale de la carte (Goma)
   const [position, setPosition] = useState({ lat: -1.658, lng: 29.220 }); 
-  
-  // 🔥 SÉCURITÉ CRUCIALE : Reste 'false' tant que le client n'a pas cliqué, dragué ou activé son GPS
   const [isLocationExplicit, setIsLocationExplicit] = useState(false);
 
   const [isDarkModeActive, setIsDarkModeActive] = useState(
     document.documentElement.classList.contains('dark') || localStorage.getItem('client-theme') === 'dark'
   );
+
+  // NOUVEAU : Utilisation de références (refs) pour synchroniser la donnée texte et GPS sans perte de données
+  const adresseRef = useRef(adresseTextuelle);
+  const positionRef = useRef(position);
+  const explicitRef = useRef(isLocationExplicit);
+
+  useEffect(() => { adresseRef.current = adresseTextuelle; }, [adresseTextuelle]);
+  useEffect(() => { positionRef.current = position; }, [position]);
+  useEffect(() => { explicitRef.current = isLocationExplicit; }, [isLocationExplicit]);
+
+  // Fonction centralisée pour envoyer les données propres au parent 
+  const notifierParent = (lat, lng, explicit, text) => {
+    if (onDataChange) {
+      onDataChange({
+        latitudeClient: explicit ? lat : 0.0,
+        longitudeClient: explicit ? lng : 0.0,
+        adresseTextuelle: text
+      });
+    }
+  };
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -64,13 +77,11 @@ const FormulaireRecuperation = ({ onDataChange }) => {
     });
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     
-    // Tente un chargement GPS discret au démarrage
     selectionnerGpsAutomatique(true);
 
     return () => observer.disconnect();
   }, []);
 
-  // 📍 Détection GPS Native
   const selectionnerGpsAutomatique = (isAutoLoad = false) => {
     if (!navigator.geolocation) {
       if (!isAutoLoad) setErrorGps("La géolocalisation n'est pas supportée par votre navigateur.");
@@ -79,70 +90,51 @@ const FormulaireRecuperation = ({ onDataChange }) => {
     setLoadingGps(true);
     setErrorGps(null);
 
+    // NOUVEAU : Forcer la haute précision pour avoir l'emplacement exact
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const currentLat = pos.coords.latitude;
         const currentLng = pos.coords.longitude;
         
         setPosition({ lat: currentLat, lng: currentLng });
-        setIsLocationExplicit(true); // Emplacement réel validé
+        setIsLocationExplicit(true); 
         setLoadingGps(false);
         
-        if (onDataChange) {
-          onDataChange({
-            latitudeClient: currentLat,
-            longitudeClient: currentLng,
-            adresseTextuelle: adresseTextuelle
-          });
-        }
+        // Envoi au parent avec l'adresse textuelle courante (ne l'efface plus)
+        notifierParent(currentLat, currentLng, true, adresseRef.current);
       },
       (err) => {
         setLoadingGps(false);
         if (!isAutoLoad) {
-          setErrorGps("Permission refusée. Ajustez manuellement le marqueur bleu sur la carte.");
+          setErrorGps("Permission refusée ou signal GPS faible. Ajustez manuellement le marqueur bleu.");
         }
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
 
-  // Déplacement manuel du curseur
   const handleMarkerDragEnd = (e) => {
     const marker = e.target;
     if (marker != null) {
       const newPos = marker.getLatLng();
       setPosition({ lat: newPos.lat, lng: newPos.lng });
-      setIsLocationExplicit(true); // L'utilisateur l'a déplacé, la donnée devient légitime
+      setIsLocationExplicit(true);
       
-      if (onDataChange) {
-        onDataChange({
-          latitudeClient: newPos.lat,
-          longitudeClient: newPos.lng,
-          adresseTextuelle: adresseTextuelle
-        });
-      }
+      notifierParent(newPos.lat, newPos.lng, true, adresseRef.current);
     }
   };
 
-  // Modification de l'adresse écrite
   const handleAdresseChange = (e) => {
     const newValue = e.target.value;
     setAdresseTextuelle(newValue);
     
-    if (onDataChange) {
-      onDataChange({
-        // 🔥 SI NON EXPLICITE : On envoie 0.0. Le serveur accepte la requête (car non null) et le chauffeur sait qu'il doit ignorer le GPS.
-        latitudeClient: isLocationExplicit ? position.lat : 0.0,
-        longitudeClient: isLocationExplicit ? position.lng : 0.0,
-        adresseTextuelle: newValue
-      });
-    }
+    // Garde en mémoire la géolocalisation exacte tout en tapant le lieu de récupération
+    notifierParent(positionRef.current.lat, positionRef.current.lng, explicitRef.current, newValue);
   };
 
   return (
     <div className="w-full flex flex-col gap-4 p-1 sm:p-2">
       
-      {/* Bannière de statut de précision de localisation */}
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-emerald-50/40 dark:bg-slate-950/40 p-4 rounded-2xl border border-emerald-500/10 dark:border-slate-800">
         <div className="flex items-center gap-2">
           {isLocationExplicit ? (
@@ -175,7 +167,6 @@ const FormulaireRecuperation = ({ onDataChange }) => {
         </p>
       )}
 
-      {/* CARTE LEAFLET */}
       <div className="h-[220px] sm:h-[260px] w-full rounded-2xl overflow-hidden border-2 border-emerald-500/10 dark:border-slate-800 z-0 relative shadow-inner">
         <div className={`w-full h-full ${isDarkModeActive ? 'dark-leaflet-tiles' : ''}`}>
           <MapContainer 
@@ -195,9 +186,7 @@ const FormulaireRecuperation = ({ onDataChange }) => {
             <MapClickHandler onMapClick={(lat, lng) => { 
                 setPosition({ lat, lng }); 
                 setIsLocationExplicit(true);
-                if (onDataChange) {
-                    onDataChange({ latitudeClient: lat, longitudeClient: lng, adresseTextuelle: adresseTextuelle });
-                }
+                notifierParent(lat, lng, true, adresseRef.current);
             }} />
             
             <MapRecenter lat={position.lat} lng={position.lng} />
@@ -205,7 +194,6 @@ const FormulaireRecuperation = ({ onDataChange }) => {
         </div>
       </div>
 
-      {/* CHAMP ADRESSE TEXTUELLE */}
       <div className="flex flex-col gap-1.5 mt-1">
         <label className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-500 tracking-widest ml-1">
           Adresse détaillée / Repère *
@@ -228,10 +216,8 @@ const FormulaireRecuperation = ({ onDataChange }) => {
           background: #020617 !important;
         }
       `}</style>
-
     </div>
   );
 };
 
 export default FormulaireRecuperation;
-

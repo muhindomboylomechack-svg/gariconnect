@@ -10,7 +10,7 @@ const GestionFinance = () => {
     const [showForm, setShowForm] = useState(false);
     const [nomAgence, setNomAgence] = useState("Chargement..."); 
     
-    // Par défaut on affiche le mois en cours
+    // Par défaut on affiche le mois en cours (Format: YYYY-MM)
     const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
     const [searchTerm, setSearchTerm] = useState('');
 
@@ -18,7 +18,7 @@ const GestionFinance = () => {
         date: new Date().toISOString().split('T')[0],
         typeTransaction: 'ENTREE',
         description: '',
-        devise: 'CDF', // Défaut mis à CDF pour correspondre aux paiements automatiques
+        devise: 'CDF', // CDF par défaut
         montant: '',
         entite: '',
         documentRef: ''
@@ -35,21 +35,38 @@ const GestionFinance = () => {
             const response = await api.get('/agences/profile', {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            setNomAgence(response.data.nom); 
+            setNomAgence(response.data.nom || "AGENCE"); 
         } catch (error) {
+            console.error("Erreur lors de la récupération du profil agence", error);
             setNomAgence("AGENCE"); 
         }
     };
 
-    // 🛡️ CORRECTION : Fonction pour forcer la date au bon format (résout le bug du tableau vide)
+    // 🛡️ Formatage ultra-robuste des dates provenant du backend
     const formatBackendDate = (dateVal) => {
         if (!dateVal) return "";
-        // Si Spring Boot renvoie la date sous forme de tableau [2026, 6, 16]
+        
+        // Cas 1 : Spring Boot renvoie la date sous forme de tableau [2026, 7, 15]
         if (Array.isArray(dateVal)) {
             const [year, month, day] = dateVal;
             return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         }
-        return String(dateVal); // Si c'est déjà une chaîne "2026-06-16"
+        
+        // Cas 2 : Chaîne ISO (ex: "2026-07-15T18:20:33.000Z")
+        if (typeof dateVal === 'string') {
+            if (dateVal.includes('T')) {
+                return dateVal.split('T')[0];
+            }
+            // Cas 3 : Format DD-MM-YYYY ou DD/MM/YYYY -> Conversion en YYYY-MM-DD
+            const regex = /^(\d{2})[-/](\d{2})[-/](\d{4})$/;
+            const match = dateVal.match(regex);
+            if (match) {
+                const [, day, month, year] = match;
+                return `${year}-${month}-${day}`;
+            }
+            return dateVal; // Déjà au format YYYY-MM-DD
+        }
+        return String(dateVal);
     };
 
     const fetchLivreDeCaisse = async () => {
@@ -60,24 +77,28 @@ const GestionFinance = () => {
                 headers: { Authorization: `Bearer ${token}` }
             });
             
+            // Sécurité : s'assurer que les données reçues forment bien un tableau
+            const dataReceived = Array.isArray(response.data) ? response.data : [];
+            
             // Formatage immédiat à la réception
-            const formattedData = response.data.map(t => ({
+            const formattedData = dataReceived.map(t => ({
                 ...t,
                 date: formatBackendDate(t.date)
             }));
             
             setTransactions(formattedData);
         } catch (error) {
-            console.error("Erreur de chargement", error);
+            console.error("Erreur de chargement du livre de caisse", error);
+            setTransactions([]);
         } finally {
             setLoading(false);
         }
     };
 
-    // 🔥 CORRECTION : Filtrage Dynamique Amélioré
+    // 🔍 Filtrage Dynamique local
     const filteredTransactions = useMemo(() => {
         return transactions.filter(t => {
-            // Si selectedMonth est vide (bouton "Tout voir"), on laisse passer
+            // Si selectedMonth est vide (bouton "Tout voir"), on laisse passer toutes les dates
             const matchMonth = selectedMonth ? (t.date && t.date.startsWith(selectedMonth)) : true;
             
             const searchLower = searchTerm.toLowerCase();
@@ -89,25 +110,41 @@ const GestionFinance = () => {
         });
     }, [transactions, selectedMonth, searchTerm]);
 
-    const globalBalance = transactions.length > 0 
-        ? transactions[transactions.length - 1] 
-        : { soldeUSD: 0, soldeCDF: 0 };
+    // 💰 Solde de la période filtrée (Le dernier solde calculé de la liste filtrée)
+    const periodBalance = useMemo(() => {
+        if (filteredTransactions.length === 0) {
+            return { soldeUSD: 0, soldeCDF: 0 };
+        }
+        return filteredTransactions[filteredTransactions.length - 1];
+    }, [filteredTransactions]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         try {
             const token = localStorage.getItem('token');
-            const payload = { ...formData, montant: parseFloat(formData.montant) };
+            const payload = { 
+                ...formData, 
+                montant: parseFloat(formData.montant) 
+            };
             
             await api.post('/finance/transactions', payload, {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
             setShowForm(false);
-            setFormData({ ...formData, description: '', montant: '', entite: '', documentRef: '' });
-            fetchLivreDeCaisse(); 
+            // Réinitialiser les champs tout en gardant la date et la devise pour l'UX
+            setFormData({ 
+                ...formData, 
+                description: '', 
+                montant: '', 
+                entite: '', 
+                documentRef: '' 
+            });
+            fetchLivreDeCaisse(); // Recharger le tableau
         } catch (error) {
-            alert("Erreur lors de l'enregistrement manuel.");
+            console.error("Erreur lors de la création de la transaction", error);
+            const errorMsg = error.response?.data?.message || error.message || "Erreur inconnue";
+            alert(`Erreur lors de l'enregistrement manuel : ${errorMsg}`);
         }
     };
 
@@ -152,11 +189,10 @@ const GestionFinance = () => {
                             type="month" 
                             value={selectedMonth} 
                             onChange={(e) => setSelectedMonth(e.target.value)} 
-                            className="border-none outline-none text-sm font-bold text-slate-700 dark:text-slate-200 bg-transparent w-full" 
+                            className="border-none outline-none text-sm font-bold text-slate-700 dark:text-slate-200 bg-transparent w-full cursor-pointer" 
                         />
-                        {/* Nouveau bouton pour annuler le filtre de date et tout voir */}
                         {selectedMonth && (
-                            <button onClick={() => setSelectedMonth('')} className="text-rose-500 hover:text-rose-700" title="Voir tout l'historique">
+                            <button onClick={() => setSelectedMonth('')} className="text-rose-500 hover:text-rose-700 transition-colors" title="Voir tout l'historique">
                                 <CalendarX2 size={16} />
                             </button>
                         )}
@@ -175,7 +211,7 @@ const GestionFinance = () => {
                 <form onSubmit={handleSubmit} className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-xl border border-slate-100 dark:border-slate-800 mb-8 animate-in slide-in-from-top-4 no-print">
                     <div className="flex justify-between items-center mb-6">
                         <h3 className="text-lg font-black text-slate-800 dark:text-white uppercase">Nouvelle Opération</h3>
-                        <button type="button" onClick={() => setShowForm(false)} className="text-slate-400 hover:text-rose-500"><X size={24} /></button>
+                        <button type="button" onClick={() => setShowForm(false)} className="text-slate-400 hover:text-rose-500 transition-colors"><X size={24} /></button>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div className="space-y-2">
@@ -184,7 +220,7 @@ const GestionFinance = () => {
                         </div>
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-slate-500 uppercase">Type</label>
-                            <select value={formData.typeTransaction} onChange={(e) => setFormData({...formData, typeTransaction: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-medium font-bold">
+                            <select value={formData.typeTransaction} onChange={(e) => setFormData({...formData, typeTransaction: e.target.value})} className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 font-bold">
                                 <option value="ENTREE" className="text-emerald-600 font-bold">Entrée (+)</option>
                                 <option value="SORTIE" className="text-rose-600 font-bold">Sortie (-)</option>
                             </select>
@@ -214,7 +250,7 @@ const GestionFinance = () => {
                 </form>
             )}
 
-            {/* Tableau principal (Écran) */}
+            {/* Tableau principal */}
             <div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-xl border border-slate-100 dark:border-slate-800 overflow-hidden printable-area">
                 <div className="print-only">
                     <div className="print-header">
@@ -261,41 +297,53 @@ const GestionFinance = () => {
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                             {loading ? (
-                                <tr><td colSpan="7" className="text-center py-10 text-slate-400 font-bold">Chargement des données financières...</td></tr>
-                            ) : filteredTransactions.length === 0 ? (
-                                <tr><td colSpan="7" className="text-center py-10 text-slate-400 font-bold">Aucune transaction pour cette période.</td></tr>
-                            ) : filteredTransactions.map((t, idx) => (
-                                <tr key={idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors text-sm">
-                                    <td className="px-6 py-4 font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">{t.date}</td>
-                                    <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-200">
-                                        {t.description}
-                                        {t.documentRef && <span className="block text-[10px] text-slate-400 font-mono mt-1">Ref: {t.documentRef}</span>}
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-medium">{t.entite || '-'}</td>
-                                    <td className="px-6 py-4 text-right font-black text-emerald-600 dark:text-emerald-400">
-                                        {t.entree && t.entree > 0 ? `${t.entree.toLocaleString('fr-FR')} ${t.devise || ''}` : '-'}
-                                    </td>
-                                    <td className="px-6 py-4 text-right font-black text-rose-500 dark:text-rose-400">
-                                        {t.sortie && t.sortie > 0 ? `${t.sortie.toLocaleString('fr-FR')} ${t.devise || ''}` : '-'}
-                                    </td>
-                                    <td className="px-6 py-4 text-right font-black text-slate-800 dark:text-slate-100 bg-slate-50/50 dark:bg-slate-950/30">
-                                        ${t.soldeUSD?.toLocaleString('fr-FR') || '0'}
-                                    </td>
-                                    <td className="px-6 py-4 text-right font-black text-slate-800 dark:text-slate-100 bg-slate-50/50 dark:bg-slate-950/30">
-                                        {t.soldeCDF?.toLocaleString('fr-FR') || '0'} FC
+                                <tr>
+                                    <td colSpan="7" className="text-center py-10 text-slate-400 font-bold">
+                                        Chargement des données financières...
                                     </td>
                                 </tr>
-                            ))}
-                            {/* Ligne des Totaux Globaux */}
+                            ) : filteredTransactions.length === 0 ? (
+                                <tr>
+                                    <td colSpan="7" className="text-center py-10 text-slate-400 font-bold">
+                                        Aucune transaction pour cette période.
+                                    </td>
+                                </tr>
+                            ) : (
+                                filteredTransactions.map((t, idx) => (
+                                    <tr key={t.id || idx} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors text-sm">
+                                        <td className="px-6 py-4 font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">{t.date}</td>
+                                        <td className="px-6 py-4 font-bold text-slate-700 dark:text-slate-200">
+                                            {t.description}
+                                            {t.documentRef && <span className="block text-[10px] text-slate-400 font-mono mt-1">Ref: {t.documentRef}</span>}
+                                        </td>
+                                        <td className="px-6 py-4 text-slate-600 dark:text-slate-300 font-medium">{t.entite || '-'}</td>
+                                        <td className="px-6 py-4 text-right font-black text-emerald-600 dark:text-emerald-400">
+                                            {t.entree && t.entree > 0 ? `${t.entree.toLocaleString('fr-FR')} ${t.devise || ''}` : '-'}
+                                        </td>
+                                        <td className="px-6 py-4 text-right font-black text-rose-500 dark:text-rose-400">
+                                            {t.sortie && t.sortie > 0 ? `${t.sortie.toLocaleString('fr-FR')} ${t.devise || ''}` : '-'}
+                                        </td>
+                                        <td className="px-6 py-4 text-right font-black text-slate-800 dark:text-slate-100 bg-slate-50/50 dark:bg-slate-950/30">
+                                            ${t.soldeUSD?.toLocaleString('fr-FR') || '0'}
+                                        </td>
+                                        <td className="px-6 py-4 text-right font-black text-slate-800 dark:text-slate-100 bg-slate-50/50 dark:bg-slate-950/30">
+                                            {t.soldeCDF?.toLocaleString('fr-FR') || '0'} FC
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                            {/* Ligne des Totaux de la Période */}
                             <tr className="bg-blue-50 dark:bg-blue-900/20 border-t-2 border-blue-200 dark:border-blue-800">
-                                <td colSpan="3" className="px-6 py-4 font-black uppercase text-blue-800 dark:text-blue-300 text-right">Solde Final de la Période</td>
+                                <td colSpan="3" className="px-6 py-4 font-black uppercase text-blue-800 dark:text-blue-300 text-right">
+                                    Solde Final de la Période
+                                </td>
                                 <td className="px-6 py-4 text-right font-black text-emerald-600"></td>
                                 <td className="px-6 py-4 text-right font-black text-rose-600"></td>
                                 <td className="px-6 py-4 text-right font-black text-blue-700 dark:text-blue-300 text-base">
-                                    ${globalBalance?.soldeUSD?.toLocaleString('fr-FR') || '0'}
+                                    ${periodBalance?.soldeUSD?.toLocaleString('fr-FR') || '0'}
                                 </td>
                                 <td className="px-6 py-4 text-right font-black text-blue-700 dark:text-blue-300 text-base">
-                                    {globalBalance?.soldeCDF?.toLocaleString('fr-FR') || '0'} FC
+                                    {periodBalance?.soldeCDF?.toLocaleString('fr-FR') || '0'} FC
                                 </td>
                             </tr>
                         </tbody>

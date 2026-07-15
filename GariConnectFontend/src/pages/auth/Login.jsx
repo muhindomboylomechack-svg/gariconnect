@@ -29,9 +29,11 @@ const Login = () => {
       const userData = response.data;
 
       if (userData.token) {
-        // Nettoyage de l'ancien état d'agence et d'avatar avant reconnexion
+        // 🟢 NETTOYAGE SÉCURISÉ : On vide proprement les anciennes données de session
         localStorage.removeItem('nomAgence');
-        localStorage.removeItem('userAvatar'); // 🔥 Nettoyage initial sécurité
+        localStorage.removeItem('userAvatar'); 
+        localStorage.removeItem('agenceId');   // Évite les conflits si un autre manager s'était connecté avant
+        localStorage.removeItem('agence_id');
         
         login(userData);
 
@@ -42,6 +44,13 @@ const Login = () => {
 
         if (userData.nomAgence || userData.agenceNom) {
             localStorage.setItem('nomAgence', userData.nomAgence || userData.agenceNom);
+        }
+
+        // 🟢 SÉCURISATION DU FILTRAGE PAR AGENCE :
+        // On extrait l'ID de l'agence peu importe le format retourné par ton DTO Spring Boot
+        const agenceId = userData.agenceId || userData.agence?.id || userData.agence_id;
+        if (agenceId) {
+          localStorage.setItem('agenceId', agenceId.toString());
         }
 
         // 🟢 MODIFICATION MAJEURE : Sauvegarde du mot de passe saisi pour l'Option Rapide
@@ -125,7 +134,7 @@ const Login = () => {
             className="z-10 mt-10 p-4 bg-black/20 backdrop-blur-md rounded-2xl border border-white/10"
           >
             <p className="text-sm font-medium opacity-90 leading-relaxed">
-              "Gégrez votre flotte, vos chauffeurs et vos finances sur une seule et même plateforme sécurisée."
+              "Gérez votre flotte, vos chauffeurs et vos finances sur une seule et même plateforme sécurisée."
             </p>
           </motion.div>
         </div>

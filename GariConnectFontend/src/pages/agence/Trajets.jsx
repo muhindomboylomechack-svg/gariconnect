@@ -259,10 +259,9 @@ const Trajets = () => {
     const cIdParsed = parseInt(formData.chauffeurId, 10);
 
     const dateCible = obtenirDatePourJourSemaine(formData.joursSemaine);
-    
-    // 🟢 CORRECTION ICI : Remplacement du "T" par un espace (" ")
     const dateFormattee = `${dateCible} ${formData.heureDepart}:00`;
 
+    // 🟢 CORRECTION : On ne garde que les objets imbriqués pour ne pas faire crasher Spring Boot
     const payload = {
       depart: formData.depart,
       destination: formData.destination,
@@ -272,21 +271,18 @@ const Trajets = () => {
       statut: formData.statut,
       placesDisponibles: placesParsed,
       vehicule: { id: vIdParsed },
-      chauffeur: { id: cIdParsed },
-      vehiculeId: vIdParsed,
-      chauffeurId: cIdParsed
+      chauffeur: { id: cIdParsed }
     };
 
+    // 🟢 CORRECTION : On envoie { agence: { id: X } } au lieu du champ plat agenceId
     if (userRole === 'SUPER_ADMIN' && formData.agenceId) {
       const aIdParsed = parseInt(formData.agenceId, 10);
       payload.agence = { id: aIdParsed };
-      payload.agenceId = aIdParsed;
     } else if (userRole !== 'SUPER_ADMIN') {
       const resolvedAgenceId = getUserAgenceId();
       if (resolvedAgenceId) {
         const aIdParsed = parseInt(resolvedAgenceId, 10);
         payload.agence = { id: aIdParsed };
-        payload.agenceId = aIdParsed;
       } else {
         console.warn("⚠️ agenceId manquant localement. Tentative de soumission par JWT.");
       }
@@ -310,7 +306,6 @@ const Trajets = () => {
       const errorData = err.response?.data;
       
       let msg = "Le serveur refuse les données transmises.";
-      
       if (typeof errorData === 'object' && errorData !== null) {
         if (errorData.errors && Array.isArray(errorData.errors)) {
           msg = errorData.errors.map(e => `• ${e.field} : ${e.defaultMessage}`).join('\n');

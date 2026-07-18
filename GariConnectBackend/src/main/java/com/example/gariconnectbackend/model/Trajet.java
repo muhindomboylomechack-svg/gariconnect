@@ -9,13 +9,14 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 @Entity
 @Table(name = "trajets")
 @Getter
 @Setter
 @NoArgsConstructor  // 🔥 Indispensable pour Jackson (génère le constructeur vide proprement)
 @AllArgsConstructor // Génère le constructeur avec tous les arguments
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class Trajet {
 
     @Id

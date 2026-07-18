@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Polyline } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { FaCrosshairs, FaBus, FaMapMarkerAlt } from 'react-icons/fa';
 
 // Import de l'instance API centralisée
 import api from '../../services/api';
@@ -23,7 +24,7 @@ const busIcon = new L.DivIcon({
     iconAnchor: [14, 14]
 });
 
-// NOUVEAU : Icône pour la position EXACTE du client (Point bleu pulsant en direct)
+// Icône pour la position EXACTE du client (Point bleu pulsant en direct)
 const clientExactIcon = new L.DivIcon({
     html: `<div style="position:relative; display:flex; justify-content:center; align-items:center; width:24px; height:24px;">
             <span style="position:absolute; background-color:#3b82f6; width:100%; height:100%; border-radius:50%; opacity:0.5; animation: pulse 1.5s infinite;"></span>
@@ -40,18 +41,33 @@ const clientExactIcon = new L.DivIcon({
     iconAnchor: [12, 12]
 });
 
+// 🟢 NOUVEAU : Sous-composant pour contrôler dynamiquement les mouvements de la carte
+const MapController = ({ targetPosition }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (targetPosition) {
+            map.setView(targetPosition, map.getZoom() || 15, { animate: true });
+        }
+    }, [targetPosition, map]);
+    return null;
+};
+
 const ApplicationClient = () => {
     const [reservation, setReservation] = useState(null);
     const [arretMontage, setArretMontage] = useState(null);
     const [busPosition, setBusPosition] = useState(null);
     const [detailsBus, setDetailsBus] = useState(null);
     
-    // NOUVEAU : État pour stocker la vraie localisation en temps réel du client
+    // État pour stocker la vraie localisation en temps réel du client
     const [positionExacteClient, setPositionExacteClient] = useState(null); 
+    // 🟢 NOUVEAU : État pour forcer le recentrage de la carte vers une cible
+    const [mapTarget, setMapTarget] = useState(null);
     
     const [loading, setLoading] = useState(true);
     const [notification, setNotification] = useState("");
     const [distanceRestante, setDistanceRestante] = useState(null);
+    // 🟢 NOUVEAU : Distance réelle calculée en direct entre le GPS du client et le Bus
+    const [distanceReelleClient, setDistanceReelleClient] = useState(null);
 
     const headers = { Authorization: `Bearer ${localStorage.getItem('token')}` };
 
@@ -125,22 +141,35 @@ const ApplicationClient = () => {
         return () => clearInterval(interval);
     }, [reservation?.id]);
 
-    // NOUVEAU : Suivi de la position exacte du client via le GPS de l'appareil
+    // Suivi constant et précis de la position de l'appareil
     useEffect(() => {
         let watchId;
         if (navigator.geolocation) {
             watchId = navigator.geolocation.watchPosition(
                 (pos) => {
-                    setPositionExacteClient([pos.coords.latitude, pos.coords.longitude]);
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    setPositionExacteClient([lat, lng]);
                 },
                 (err) => console.warn("Suivi GPS client indisponible:", err),
-                { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+                { enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 }
             );
         }
         return () => {
             if (watchId) navigator.geolocation.clearWatch(watchId);
         };
     }, []);
+
+    // 🟢 NOUVEAU : Met à jour la distance réelle entre la position physique du client et le bus
+    useEffect(() => {
+        if (busPosition && positionExacteClient) {
+            const distReelle = calculerDistance(
+                busPosition[0], busPosition[1],
+                positionExacteClient[0], positionExacteClient[1]
+            );
+            setDistanceReelleClient(distReelle.toFixed(2));
+        }
+    }, [busPosition, positionExacteClient]);
 
     if (loading) return <div style={styles.loader}>📱 Chargement de votre espace passager GariConnect...</div>;
 
@@ -157,48 +186,79 @@ const ApplicationClient = () => {
 
             <div style={styles.mapWrapper}>
                 {arretMontage ? (
-                    <MapContainer 
-                        center={[arretMontage.latitude, arretMontage.longitude]} 
-                        zoom={14} 
-                        style={{ height: '100%', width: '100%' }}
-                    >
-                        <TileLayer
-                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                            attribution='&copy; OpenStreetMap contributors'
-                        />
+                    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
                         
-                        {/* Marqueur de l'arrêt prévu */}
-                        <Marker position={[arretMontage.latitude, arretMontage.longitude]} icon={arretIcon}>
-                            <Popup>
-                                <strong>Votre arrêt de montée :</strong><br />
-                                {arretMontage.nom}
-                            </Popup>
-                        </Marker>
+                        {/* 🟢 NOUVEAU : Panneau de commandes flottantes de positionnement */}
+                        <div style={styles.floatingControls}>
+                            <button
+                                type="button"
+                                disabled={!positionExacteClient}
+                                onClick={() => positionExacteClient && setMapTarget(positionExacteClient)}
+                                style={{ ...styles.floatingBtn, opacity: positionExacteClient ? 1 : 0.6 }}
+                                title="Recentrer sur ma position physique exacte"
+                            >
+                                <FaCrosshairs style={{ color: '#1d4ed8' }} /> <span>Moi</span>
+                            </button>
+                            <button
+                                type="button"
+                                disabled={!busPosition}
+                                onClick={() => busPosition && setMapTarget(busPosition)}
+                                style={{ ...styles.floatingBtn, opacity: busPosition ? 1 : 0.6 }}
+                                title="Recentrer sur le bus"
+                            >
+                                <FaBus style={{ color: '#f59e0b' }} /> <span>Bus</span>
+                            </button>
+                        </div>
 
-                        {/* NOUVEAU : Marqueur de la vraie position actuelle du client */}
-                        {positionExacteClient && (
-                            <Marker position={positionExacteClient} icon={clientExactIcon}>
-                                <Popup><strong>Vous êtes ici (Position exacte)</strong></Popup>
+                        <MapContainer 
+                            center={[arretMontage.latitude, arretMontage.longitude]} 
+                            zoom={14} 
+                            style={{ height: '100%', width: '100%' }}
+                        >
+                            <TileLayer
+                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                attribution='&copy; OpenStreetMap contributors'
+                            />
+                            
+                            {/* Écouteur de recentrage dynamique */}
+                            <MapController targetPosition={mapTarget} />
+                            
+                            {/* Marqueur de l'arrêt prévu */}
+                            <Marker position={[arretMontage.latitude, arretMontage.longitude]} icon={arretIcon}>
+                                <Popup>
+                                    <strong>Point de prise en charge :</strong><br />
+                                    {arretMontage.nom}
+                                </Popup>
                             </Marker>
-                        )}
 
-                        {/* Marqueur du bus */}
-                        {busPosition && (
-                            <>
-                                <Marker position={busPosition} icon={busIcon}>
+                            {/* Marqueur de la vraie position actuelle du client */}
+                            {positionExacteClient && (
+                                <Marker position={positionExacteClient} icon={clientExactIcon}>
                                     <Popup>
-                                        <strong>Bus {detailsBus?.immatriculation || ""}</strong><br />
-                                        Chauffeur : {detailsBus?.chauffeurNom || "Assigné"}
+                                        <strong>Vous êtes ici</strong> <br />
+                                        {distanceReelleClient && `À ${distanceReelleClient} km en direct du bus.`}
                                     </Popup>
                                 </Marker>
+                            )}
 
-                                <Polyline 
-                                    positions={[busPosition, [arretMontage.latitude, arretMontage.longitude]]} 
-                                    pathOptions={{ color: '#6366f1', weight: 3, dashArray: '5, 10' }} 
-                                />
-                            </>
-                        )}
-                    </MapContainer>
+                            {/* Marqueur du bus */}
+                            {busPosition && (
+                                <>
+                                    <Marker position={busPosition} icon={busIcon}>
+                                        <Popup>
+                                            <strong>Bus {detailsBus?.immatriculation || ""}</strong><br />
+                                            Chauffeur : {detailsBus?.chauffeurNom || "Assigné"}
+                                        </Popup>
+                                    </Marker>
+
+                                    <Polyline 
+                                        positions={[busPosition, [arretMontage.latitude, arretMontage.longitude]]} 
+                                        pathOptions={{ color: '#6366f1', weight: 3, dashArray: '5, 10' }} 
+                                    />
+                                </>
+                            )}
+                        </MapContainer>
+                    </div>
                 ) : (
                     <div style={styles.noMapState}>
                         <p>Sélectionnez un trajet ou effectuez une réservation pour activer la carte de suivi.</p>
@@ -223,8 +283,15 @@ const ApplicationClient = () => {
                                 <h3 style={styles.ticketTitle}>Votre Ticket GariConnect</h3>
                             </div>
                             <div style={styles.etaContainer}>
-                                <p style={styles.etaLabel}>Distance estimée</p>
+                                <p style={styles.etaLabel}>Distance au point de rendez-vous</p>
                                 <p style={styles.etaValue}>{distanceRestante ? `${distanceRestante} km` : '--'}</p>
+                                
+                                {/* 🟢 NOUVEAU : Indicateur de proximité GPS Réelle */}
+                                {distanceReelleClient && (
+                                    <p style={{ fontSize: '10px', color: '#10b981', margin: '2px 0 0 0', fontWeight: 'bold' }}>
+                                        📍 Écart réel bus-vous : {distanceReelleClient} km
+                                    </p>
+                                )}
                             </div>
                         </div>
 
@@ -237,6 +304,7 @@ const ApplicationClient = () => {
                                 </div>
                             </div>
 
+                            {/* 🟢 CORRECTION : Remplacement de marginVertical par marginTop et marginBottom */}
                             <div style={styles.routeLine}></div>
 
                             <div style={styles.routeStep}>
@@ -271,6 +339,11 @@ const styles = {
     notificationBanner: { position: 'absolute', top: '12px', left: '12px', right: '12px', zIndex: 1000, color: 'white', padding: '12px 16px', borderRadius: '12px', fontWeight: '600', fontSize: '13px', textAlign: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.15)', transition: 'all 0.3s ease' },
     mapWrapper: { flex: 1, width: '100%', height: '100%' },
     noMapState: { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#64748b', padding: '20px', textAlign: 'center' },
+    
+    // 🟢 NOUVEAU : Styles pour les boutons flottants sur la carte
+    floatingControls: { position: 'absolute', top: '75px', right: '12px', zIndex: 1000, display: 'flex', flexDirection: 'column', gap: '8px' },
+    floatingBtn: { display: 'flex', alignItems: 'center', gap: '6px', backgroundColor: 'white', border: '1px solid #cbd5e1', padding: '8px 12px', borderRadius: '10px', fontSize: '11px', fontWeight: 'bold', color: '#334155', cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.1)', transition: 'all 0.2s' },
+    
     ticketPanel: { backgroundColor: '#ffffff', borderTopLeftRadius: '24px', borderTopRightRadius: '24px', padding: '20px 24px', boxShadow: '0 -8px 24px rgba(15,23,42,0.08)', zIndex: 999 },
     noReservation: { textAlign: 'center', padding: '10px 0' },
     primaryButton: { width: '100%', backgroundColor: '#1e40af', color: 'white', border: 'none', padding: '12px', borderRadius: '12px', fontWeight: '600', fontSize: '14px', marginTop: '12px', cursor: 'pointer' },
@@ -283,7 +356,7 @@ const styles = {
         return { backgroundColor: bg, color: color, fontSize: '11px', fontWeight: 'bold', padding: '4px 10px', borderRadius: '20px', textTransform: 'uppercase' };
     },
     etaContainer: { textAlign: 'right' },
-    etaLabel: { fontSize: '11px', color: '#64748b', margin: 0 },
+    etaLabel: { fontSize: '10px', color: '#64748b', margin: 0 },
     etaValue: { fontSize: '18px', fontWeight: '800', color: '#1e40af', margin: 0 },
     ticketBody: { backgroundColor: '#f8fafc', padding: '16px', borderRadius: '16px', marginBottom: '16px' },
     routeStep: { display: 'flex', gap: '12px', alignItems: 'center' },
@@ -291,7 +364,10 @@ const styles = {
     stepDotRed: { width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#ef4444' },
     stepLabel: { fontSize: '11px', color: '#94a3b8', margin: 0 },
     stepValue: { fontSize: '14px', fontWeight: '600', color: '#334155', margin: 0 },
-    routeLine: { width: '2px', height: '16px', backgroundColor: '#cbd5e1', marginLeft: '4px', marginVertical: '4px' },
+    
+    // 🟢 CORRECTION : Éviter marginVertical qui est ignoré ou casse le rendu Web
+    routeLine: { width: '2px', height: '16px', backgroundColor: '#cbd5e1', marginLeft: '4px', marginTop: '4px', marginBottom: '4px' },
+    
     ticketFooter: { display: 'flex', justifyContent: 'space-between', borderTop: '1px dashed #e2e8f0', paddingTop: '12px' },
     footerInfo: { display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '12px', color: '#64748b' }
 };

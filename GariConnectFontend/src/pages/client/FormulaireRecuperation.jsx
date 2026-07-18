@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
-import { FaMapMarkerAlt, FaCrosshairs, FaSpinner, FaExclamationTriangle, FaCheckCircle } from 'react-icons/fa';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
+import { FaCrosshairs, FaSpinner, FaExclamationTriangle, FaCheckCircle } from 'react-icons/fa';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
+// Icône par défaut pour le point de RAMASSAGE (Déplaçable)
 let DefaultIcon = L.icon({
   iconUrl: markerIcon,
   shadowUrl: markerShadow,
@@ -14,6 +15,23 @@ let DefaultIcon = L.icon({
   iconAnchor: [12, 41]
 });
 L.Marker.prototype.options.icon = DefaultIcon;
+
+// Icône pour la POSITION PHYSIQUE EXACTE du client (Point bleu pulsant)
+const clientExactIcon = new L.DivIcon({
+  html: `<div style="position:relative; display:flex; justify-content:center; align-items:center; width:24px; height:24px;">
+          <span style="position:absolute; background-color:#3b82f6; width:100%; height:100%; border-radius:50%; opacity:0.5; animation: pulse 1.5s infinite;"></span>
+          <span style="background-color:#1d4ed8; width:12px; height:12px; display:block; border-radius:50%; border:2px solid white; box-shadow: 0 0 4px rgba(0,0,0,0.4); z-index:2;"></span>
+         </div>
+         <style>
+           @keyframes pulse {
+             0% { transform: scale(1); opacity: 0.7; }
+             100% { transform: scale(2.5); opacity: 0; }
+           }
+         </style>`,
+  className: 'custom-live-client-marker',
+  iconSize: [24, 24],
+  iconAnchor: [12, 12]
+});
 
 const MapClickHandler = ({ onMapClick }) => {
   useMapEvents({
@@ -44,23 +62,25 @@ const FormulaireRecuperation = ({ onDataChange }) => {
   const [adresseTextuelle, setAdresseTextuelle] = useState('');
   const [loadingGps, setLoadingGps] = useState(false);
   const [errorGps, setErrorGps] = useState(null);
-  const [position, setPosition] = useState({ lat: -1.658, lng: 29.220 }); 
+  
+  // Position du point de ramassage (Coordonnées par défaut ajustées)
+  const [positionRamassage, setPositionRamassage] = useState({ lat: 0.4936, lng: 29.4697 }); 
+  // Vraie position GPS en direct du téléphone
+  const [deviceLocation, setDeviceLocation] = useState(null);
+  
   const [isLocationExplicit, setIsLocationExplicit] = useState(false);
-
   const [isDarkModeActive, setIsDarkModeActive] = useState(
     document.documentElement.classList.contains('dark') || localStorage.getItem('client-theme') === 'dark'
   );
 
-  // NOUVEAU : Utilisation de références (refs) pour synchroniser la donnée texte et GPS sans perte de données
   const adresseRef = useRef(adresseTextuelle);
-  const positionRef = useRef(position);
+  const positionRef = useRef(positionRamassage);
   const explicitRef = useRef(isLocationExplicit);
 
   useEffect(() => { adresseRef.current = adresseTextuelle; }, [adresseTextuelle]);
-  useEffect(() => { positionRef.current = position; }, [position]);
+  useEffect(() => { positionRef.current = positionRamassage; }, [positionRamassage]);
   useEffect(() => { explicitRef.current = isLocationExplicit; }, [isLocationExplicit]);
 
-  // Fonction centralisée pour envoyer les données propres au parent 
   const notifierParent = (lat, lng, explicit, text) => {
     if (onDataChange) {
       onDataChange({
@@ -70,6 +90,25 @@ const FormulaireRecuperation = ({ onDataChange }) => {
       });
     }
   };
+
+  // Suivi continu de la position exacte du client
+  useEffect(() => {
+    let watchId;
+    if (navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setDeviceLocation({ lat, lng });
+        },
+        (err) => console.warn("Suivi GPS indisponible :", err),
+        { enableHighAccuracy: true, maximumAge: 2000, timeout: 10000 }
+      );
+    }
+    return () => {
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+    };
+  }, []);
 
   useEffect(() => {
     const observer = new MutationObserver(() => {
@@ -83,33 +122,44 @@ const FormulaireRecuperation = ({ onDataChange }) => {
   }, []);
 
   const selectionnerGpsAutomatique = (isAutoLoad = false) => {
-    if (!navigator.geolocation) {
-      if (!isAutoLoad) setErrorGps("La géolocalisation n'est pas supportée par votre navigateur.");
-      return;
-    }
     setLoadingGps(true);
     setErrorGps(null);
 
-    // NOUVEAU : Forcer la haute précision pour avoir l'emplacement exact
+    // Si on a déjà traqué l'appareil, on l'utilise immédiatement
+    if (deviceLocation) {
+        setPositionRamassage(deviceLocation);
+        setIsLocationExplicit(true);
+        setLoadingGps(false);
+        notifierParent(deviceLocation.lat, deviceLocation.lng, true, adresseRef.current);
+        return;
+    }
+
+    if (!navigator.geolocation) {
+      if (!isAutoLoad) setErrorGps("La géolocalisation n'est pas supportée par votre navigateur.");
+      setLoadingGps(false);
+      return;
+    }
+
+    // Fallback si le watchPosition n'a pas encore répondu
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const currentLat = pos.coords.latitude;
         const currentLng = pos.coords.longitude;
         
-        setPosition({ lat: currentLat, lng: currentLng });
+        setPositionRamassage({ lat: currentLat, lng: currentLng });
+        setDeviceLocation({ lat: currentLat, lng: currentLng });
         setIsLocationExplicit(true); 
         setLoadingGps(false);
         
-        // Envoi au parent avec l'adresse textuelle courante (ne l'efface plus)
         notifierParent(currentLat, currentLng, true, adresseRef.current);
       },
       (err) => {
         setLoadingGps(false);
         if (!isAutoLoad) {
-          setErrorGps("Permission refusée ou signal GPS faible. Ajustez manuellement le marqueur bleu.");
+          setErrorGps("Signal GPS faible. Déplacez manuellement le marqueur bleu à votre position.");
         }
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   };
 
@@ -117,7 +167,7 @@ const FormulaireRecuperation = ({ onDataChange }) => {
     const marker = e.target;
     if (marker != null) {
       const newPos = marker.getLatLng();
-      setPosition({ lat: newPos.lat, lng: newPos.lng });
+      setPositionRamassage({ lat: newPos.lat, lng: newPos.lng });
       setIsLocationExplicit(true);
       
       notifierParent(newPos.lat, newPos.lng, true, adresseRef.current);
@@ -127,8 +177,6 @@ const FormulaireRecuperation = ({ onDataChange }) => {
   const handleAdresseChange = (e) => {
     const newValue = e.target.value;
     setAdresseTextuelle(newValue);
-    
-    // Garde en mémoire la géolocalisation exacte tout en tapant le lieu de récupération
     notifierParent(positionRef.current.lat, positionRef.current.lng, explicitRef.current, newValue);
   };
 
@@ -140,12 +188,12 @@ const FormulaireRecuperation = ({ onDataChange }) => {
           {isLocationExplicit ? (
             <div className="flex items-center gap-2 text-xs font-bold text-emerald-600 dark:text-emerald-400">
               <FaCheckCircle className="text-sm shrink-0" />
-              <span>Emplacement de ramassage configuré par carte/GPS</span>
+              <span>Lieu de ramassage validé sur la carte</span>
             </div>
           ) : (
             <div className="flex items-center gap-2 text-xs font-bold text-amber-600 dark:text-amber-500">
               <FaExclamationTriangle className="text-sm shrink-0 animate-pulse" />
-              <span>Le chauffeur se guidera uniquement via votre adresse écrite</span>
+              <span>Adresse imprécise, déplacez le marqueur</span>
             </div>
           )}
         </div>
@@ -157,7 +205,7 @@ const FormulaireRecuperation = ({ onDataChange }) => {
           className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black tracking-widest uppercase rounded-xl transition-all disabled:opacity-50 shadow-sm active:scale-95"
         >
           {loadingGps ? <FaSpinner className="animate-spin text-sm" /> : <FaCrosshairs className="text-sm" />}
-          <span>{loadingGps ? "Recherche..." : "Utiliser mon GPS"}</span>
+          <span>{loadingGps ? "Recherche..." : "Me localiser"}</span>
         </button>
       </div>
 
@@ -170,26 +218,36 @@ const FormulaireRecuperation = ({ onDataChange }) => {
       <div className="h-[220px] sm:h-[260px] w-full rounded-2xl overflow-hidden border-2 border-emerald-500/10 dark:border-slate-800 z-0 relative shadow-inner">
         <div className={`w-full h-full ${isDarkModeActive ? 'dark-leaflet-tiles' : ''}`}>
           <MapContainer 
-            center={[position.lat, position.lng]} 
-            zoom={15} 
+            center={[positionRamassage.lat, positionRamassage.lng]} 
+            zoom={16} 
             style={{ height: '100%', width: '100%' }} 
             zoomControl={window.innerWidth > 640}
           >
             <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
             
+            {/* VRAIE POSITION DU CLIENT (Point bleu qui traque le téléphone) */}
+            {deviceLocation && (
+              <Marker position={[deviceLocation.lat, deviceLocation.lng]} icon={clientExactIcon}>
+                <Popup className="text-xs font-bold">Votre position physique actuelle</Popup>
+              </Marker>
+            )}
+
+            {/* MARQUEUR DE RAMASSAGE (Déplaçable par le client) */}
             <Marker 
-              position={[position.lat, position.lng]} 
+              position={[positionRamassage.lat, positionRamassage.lng]} 
               draggable={true} 
               eventHandlers={{ dragend: handleMarkerDragEnd }} 
-            />
+            >
+              <Popup className="text-xs font-bold">Point de ramassage désiré</Popup>
+            </Marker>
             
             <MapClickHandler onMapClick={(lat, lng) => { 
-                setPosition({ lat, lng }); 
+                setPositionRamassage({ lat, lng }); 
                 setIsLocationExplicit(true);
                 notifierParent(lat, lng, true, adresseRef.current);
             }} />
             
-            <MapRecenter lat={position.lat} lng={position.lng} />
+            <MapRecenter lat={positionRamassage.lat} lng={positionRamassage.lng} />
           </MapContainer>
         </div>
       </div>

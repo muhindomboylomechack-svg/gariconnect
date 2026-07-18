@@ -100,7 +100,7 @@ const AgenceLayout = () => {
         { to: "/agence/ramassages-vip", label: "Ramassages VIP", icon: "📍" },
         // 🛠️ MISE À JOUR DU CHEMIN DE NAVIGATION POUR COÏNCIDER AVEC LA ROUTE DE RÉGULATION
         { to: "/agence/regulation", label: "Gestion des arrêts", icon: "🚏" }, 
-        { to: "/agence/flotte", label: "Ma Flotte", icon: "🚌" },
+        { to: "/agence/flotte", label: "Mes Vehicules", icon: "🚌" },
         { to: "/agence/trajets", label: "Gestion Trajets", icon: "🛣️" },
         { to: "/agence/reservations", label: "Réservations", icon: "🎟️" },
         { to: "/agence/courriers", label: "Gestion Courriers", icon: "📦" },

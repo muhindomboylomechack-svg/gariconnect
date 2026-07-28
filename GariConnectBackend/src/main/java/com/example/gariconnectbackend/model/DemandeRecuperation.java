@@ -114,4 +114,5 @@ public class DemandeRecuperation {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private StatutRecuperation statut;
+
 }

@@ -1,7 +1,18 @@
 import React from 'react';
-import { FaBan, FaHeadset, FaSignOutAlt } from 'react-icons/fa';
+import { FaBan, FaHeadset, FaSignOutAlt, FaWhatsapp, FaEnvelope } from 'react-icons/fa';
 
 const EcranBloque = () => {
+  // Définition des variables de contact
+  const phoneAdmin = "243993726409";
+  const defaultMessage = encodeURIComponent(
+    "Bonjour Super Admin, mon compte GariConnect a été suspendu. Pouvez-vous m'aider s'il vous plaît ?"
+  );
+  
+  // Liens d'API
+  const whatsappUrl = `https://wa.me/${phoneAdmin}?text=${defaultMessage}`;
+  const emailAdmin = "support@gariconnect.com";
+  const mailtoUrl = `mailto:${emailAdmin}?subject=Demande%20de%20d%C3%A9blocage%20de%20compte&body=${defaultMessage}`;
+
   const handleLogout = () => {
     localStorage.clear(); // Vide le token et les infos de session
     window.location.href = '/login'; // Redirection stricte
@@ -43,19 +54,32 @@ const EcranBloque = () => {
         </div>
 
         {/* Actions de secours */}
-        <div className="flex flex-col gap-2 pt-2">
+        <div className="flex flex-col gap-3 pt-2">
+          
+          {/* 🟢 BOUTON WHATSAPP (Principal) */}
           <a 
-            href="mailto:support@gariconnect.com" 
+            href={whatsappUrl} 
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center justify-center gap-2 w-full py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-emerald-900/20"
+          >
+            <FaWhatsapp size={16} /> Contacter via WhatsApp
+          </a>
+
+          {/* ✉️ BOUTON EMAIL (Secondaire) */}
+          <a 
+            href={mailtoUrl} 
             className="flex items-center justify-center gap-2 w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-lg"
           >
-            <FaHeadset size={12} /> Contacter le Super Admin
+            <FaEnvelope size={14} /> Contacter par Email
           </a>
           
+          {/* 🚪 BOUTON DÉCONNEXION */}
           <button 
             onClick={handleLogout}
-            className="flex items-center justify-center gap-2 w-full py-3 bg-slate-800/50 hover:bg-slate-800 text-slate-300 rounded-xl font-bold text-xs uppercase tracking-wider border border-slate-800 transition-all"
+            className="flex items-center justify-center gap-2 w-full py-3 mt-1 bg-slate-800/50 hover:bg-slate-800 text-slate-300 rounded-xl font-bold text-xs uppercase tracking-wider border border-slate-700 transition-all"
           >
-            <FaSignOutAlt size={12} /> Se déconnecter
+            <FaSignOutAlt size={14} /> Se déconnecter / Retour
           </button>
         </div>
       </div>

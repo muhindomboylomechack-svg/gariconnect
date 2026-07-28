@@ -129,4 +129,23 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
     long countByStatutPaiement(@Param("statut") String statut);
 
     long countByStatutIn(List<String> paye);
+
+    List<Reservation> findByClient_Id(Long id);
+
+
+    // Pour l'agence / admin : continue de tout voir sans filtrer
+    List<Reservation> findByTrajetAgenceId(Long agenceId);
+
+    // 1. Si vous utilisez la convention de nommage Spring Data JPA :
+    List<Reservation> findByClientIdAndMasquePourClientFalse(Long clientId);
+
+    // 2. OU si vous utilisez une requête @Query (JPQL/HQL) explicite :
+    @Query("SELECT r FROM Reservation r WHERE r.client.id = :clientId AND (r.masquePourClient = false OR r.masquePourClient IS NULL) ORDER BY r.id DESC")
+    List<Reservation> findHistoriqueClientActif(@Param("clientId") Long clientId);
+
+    // 🟢 Filtrer les réservations de l'utilisateur qui ne sont PAS masquées
+    @Query("SELECT r FROM Reservation r WHERE r.client.email = :email " +
+            "AND (r.masquePourClient = false OR r.masquePourClient IS NULL) " +
+            "ORDER BY r.dateReservation DESC")
+    List<Reservation> findByClientEmailAndNotMasque(@Param("email") String email);
 }

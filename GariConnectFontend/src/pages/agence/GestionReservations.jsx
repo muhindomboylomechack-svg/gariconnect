@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   FaTicketAlt, FaSearch, FaPrint, FaCheckCircle, 
-  FaClock, FaBus, FaUserFriends, FaPhoneAlt, FaTrash
+  FaClock, FaBus, FaUserFriends, FaPhoneAlt, FaTrash, FaTimesCircle
 } from 'react-icons/fa';
 import api from '../../services/api';
 import { QRCodeCanvas } from 'qrcode.react';
@@ -36,7 +36,7 @@ const GestionReservations = () => {
 
       setReservations(rawData);
 
-      // 🚀 CORRECTION : Mise à jour du nom de l'agence directement ici pour éviter le re-render en boucle
+      // Mise à jour du nom de l'agence
       const agenceStockee = localStorage.getItem('nomAgence');
       if (agenceStockee && agenceStockee !== "null" && agenceStockee !== "undefined") {
         setNomAgence(agenceStockee.toUpperCase());
@@ -54,7 +54,7 @@ const GestionReservations = () => {
     }
   };
 
-  // 2. Un seul useEffect strictement vide [] pour le montage du composant
+  // 2. Un seul useEffect pour le montage
   useEffect(() => {
     fetchReservations();
     
@@ -62,7 +62,7 @@ const GestionReservations = () => {
     window.addEventListener('afterprint', handleAfterPrint);
     
     return () => window.removeEventListener('afterprint', handleAfterPrint);
-  }, []); // <--- Verrouillage absolu de la boucle infinie
+  }, []);
 
   const handleDelete = async (id) => {
     if (!window.confirm("⚠️ Supprimer définitivement cette réservation ?")) return;
@@ -86,11 +86,18 @@ const GestionReservations = () => {
     });
   }, [reservations, searchTerm]);
 
-  const stats = useMemo(() => ({
-    total: reservations.length,
-    confirmees: reservations.filter(r => r?.statut === 'CONFIRMEE' || r?.statut === 'PAYE').length,
-    enAttente: reservations.filter(r => r?.statut !== 'CONFIRMEE' && r?.statut !== 'PAYE').length,
-  }), [reservations]);
+  // 🔥 3. Calcul précis des statistiques incluant les réservations ANNULÉES
+  const stats = useMemo(() => {
+    const isPaye = (st) => ['CONFIRMEE', 'PAYE', 'VALIDE', 'TERMINE'].includes(st);
+    const isAnnule = (st) => st === 'ANNULEE';
+
+    return {
+      total: reservations.length,
+      confirmees: reservations.filter(r => isPaye(r?.statut)).length,
+      annulees: reservations.filter(r => isAnnule(r?.statut)).length,
+      enAttente: reservations.filter(r => !isPaye(r?.statut) && !isAnnule(r?.statut)).length,
+    };
+  }, [reservations]);
 
   const handlePrintTicket = (reservation) => {
     setTicketToPrint(reservation);
@@ -151,11 +158,12 @@ const GestionReservations = () => {
           </button>
         </div>
 
-        {/* Stats Responsives */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* 🔥 Stats Responsives (Affiche désormais les 4 cartes) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatMiniCard label="Total Passagers" value={stats.total} icon={<FaUserFriends />} color="blue" />
-          <StatMiniCard label="Confirmés" value={stats.confirmees} icon={<FaCheckCircle />} color="emerald" />
+          <StatMiniCard label="Confirmés / Payés" value={stats.confirmees} icon={<FaCheckCircle />} color="emerald" />
           <StatMiniCard label="En attente" value={stats.enAttente} icon={<FaClock />} color="orange" />
+          <StatMiniCard label="Annulées" value={stats.annulees} icon={<FaTimesCircle />} color="red" />
         </div>
 
         {/* Recherche */}
@@ -187,45 +195,52 @@ const GestionReservations = () => {
                     <tr><td colSpan="4" className="p-20 text-center text-blue-500 font-black animate-pulse">Chargement du manifeste...</td></tr>
                 ) : filtered.length === 0 ? (
                     <tr><td colSpan="4" className="p-10 text-center text-slate-400 font-bold">Aucune réservation trouvée.</td></tr>
-                ) : filtered.map((res) => (
-                  <tr key={res.id} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors">
-                    <td className="px-6 py-4">
-                      <span className="font-black text-slate-700 dark:text-slate-200 uppercase block text-sm">
-                        {res.client ? res.client.nom : "Passager Inconnu"}
-                      </span>
-                      <span className="text-[11px] text-slate-400 dark:text-slate-500 font-bold flex items-center gap-1 mt-1">
-                        <FaPhoneAlt size={10}/> {res.client?.telephone || "N/A"}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="text-sm font-black text-slate-600 dark:text-slate-400">
-                        {res.trajet?.depart} <FaBus className="inline mx-2 text-blue-400" size={12}/> {res.trajet?.destination}
-                      </div>
-                      <div className="text-[10px] text-blue-500 dark:text-blue-400 font-mono font-bold mt-1 tracking-tighter">REF: {res.codeTicket || 'SANS TICKET'}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className={`mx-auto w-fit px-4 py-1.5 rounded-full text-[10px] font-black shadow-sm ${
-                        res.statut === 'CONFIRMEE' || res.statut === 'PAYE' 
-                          ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' 
-                          : 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
-                      }`}>
-                        {res.statut}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex justify-center gap-2">
-                        <button onClick={() => handleDelete(res.id)} className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-600 dark:hover:bg-red-600 hover:text-white transition-all active:scale-90">
-                          <FaTrash size={14} />
-                        </button>
-                        {(res.statut === 'CONFIRMEE' || res.statut === 'PAYE') && (
-                          <button onClick={() => handlePrintTicket(res)} className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-600 dark:hover:bg-red-600 hover:text-white transition-all active:scale-90">
-                            <FaPrint size={14} />
+                ) : filtered.map((res) => {
+                  const isPaye = ['CONFIRMEE', 'PAYE', 'VALIDE', 'TERMINE'].includes(res.statut);
+                  const isAnnule = res.statut === 'ANNULEE';
+
+                  return (
+                    <tr key={res.id} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors">
+                      <td className="px-6 py-4">
+                        <span className="font-black text-slate-700 dark:text-slate-200 uppercase block text-sm">
+                          {res.client ? res.client.nom : "Passager Inconnu"}
+                        </span>
+                        <span className="text-[11px] text-slate-400 dark:text-slate-500 font-bold flex items-center gap-1 mt-1">
+                          <FaPhoneAlt size={10}/> {res.client?.telephone || "N/A"}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm font-black text-slate-600 dark:text-slate-400">
+                          {res.trajet?.depart} <FaBus className="inline mx-2 text-blue-400" size={12}/> {res.trajet?.destination}
+                        </div>
+                        <div className="text-[10px] text-blue-500 dark:text-blue-400 font-mono font-bold mt-1 tracking-tighter">REF: {res.codeTicket || 'SANS TICKET'}</div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className={`mx-auto w-fit px-4 py-1.5 rounded-full text-[10px] font-black shadow-sm ${
+                          isPaye
+                            ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' 
+                            : isAnnule
+                            ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                            : 'bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400'
+                        }`}>
+                          {res.statut}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex justify-center gap-2">
+                          <button onClick={() => handleDelete(res.id)} className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl hover:bg-red-600 dark:hover:bg-red-600 hover:text-white transition-all active:scale-90">
+                            <FaTrash size={14} />
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                          {isPaye && (
+                            <button onClick={() => handlePrintTicket(res)} className="p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-xl hover:bg-blue-600 dark:hover:bg-blue-600 hover:text-white transition-all active:scale-90">
+                              <FaPrint size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -267,7 +282,7 @@ const GestionReservations = () => {
                 <td className="font-bold">{res.trajet?.depart} - {res.trajet?.destination}</td>
                 <td className="text-center font-bold">{res.numeroSiege || '-'}</td>
                 <td className="font-mono text-xs">{res.codeTicket}</td>
-                <td className="w-24"></td>
+                <td className="w-24">{res.statut === 'ANNULEE' ? 'ANNULÉ' : ''}</td>
               </tr>
             ))}
           </tbody>
@@ -304,7 +319,7 @@ const GestionReservations = () => {
             </div>
             <div className="flex justify-between">
               <span>DATE VOYAGE:</span>
-              <span className="font-bold">{new Date(ticketToPrint.date_reservation).toLocaleDateString()}</span>
+              <span className="font-bold">{new Date(ticketToPrint.date_reservation || ticketToPrint.dateReservation).toLocaleDateString()}</span>
             </div>
           </div>
 
@@ -327,7 +342,8 @@ const StatMiniCard = ({ label, value, icon, color }) => {
   const colors = { 
     blue: "bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400", 
     emerald: "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400", 
-    orange: "bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400" 
+    orange: "bg-orange-50 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400",
+    red: "bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400"
   };
   return (
     <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-100 dark:border-slate-800 flex items-center gap-5 shadow-sm hover:shadow-md transition-all duration-300">

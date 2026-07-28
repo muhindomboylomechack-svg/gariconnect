@@ -169,41 +169,27 @@ public class DemandeRecuperationService {
             notificationRepository.save(notification);
         }
     }
-//
-//
+
 //    /**
-//     * CONSULTATION AGENT : Récupérer l'historique des demandes traitées (Cotées ou Payées)
+//     * ❌ SUPPRIMER/ANNULER UNE DEMANDE DE RÉCUPÉRATION
 //     */
-//    public List<DemandeRecuperation> obtenirHistoriqueTraitees() {
-//        // On récupère les demandes qui ne sont plus en attente de cotation
-//        return demandeRepository.findByStatutIn(
-//                java.util.Arrays.asList(
-//                        StatutRecuperation.EN_ATTENTE_PAIEMENT,
-//                        StatutRecuperation.PAYE,
-//                        StatutRecuperation.EFFECTUE
-//                )
-//        );
+//    @Transactional
+//    public void supprimerDemande(Long id) {
+//        DemandeRecuperation demande = demandeRepository.findById(id)
+//                .orElseThrow(() -> new RuntimeException("Demande de ramassage introuvable avec l'ID : " + id));
+//
+//        // 🔔 Notification au client pour l'informer de l'annulation
+//        if (demande.getClient() != null) {
+//            String messageClient = String.format(
+//                    "❌ Votre demande de ramassage à domicile pour la réservation N°%d a été annulée par l'agence.",
+//                    demande.getReservationId()
+//            );
+//            envoyerNotification(messageClient, demande.getClient());
+//        }
+//
+//        demandeRepository.delete(demande);
+//        System.out.println("🗑️ [VIP] Demande de ramassage N°" + id + " supprimée avec succès.");
 //    }
-    /**
-     * ❌ SUPPRIMER/ANNULER UNE DEMANDE DE RÉCUPÉRATION
-     */
-    @Transactional
-    public void supprimerDemande(Long id) {
-        DemandeRecuperation demande = demandeRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Demande de ramassage introuvable avec l'ID : " + id));
-
-        // 🔔 Notification au client pour l'informer de l'annulation
-        if (demande.getClient() != null) {
-            String messageClient = String.format(
-                    "❌ Votre demande de ramassage à domicile pour la réservation N°%d a été annulée par l'agence.",
-                    demande.getReservationId()
-            );
-            envoyerNotification(messageClient, demande.getClient());
-        }
-
-        demandeRepository.delete(demande);
-        System.out.println("🗑️ [VIP] Demande de ramassage N°" + id + " supprimée avec succès.");
-    }
 
 
     // =========================================================================================
@@ -316,6 +302,108 @@ public class DemandeRecuperationService {
 
             return demandeRepository.findByStatutInAndReservation_Trajet_Agence(statutsTraites, agence);
         }
+    }
+
+    /**
+     * NOUVEAU : CLIENT - Modifier la localisation d'une demande de récupération
+     */
+    @Transactional
+    public DemandeRecuperation modifierLocalisation(Long id, DemandeRecuperationRequest request, String emailClient) {
+        DemandeRecuperation demande = demandeRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Demande de récupération introuvable"));
+
+        // Vérification de la propriété de la demande
+        if (!demande.getClient().getEmail().equals(emailClient)) {
+            throw new RuntimeException("Action non autorisée : Vous ne pouvez modifier que vos propres demandes.");
+        }
+
+        boolean localisationModifiee = false;
+
+        // Vérifier si la localisation a réellement changé
+        if (!demande.getLatitudeClient().equals(request.getLatitudeClient()) ||
+                !demande.getLongitudeClient().equals(request.getLongitudeClient()) ||
+                !demande.getAdresseTextuelle().equals(request.getAdresseTextuelle())) {
+            localisationModifiee = true;
+        }
+
+        if (localisationModifiee) {
+            // Mise à jour des nouvelles coordonnées
+            demande.setLatitudeClient(request.getLatitudeClient());
+            demande.setLongitudeClient(request.getLongitudeClient());
+            demande.setAdresseTextuelle(request.getAdresseTextuelle());
+
+            // ⚠️ LOGIQUE METIER : Renvoi à l'agence pour recalculer le prix
+            demande.setPrixSupplementaire(0.0);
+            demande.setDistanceEstimee(0.0);
+            demande.setPointRepereAgence("Non défini");
+            demande.setStatut(StatutRecuperation.EN_ATTENTE_COTATION);
+
+            // Notification à l'agence
+            try {
+                User agence = demande.getReservation().getTrajet().getAgence();
+                if (agence != null) {
+                    String msg = "📍 Modification VIP : Le client a changé son lieu de récupération pour la réservation N°" + demande.getReservationId() + ". Veuillez recalculer le prix de cotation.";
+                    envoyerNotification(msg, agence);
+                }
+            } catch (Exception e) {
+                System.err.println("Erreur de notification à l'agence : " + e.getMessage());
+            }
+        }
+
+        return demandeRepository.save(demande);
+    }
+
+    /**
+     * NOUVEAU : CLIENT - Annuler (logiquement) une demande de ramassage
+     */
+    @Transactional
+    public DemandeRecuperation annulerDemandeClient(Long id, String emailClient) {
+        DemandeRecuperation demande = demandeRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Demande de récupération introuvable"));
+
+        if (!demande.getClient().getEmail().equals(emailClient)) {
+            throw new RuntimeException("Action non autorisée : Vous ne pouvez annuler que vos propres demandes.");
+        }
+
+        demande.setStatut(StatutRecuperation.ANNULEE);
+
+        // Notification à l'agence
+        try {
+            User agence = demande.getReservation().getTrajet().getAgence();
+            if (agence != null) {
+                envoyerNotification("❌ Annulation VIP : Le client a annulé sa demande de récupération pour la réservation N°" + demande.getReservationId(), agence);
+            }
+        } catch (Exception e) {
+            System.err.println("Erreur de notification : " + e.getMessage());
+        }
+
+        return demandeRepository.save(demande);
+    }
+
+    /**
+     * MODIFICATION : SUPPRIMER UNE DEMANDE DE RÉCUPÉRATION (Sécurisée par email)
+     */
+    @Transactional
+    public void supprimerDemande(Long id, String emailConnecte, boolean isAgentOrAdmin) {
+        DemandeRecuperation demande = demandeRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Demande de ramassage introuvable avec l'ID : " + id));
+
+        // Si ce n'est pas un agent/admin, on s'assure que c'est le bon client
+        if (!isAgentOrAdmin && !demande.getClient().getEmail().equals(emailConnecte)) {
+            throw new RuntimeException("Action non autorisée : Vous ne pouvez supprimer que vos propres demandes.");
+        }
+
+        // Notification de l'action si c'est un agent qui supprime
+        if (isAgentOrAdmin && demande.getClient() != null) {
+            String messageClient = String.format(
+                    "❌ Votre demande de ramassage à domicile pour la réservation N°%d a été annulée et supprimée par l'agence.",
+                    demande.getReservationId()
+            );
+            envoyerNotification(messageClient, demande.getClient());
+        }
+
+        demandeRepository.delete(demande);
+        System.out.println("🗑️ [VIP] Demande de ramassage N°" + id + " supprimée avec succès.");
     }
 }
 

@@ -12,7 +12,6 @@ const GestionPaiements = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [showCashForm, setShowCashForm] = useState(false);
     const [detteCommission, setDetteCommission] = useState(0);
-
     // État pour stocker le profil de l'agence (pour vérifier l'abonnement et le rôle)
     const [agenceProfile, setAgenceProfile] = useState(null);
     
@@ -43,11 +42,9 @@ const GestionPaiements = () => {
         try {
             setLoading(true);
             const token = localStorage.getItem('token');
-
             const resReservations = await api.get('/reservations', {
                 headers: { Authorization: `Bearer ${token}` }
             });
-
             let rawData = [];
             if (Array.isArray(resReservations.data)) {
                 rawData = resReservations.data;
@@ -81,10 +78,13 @@ const GestionPaiements = () => {
     // Filtrer les réservations en attente de versement (Standard ou Surplus VID)
     const reservationsEnAttente = useMemo(() => {
         return reservations.filter(r =>
-            r?.statut === 'ATTENTE_PAIEMENT' ||
+            (r?.statut === 'ATTENTE_PAIEMENT' ||
             r?.statut === 'EN_ATTENTE_AGENCE' ||
             r?.statut === 'EN_ATTENTE' ||
-            r?.statut === 'ATTENTE_PAIEMENT_SURPLUS'
+            r?.statut === 'ATTENTE_PAIEMENT_SURPLUS') &&
+            r?.statut !== 'ANNULE' &&
+            r?.statut !== 'ANNULEE' &&
+            r?.statut !== 'CANCELLED'
         );
     }, [reservations]);
 
@@ -100,12 +100,10 @@ const GestionPaiements = () => {
     const handlePrintReceipt = (reservation) => {
         const printWindow = window.open('', '_blank', 'width=450,height=700');
         
-        // 🔴 CORRECTION DU CRASH : Vérification du bloqueur de pop-ups
         if (!printWindow) {
             alert("⚠️ L'impression a été bloquée ! Veuillez autoriser les pop-ups (fenêtres contextuelles) dans la barre d'adresse de votre navigateur pour pouvoir imprimer les reçus.");
             return;
         }
-
         const total = getMontantTotalSecurise(reservation);
         const surplusRamassage = reservation.demande_recuperation?.prixSupplementaire || 0;
         const coutDeBase = total - surplusRamassage;
@@ -186,12 +184,10 @@ const GestionPaiements = () => {
     const handlePrintInvoice = (reservation) => {
         const printWindow = window.open('', '_blank', 'width=800,height=900');
         
-        // 🔴 CORRECTION DU CRASH : Vérification du bloqueur de pop-ups
         if (!printWindow) {
             alert("⚠️ L'impression a été bloquée ! Veuillez autoriser les pop-ups (fenêtres contextuelles) dans la barre d'adresse de votre navigateur pour pouvoir imprimer les factures.");
             return;
         }
-
         const total = getMontantTotalSecurise(reservation);
         const surplusRamassage = reservation.demande_recuperation?.prixSupplementaire || 0;
         const coutDeBase = total - surplusRamassage;
@@ -316,14 +312,12 @@ const GestionPaiements = () => {
     const handleDirectCashPaiement = async (e) => {
         e.preventDefault();
         const selectedRes = reservationsEnAttente.find(r => r.id.toString() === cashPayload.reservationId);
-
         if (!selectedRes) return alert("Veuillez sélectionner une réservation valide");
         const totalAEncaisser = getMontantTotalSecurise(selectedRes);
         if (!window.confirm(`Confirmer l'encaissement physique de ${totalAEncaisser.toLocaleString('fr-FR')} FC au guichet ?`)) return;
         
         try {
             const token = localStorage.getItem('token');
-
             await api.post(`/paiements/encaisser-guichet`, {
                 reservationId: selectedRes.id,
                 montant: totalAEncaisser,
@@ -332,13 +326,10 @@ const GestionPaiements = () => {
             }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-
             alert(`Paiement encaissé avec succès ! Le statut est passé à validé et le reçu va être généré.`);
             setShowCashForm(false);
             setCashPayload({ reservationId: "", montant: "" });
-
             handlePrintReceipt(selectedRes);
-
             fetchInitialData();
             fetchCommissionEtNotifs();
         } catch (error) {
@@ -351,10 +342,8 @@ const GestionPaiements = () => {
     const handleEncaisserPaiementRapide = async (reservation) => {
         const totalAEncaisser = getMontantTotalSecurise(reservation);
         if (!window.confirm(`Confirmer la réception des espèces de ${totalAEncaisser.toLocaleString('fr-FR')} FC pour la réservation de ${reservation.client?.nom || 'ce client'} ?`)) return;
-
         try {
             const token = localStorage.getItem('token');
-
             await api.post(`/paiements/encaisser-guichet`, {
                 reservationId: reservation.id,
                 montant: totalAEncaisser,
@@ -365,13 +354,11 @@ const GestionPaiements = () => {
             });
             
             alert("Caisse mise à jour ! Impression du reçu de paiement...");
-
             handlePrintReceipt(reservation);
             fetchInitialData();
             fetchCommissionEtNotifs();
             
         } catch (error) {
-            // Extraction du message sécurisée
             const messageErreur = error?.response?.data?.message
                 || error?.message
                 || "Une erreur inconnue est survenue lors de l'encaissement.";
@@ -385,7 +372,6 @@ const GestionPaiements = () => {
     // CALCUL DES STATISTIQUES COHÉRENTES
     const stats = useMemo(() => {
         const payes = reservations.filter(r => r?.statut === 'PAYE' || r?.statut === 'CONFIRMEE' || r?.statut === 'VALIDEE' || r?.statut === 'EMBARQUE');
-
         return {
             total: payes.reduce((sum, r) => sum + getMontantTotalSecurise(r), 0),
             mobile: payes.filter(r => r.modePaiement && r.modePaiement !== 'CASH').reduce((sum, r) => sum + getMontantTotalSecurise(r), 0),
@@ -394,9 +380,15 @@ const GestionPaiements = () => {
         };
     }, [reservations, reservationsEnAttente]);
 
-    // RECHERCHE FILTRÉE
+    // RECHERCHE FILTRÉE (EXCLUSION DES RÉSERVATIONS ANNULÉES)
     const reservationsFiltrées = useMemo(() => {
         return reservations.filter(r => {
+            const statusStr = (r?.statut || "").toUpperCase();
+            // Exclusion des statuts d'annulation
+            if (statusStr === 'ANNULE' || statusStr === 'ANNULEE' || statusStr === 'CANCELLED') {
+                return false;
+            }
+
             const clientObj = r?.client;
             const nomClient = clientObj ? `${clientObj.nom || ""} ${clientObj.prenom || ""}` : "";
             return nomClient.toLowerCase().includes(searchTerm.toLowerCase()) || (r.codeTicket && r.codeTicket.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -408,7 +400,6 @@ const GestionPaiements = () => {
 
     return (
         <div className="p-4 md:p-8 space-y-6 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-100">
-
             {/* BANNIÈRE COMMISSION OU ABONNEMENT DEFINITIF */}
             {isAbonnementDefinitif ? (
                 <div className="bg-gradient-to-r from-amber-500 to-orange-600 rounded-[2rem] p-6 shadow-2xl flex flex-col md:flex-row justify-between items-center animate-fadeIn">
@@ -448,7 +439,6 @@ const GestionPaiements = () => {
                     </div>
                     Gestion de la Caisse
                 </h1>
-
                 <button
                     onClick={() => setShowCashForm(!showCashForm)}
                     className="bg-emerald-600 text-white px-6 py-4 rounded-[1.5rem] font-black flex items-center gap-2 shadow-lg transition-transform hover:scale-105 border-0 cursor-pointer"

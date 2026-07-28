@@ -1,6 +1,6 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { FaBan, FaHeadset, FaSignOutAlt } from 'react-icons/fa'; // 🟢 AJOUT : Icônes pour l'écran de blocage
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { FaBan, FaWhatsapp, FaEnvelope, FaSignOutAlt, FaArrowLeft } from 'react-icons/fa';
 
 // ==========================================
 // 0. CONFIGURATION DU THEME CONTEXT
@@ -38,7 +38,7 @@ import DashboardAdmin from './pages/superadmin/DashboardAdmin';
 import GestionUtilisateurs from './pages/superadmin/GestionUtilisateurs';
 import GestionCommissions from './pages/superadmin/GestionCommissions';
 import DashboardFinancierAdmin from './pages/superadmin/DashboardFinancierAdmin';
-import SystemSettings from './pages/superadmin/SystemSettings'; // 🚀 AJOUT : Import de la page de paramétrage SaaS
+import SystemSettings from './pages/superadmin/SystemSettings';
 
 // ==========================================
 // 5. PAGES : Espace Admin d'Agence & Gestionnaire
@@ -78,61 +78,87 @@ import FormulaireEvaluation from "./pages/client/FormulaireEvaluation";
 import ReservationRecuperationPage from "./pages/client/RecuperationReservationPage";
 import PagePaiementReservation from "./pages/client/PagePaiementReservation"; 
 
-// 🚀 AJOUT DE L'IMPORT POUR LE HUB COLIS / COURRIER DU CLIENT
 import ClientCourrierHub from "./pages/client/ClientCourrierHub"; 
 
 // ==========================================
-// 🟢 7. COMPOSANTS DE SÉCURITÉ POUR COMPTES BLOQUÉS
+// 7. COMPOSANTS DE BLOCAGE DE SÉCURITÉ
 // ==========================================
-const EcranBloque = () => {
-  const handleLogout = () => {
-    localStorage.clear();
-    window.location.href = '/login';
-  };
+const EcranBloque = ({ user: propUser }) => {
+  const { user: authUser, logout } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Priorité aux données passées par la page Login via location.state
+  const user = location.state?.user || propUser || authUser;
+
+  console.log("Utilisateur connecté dans EcranBloque :", user);
+
+  // --- CONFIGURATION PAR DÉFAUT (SUPER ADMIN) ---
+  const defaultPhone = "243993726409";
+  const defaultEmail = "support@gariconnect.com";
+
+  // Normalisation du rôle
+  const role = user?.role?.replace('ROLE_', '');
+  const isAgencyStaff = role === 'CHAUFFEUR' || role === 'AGENCY_MANAGER' || role === 'AGENCY_ADMIN';
+
+  // Extraction dynamique selon l'entité
+  let rawPhone = defaultPhone;
+  let targetEmail = defaultEmail;
+
+  if (isAgencyStaff) {
+    rawPhone = user?.agenceTelephone 
+            || user?.agenceEmployeur?.telephone 
+            || user?.agence?.telephone 
+            || defaultPhone;
+
+    targetEmail = user?.agenceEmail 
+               || user?.agenceEmployeur?.email 
+               || user?.agence?.email 
+               || defaultEmail;
+  }
+
+  const formattedPhone = String(rawPhone).replace(/[^0-9]/g, '');
+  const adminTitle = isAgencyStaff ? "l'Administrateur de votre Agence" : "le Super Admin";
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-slate-950 flex items-center justify-center p-4 font-sans text-slate-100">
-      <div className="absolute w-96 h-96 bg-rose-600/10 rounded-full blur-3xl top-1/4 left-1/4 animate-pulse"></div>
-      <div className="absolute w-96 h-96 bg-indigo-600/10 rounded-full blur-3xl bottom-1/4 right-1/4 animate-pulse"></div>
-
-      <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 p-8 rounded-[2rem] shadow-2xl text-center space-y-6">
-        <div className="w-20 h-20 bg-rose-500/10 text-rose-500 rounded-2xl flex items-center justify-center mx-auto border border-rose-500/20">
-          <FaBan size={36} className="animate-pulse" />
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
+      <div className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full text-center">
+        <div className="flex justify-center mb-4 text-red-500">
+          <FaBan size={48} />
         </div>
+        <h2 className="text-2xl font-bold text-red-600 mb-2">Compte Suspendu</h2>
+        <p className="text-gray-600 mb-6">
+          Votre compte est actuellement restreint. Veuillez contacter {adminTitle} pour régulariser votre situation.
+        </p>
 
-        <div className="space-y-2">
-          <h2 className="text-xl font-black uppercase tracking-wider text-white">
-            Accès Interdit / Compte Bloqué
-          </h2>
-          <p className="text-slate-400 text-xs font-medium leading-relaxed">
-            Votre compte a été suspendu par le <span className="text-blue-400 font-bold">Super Admin</span> de la plateforme GariConnect.
-          </p>
-        </div>
-
-        <div className="bg-slate-950/60 border border-slate-800/80 p-4 rounded-xl text-left text-xs text-slate-400 space-y-2">
-          <p className="flex items-start gap-2">
-            <span className="text-rose-500 font-bold">•</span>
-            <span>Vous avez été bloqué par le superadmin, prière de le contacter.</span>
-          </p>
-          <p className="flex items-start gap-2">
-            <span className="text-rose-500 font-bold">•</span>
-            <span>Toutes vos actions et accès aux espaces de l'application sont immédiatement suspendus.</span>
-          </p>
-        </div>
-
-        <div className="flex flex-col gap-2 pt-2">
-          <a 
-            href="mailto:support@gariconnect.com" 
-            className="flex items-center justify-center gap-2 w-full py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-all shadow-lg"
+        <div className="space-y-4">
+          {/* Bouton WhatsApp */}
+          <a
+            href={`https://wa.me/${formattedPhone}?text=Bonjour,%20mon%20compte%20${encodeURIComponent(user?.email || '')}%20est%20bloqué.`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-4 rounded-lg transition"
           >
-            <FaHeadset size={12} /> Contacter le Super Admin
+            <FaWhatsapp size={20} /> Contacter via WhatsApp ({rawPhone})
           </a>
-          
-          <button 
-            onClick={handleLogout}
-            className="flex items-center justify-center gap-2 w-full py-3 bg-slate-800/50 hover:bg-slate-800 text-slate-300 rounded-xl font-bold text-xs uppercase tracking-wider border border-slate-800 transition-all"
+
+          {/* Bouton Email */}
+          <a
+            href={`mailto:${targetEmail}?subject=Demande%20de%20déblocage%20de%20compte&body=Bonjour,%20mon%20compte%20(${user?.email})%20a%20été%20suspendu.`}
+            className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition"
           >
-            <FaSignOutAlt size={12} /> Retour à la connexion
+            <FaEnvelope size={18} /> Envoyer un Email ({targetEmail})
+          </a>
+
+          {/* Bouton Retour à la connexion */}
+          <button
+            onClick={() => {
+              if (logout) logout();
+              navigate('/login', { replace: true });
+            }}
+            className="w-full flex items-center justify-center gap-2 text-slate-500 hover:text-slate-800 text-sm font-bold pt-2 transition cursor-pointer"
+          >
+            <FaArrowLeft size={14} /> Retour à la connexion
           </button>
         </div>
       </div>
@@ -140,11 +166,14 @@ const EcranBloque = () => {
   );
 };
 
+// Guard qui vérifie le statut du compte sur toutes les routes protégées
 const BlockGuard = ({ children }) => {
   const { user } = useAuth();
-  if (user && (user.statut === 'INACTIF' || user.statut === 'BLOQUE')) {
+
+  if (user?.statut === 'INACTIF' || user?.statut === 'BLOQUE') {
     return <Navigate to="/compte-bloque" replace />;
   }
+
   return children;
 };
 
@@ -164,7 +193,6 @@ const HomeRedirect = () => {
   
   if (!user) return <Navigate to="/login" replace />;
 
-  // 🟢 AJOUT : Vérification du blocage dès la racine
   if (user.statut === 'INACTIF' || user.statut === 'BLOQUE') {
     return <Navigate to="/compte-bloque" replace />;
   }
@@ -216,7 +244,7 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/" element={<HomeRedirect />} />
           <Route path="/change-password-obligatoire" element={<ChangePasswordObligatoire />} />
-          <Route path="/compte-bloque" element={<EcranBloque />} /> {/* 🟢 AJOUT : Route dédiée à l'affichage du blocage */}
+          <Route path="/compte-bloque" element={<EcranBloque />} />
 
           {/* --- ESPACE 1 : SUPER ADMIN --- */}
           <Route path="/admin" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><BlockGuard><SuperAdminLayout /></BlockGuard></ProtectedRoute>}>
@@ -224,7 +252,7 @@ function App() {
             <Route path="utilisateurs" element={<GestionUtilisateurs />} />
             <Route path="commissions" element={<GestionCommissions />} />
             <Route path="finances" element={<DashboardFinancierAdmin />} />
-            <Route path="settings" element={<SystemSettings />} /> {/* 🚀 AJOUT : Nouvelle route pour le paramétrage SaaS */}
+            <Route path="settings" element={<SystemSettings />} />
           </Route>
 
           {/* --- ESPACE 2 : AGENCY ADMIN --- */}
@@ -275,7 +303,6 @@ function App() {
             <Route path="reservation-normale/:id" element={<CheckoutPage />} />
             <Route path="reservation-recuperation/:id" element={<ReservationRecuperationPage />} />
             <Route path="finaliser-reservation/:id" element={<CheckoutPage />} />
-            
             <Route path="colis" element={<ClientCourrierHub />} />
             <Route path="courriers" element={<ClientCourrierHub />} />
           </Route>

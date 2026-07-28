@@ -2,8 +2,6 @@ import axios from 'axios';
 
 /**
  * 1. Détermination de l'environnement
- * On vérifie si Vite est en mode production OU si l'URL dans le navigateur 
- * contient "render.com" (ce qui confirme qu'on est en production).
  */
 const isProduction = import.meta.env.PROD || window.location.hostname.includes('render.com');
 
@@ -30,7 +28,6 @@ api.interceptors.request.use(
     const token = localStorage.getItem('token');
     
     if (token) {
-      // Nettoyage robuste du token
       const cleanToken = token.startsWith('Bearer ') ? token.split(' ')[1] : token;
       config.headers.Authorization = `Bearer ${cleanToken}`;
     }
@@ -43,7 +40,7 @@ api.interceptors.request.use(
 );
 
 /**
- * 5. Intercepteur pour les Réponses (Sécurité et déconnexion automatique)
+ * 5. Intercepteur pour les Réponses (Sécurité et gestion dynamique des erreurs)
  */
 api.interceptors.response.use(
   (response) => {
@@ -52,36 +49,44 @@ api.interceptors.response.use(
   (error) => {
     if (error.response) {
       const status = error.response.status;
+      const responseData = error.response.data || {};
+      const errorMessage = (responseData.message || responseData.error || '').toLowerCase();
 
-      // Si l'erreur est 401 (Non Autorisé / Session expirée / Utilisateur supprimé)
+      // 🛑 1. GESTION DES ERREURS 401 (Session expirée / Non authentifié)
       if (status === 401) {
-        console.warn("Session expirée ou compte invalide (Erreur 401). Déconnexion...");
+        console.warn("Session expirée ou non autorisée (401). Nettoyage de la session...");
         
-        // Nettoyage complet
         localStorage.removeItem('token');
         localStorage.removeItem('user'); 
 
-        // ✅ CORRECTION : Éviter la boucle infinie si on est DÉJÀ sur la page login
+        // Redirection vers le login uniquement si on n'y est pas déjà
         if (window.location.pathname !== '/login') {
-            window.location.href = '/login';
+          window.location.href = '/login';
         }
       }
 
-      // 🟢 AJOUT : Si l'erreur est 403 (Compte bloqué en BDD intercepté par Spring Boot)
+      // ⛔ 2. GESTION STRICTE DES ERREURS 403 (Compte explicitement suspendu)
       if (status === 403) {
-        console.warn("Accès refusé ou utilisateur suspendu (Erreur 403). Activation de l'écran de verrouillage...");
+        // ⚠️ NE PAS REDIRIGER SI ON EST SUR LA PAGE DE LOGIN OU D'INSCRIPTION !
+        const isAuthPage = window.location.pathname === '/login' || window.location.pathname === '/register';
 
-        // On extrait l'utilisateur actuel pour mettre à jour son statut localement
-        const localUser = JSON.parse(localStorage.getItem('user') || '{}');
-        localUser.statut = 'BLOQUE';
-        localStorage.setItem('user', JSON.stringify(localUser));
+        // On ne déclenche l'écran de blocage QUE SI le serveur indique clairement une suspension
+        const isSuspendedMessage = errorMessage.includes('suspendu') || 
+                                   errorMessage.includes('bloqué') || 
+                                   errorMessage.includes('bloque');
 
-        // Suppression immédiate du token pour bloquer tout futur appel API
-        localStorage.removeItem('token');
+        if (!isAuthPage && isSuspendedMessage) {
+          console.warn("Compte suspendu confirmé par le serveur (403). Redirection...");
 
-        // Redirection forcée vers l'écran d'affichage sécurisé si on n'y est pas déjà
-        if (window.location.pathname !== '/compte-bloque') {
-          window.location.href = '/compte-bloque';
+          const localUser = JSON.parse(localStorage.getItem('user') || '{}');
+          localUser.statut = 'BLOQUE';
+          localStorage.setItem('user', JSON.stringify(localUser));
+
+          localStorage.removeItem('token');
+
+          if (window.location.pathname !== '/compte-bloque') {
+            window.location.href = '/compte-bloque';
+          }
         }
       }
     }

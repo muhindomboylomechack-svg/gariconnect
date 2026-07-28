@@ -13,14 +13,16 @@ const Home = () => {
     const { t } = useTranslation();
     const [trajets, setTrajets] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [searchQuery, setSearchQuery] = useState({ depart: '', destination: '', date: '' });
+    
+    // Modification de l'état : suppression de "destination"
+    const [searchQuery, setSearchQuery] = useState({ depart: '', date: '' });
     const navigate = useNavigate();
 
     useEffect(() => {
         fetchTrajets();
     }, []);
 
-const fetchTrajets = async () => {
+    const fetchTrajets = async () => {
         setLoading(true);
         try {
             // 🔓 Route publique, PAS besoin d'envoyer les headers avec le Token
@@ -38,9 +40,9 @@ const fetchTrajets = async () => {
         try {
             // 🔓 Route publique, PAS besoin d'envoyer les headers avec le Token
             const response = await api.get('/trajets/recherche', {
+                // On n'envoie plus que le départ et la date
                 params: { 
                     depart: searchQuery.depart, 
-                    destination: searchQuery.destination,
                     date: searchQuery.date 
                 }
             });
@@ -51,6 +53,7 @@ const fetchTrajets = async () => {
             setLoading(false);
         }
     };
+
     // Redirection directe vers la page unifiée après vérification du token
     const proceedToReservation = (trajetId) => {
         const token = localStorage.getItem('token');
@@ -82,14 +85,14 @@ const fetchTrajets = async () => {
                             GariConnect Express
                         </p>
                         <h1 className="text-2xl sm:text-3xl md:text-5xl font-black text-white tracking-tighter">
-                            {t('home.where_to_go', "Où allez-vous ?")}
+                            {t('home.where_to_go', "Ville de depart ")}
                         </h1>
                     </div>
 
                     {/* FORMULAIRE DE RECHERCHE RESPONSIVE */}
                     <div className="bg-white/95 dark:bg-slate-950/95 backdrop-blur-md p-4 lg:p-3 rounded-2xl md:rounded-[2rem] flex flex-col lg:flex-row items-center gap-4 lg:gap-2 shadow-2xl border border-slate-100 dark:border-slate-800/60">
                         
-                        {/* DEPART */}
+                        {/* DEPART (Unique ville demandée) */}
                         <div className="flex-1 flex items-center px-3 w-full border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 pb-3 lg:pb-0">
                             <FaMapMarkerAlt className="text-indigo-500 dark:text-indigo-400 shrink-0 text-lg md:text-base" />
                             <input 
@@ -97,17 +100,6 @@ const fetchTrajets = async () => {
                                 placeholder={t('home.departure_city', "Ville de départ")} 
                                 className="w-full p-2.5 bg-transparent border-none focus:ring-0 font-bold text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none text-sm md:text-base" 
                                 onChange={(e) => setSearchQuery({...searchQuery, depart: e.target.value})} 
-                            />
-                        </div>
-                        
-                        {/* DESTINATION */}
-                        <div className="flex-1 flex items-center px-3 w-full border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 pb-3 lg:pb-0">
-                            <FaMapMarkerAlt className="text-violet-500 dark:text-violet-400 shrink-0 text-lg md:text-base" />
-                            <input 
-                                type="text" 
-                                placeholder={t('home.destination_city', "Ville de destination")} 
-                                className="w-full p-2.5 bg-transparent border-none focus:ring-0 font-bold text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none text-sm md:text-base" 
-                                onChange={(e) => setSearchQuery({...searchQuery, destination: e.target.value})} 
                             />
                         </div>
                         

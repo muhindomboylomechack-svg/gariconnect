@@ -14,5 +14,6 @@ public enum StatutRecuperation {
     PAYE,          // 👈 AJOUTE CETTE LIGNE ICI si elle manquait !
     VALIDE,        // (Si tu as utilisé VALIDE à la place de PAYE, ajuste selon ton choix)
     TERMINE,
-    EFFECTUE
+    EFFECTUE,
+    ANNULEE
 }

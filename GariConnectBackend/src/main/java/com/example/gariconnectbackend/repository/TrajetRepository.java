@@ -112,15 +112,6 @@ import java.util.Optional;
 @Repository
 public interface TrajetRepository extends JpaRepository<Trajet, Long> {
 
-    @Query("SELECT COUNT(t) > 0 FROM Trajet t WHERE t.vehicule.id = :id " +
-            "AND CAST(t.dateHeureDepart AS date) = CAST(:date AS date) " +
-            "AND t.statut <> 'TERMINE'")
-    boolean isVehiculeOccupeADate(@Param("id") Long id, @Param("date") LocalDateTime date);
-
-    @Query("SELECT COUNT(t) > 0 FROM Trajet t WHERE t.chauffeur.id = :id " +
-            "AND CAST(t.dateHeureDepart AS date) = CAST(:date AS date) " +
-            "AND t.statut <> 'TERMINE'")
-    boolean isChauffeurOccupeADate(@Param("id") Long id, @Param("date") LocalDateTime date);
 
     List<Trajet> findByAgenceAndStatut(User agence, String statut);
 
@@ -158,4 +149,15 @@ public interface TrajetRepository extends JpaRepository<Trajet, Long> {
     // Récupérer tous les trajets appartenant à une agence spécifique
     List<Trajet> findByAgence_Id(Long agenceId);
     List<Trajet> findByDepartContainingIgnoreCaseAndDestinationContainingIgnoreCase(String depart, String destination);
+
+
+    @Query("SELECT COUNT(t) > 0 FROM Trajet t WHERE t.vehicule.id = :id " +
+            "AND t.dateHeureDepart = :date " +
+            "AND t.statut <> 'TERMINE'")
+    boolean isVehiculeOccupeADate(@Param("id") Long id, @Param("date") LocalDateTime date);
+
+    @Query("SELECT COUNT(t) > 0 FROM Trajet t WHERE t.chauffeur.id = :id " +
+            "AND t.dateHeureDepart = :date " +
+            "AND t.statut <> 'TERMINE'")
+    boolean isChauffeurOccupeADate(@Param("id") Long id, @Param("date") LocalDateTime date);
 }

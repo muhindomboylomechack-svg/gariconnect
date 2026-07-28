@@ -1,18 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../services/api';
-import { FaEnvelope, FaLock, FaBus, FaChevronRight, FaEye, FaEyeSlash } from 'react-icons/fa';
+import { FaEnvelope, FaLock, FaBus, FaChevronRight, FaEye, FaEyeSlash, FaExclamationTriangle } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 
 const Login = () => {
   const [credentials, setCredentials] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
+  const [isSuspended, setIsSuspended] = useState(false);
+  const [blockedUser, setBlockedUser] = useState(null); // 🟢 Stocke les infos du compte bloqué
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    localStorage.removeItem('nomAgence');
+    localStorage.removeItem('userAvatar'); 
+    localStorage.removeItem('agenceId');
+    localStorage.removeItem('agence_id');
+    if (logout) {
+      logout();
+    }
+  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -23,69 +37,83 @@ const Login = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setIsSuspended(false);
+    setBlockedUser(null);
 
     try {
       const response = await api.post('/auth/login', credentials);
       const userData = response.data;
 
+      // 🟢 Vérification si l'utilisateur retourné est bloqué ou suspendu
+      if (userData.statut === 'INACTIF' || userData.statut === 'BLOQUE') {
+        setIsSuspended(true);
+        setBlockedUser(userData);
+        setError("Votre compte a été suspendu ou désactivé.");
+        return;
+      }
+
       if (userData.token) {
-        // 🟢 NETTOYAGE SÉCURISÉ : On vide proprement les anciennes données de session
-        localStorage.removeItem('nomAgence');
-        localStorage.removeItem('userAvatar'); 
-        localStorage.removeItem('agenceId');   // Évite les conflits si un autre manager s'était connecté avant
-        localStorage.removeItem('agence_id');
-        
         login(userData);
 
-        // 🔥 Stockage persistant de l'URL de l'avatar en local
         if (userData.photoUrl) {
           localStorage.setItem('userAvatar', userData.photoUrl);
         }
 
         if (userData.nomAgence || userData.agenceNom) {
-            localStorage.setItem('nomAgence', userData.nomAgence || userData.agenceNom);
+          localStorage.setItem('nomAgence', userData.nomAgence || userData.agenceNom);
         }
 
-        // 🟢 SÉCURISATION DU FILTRAGE PAR AGENCE :
-        // On extrait l'ID de l'agence peu importe le format retourné par ton DTO Spring Boot
         const agenceId = userData.agenceId || userData.agence?.id || userData.agence_id;
         if (agenceId) {
           localStorage.setItem('agenceId', agenceId.toString());
         }
 
-        // 🟢 MODIFICATION MAJEURE : Sauvegarde du mot de passe saisi pour l'Option Rapide
         if (userData.mustChangePassword) {
           localStorage.setItem('temp_login_password', credentials.password);
           navigate('/change-password-obligatoire', { state: { email: userData.email } });
-          return; // On interrompt le flux ici pour éviter la redirection vers le tableau de bord
+          return;
         }
 
-        // Nettoyage du préfixe éventuel ajouté par Spring Security
         const cleanRole = userData.role.replace('ROLE_', '');
 
-        // MISE À ZONE MAJEURE : Alignement complet avec l'architecture des rôles
         const roleRoutes = {
-          SUPER_ADMIN: '/admin',             // Le propriétaire de la plateforme
-          AGENCY_ADMIN: '/admin-agence',     // Le propriétaire/directeur d'une agence
-          AGENCY_MANAGER: '/agence',         // L'agent de guichet/manager
-          CHAUFFEUR: '/chauffeur',           // Le conducteur
-          CLIENT: '/client',                 // Le passager
-          USER: '/client'                    // Fallback passager
+          SUPER_ADMIN: '/admin',
+          AGENCY_ADMIN: '/admin-agence',
+          AGENCY_MANAGER: '/agence',
+          CHAUFFEUR: '/chauffeur',
+          CLIENT: '/client',
+          USER: '/client'
         };
         
-        // Redirection vers le tableau de bord approprié
         const targetRoute = roleRoutes[cleanRole] || '/';
         navigate(targetRoute);
       }
     } catch (err) {
-      const serverMessage = err.response?.data?.message || err.response?.data?.error;
-      setError(serverMessage || 'Identifiants invalides');
+      const serverMessage = err.response?.data?.message || err.response?.data?.error || '';
+      const lowerMsg = serverMessage.toLowerCase();
+      const errorUser = err.response?.data?.user || { email: credentials.email };
+      
+      if (lowerMsg.includes('suspendu') || lowerMsg.includes('bloqué') || lowerMsg.includes('bloque') || err.response?.status === 403) {
+        setIsSuspended(true);
+        setBlockedUser(errorUser);
+        setError(serverMessage || "Votre compte a été suspendu par l'administrateur.");
+      } else if (err.response?.status === 401) {
+        setError("Adresse email ou mot de passe incorrect.");
+      } else if (serverMessage) {
+        setError(serverMessage);
+      } else {
+        setError("Impossible de se connecter au serveur. Veuillez réessayer.");
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  // Variantes pour les animations
+  // 🟢 Redirection vers l'écran de blocage au clic sur le bouton
+  const handleGoToBlockedScreen = () => {
+    navigate('/compte-bloque', { state: { user: blockedUser } });
+  };
+
   const containerVariants = {
     hidden: { opacity: 0, y: 20 },
     visible: { 
@@ -109,7 +137,7 @@ const Login = () => {
         className="flex flex-col md:flex-row-reverse w-full max-w-5xl bg-white rounded-[2.5rem] shadow-[0_30px_60px_rgba(0,0,0,0.12)] overflow-hidden"
       >
         
-        {/* SECTION VISUELLE AVEC ANIMATION DE FLOTTEMENT */}
+        {/* SECTION VISUELLE */}
         <div className="w-full md:w-1/2 bg-gradient-to-br from-[#1e1b4b] via-[#4338ca] to-[#6366f1] p-10 md:p-16 flex flex-col justify-between text-white relative">
           <div className="z-10">
             <motion.div 
@@ -139,21 +167,33 @@ const Login = () => {
           </motion.div>
         </div>
 
-        {/* SECTION FORMULAIRE AVEC APPARITION PROGRESSIVE */}
+        {/* SECTION FORMULAIRE */}
         <div className="w-full md:w-1/2 p-10 md:p-16 lg:p-20 flex flex-col justify-center bg-white">
           <motion.div variants={itemVariants} className="mb-10">
             <h1 className="text-4xl font-black text-slate-900 mb-2">Connexion</h1>
             <div className="w-12 h-1.5 bg-indigo-600 rounded-full"></div>
           </motion.div>
 
-          {/* Affichage des erreurs si le serveur renvoie un problème */}
+          {/* Affichage des erreurs et du bouton "Contacter l'administrateur" */}
           {error && (
             <motion.div 
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 text-red-700 text-sm font-semibold rounded-r-xl"
+              className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl space-y-2"
             >
-              {error}
+              <p className="text-red-700 text-sm font-semibold">{error}</p>
+              
+              {/* 🟢 BOUTON ACTIONNANT L'ÉCRAN DE BLOCAGE */}
+              {isSuspended && (
+                <button
+                  type="button"
+                  onClick={handleGoToBlockedScreen}
+                  className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-red-700 hover:text-indigo-600 underline underline-offset-2 transition-colors cursor-pointer"
+                >
+                  <FaExclamationTriangle className="text-red-500" />
+                  Contacter l'administrateur
+                </button>
+              )}
             </motion.div>
           )}
 
@@ -186,7 +226,6 @@ const Login = () => {
                   placeholder="••••••••"
                 />
                 
-                {/* Bouton pour basculer la visibilité du mot de passe */}
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
@@ -202,7 +241,7 @@ const Login = () => {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               disabled={loading}
-              className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 transition-all flex justify-center items-center gap-3"
+              className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 transition-all flex justify-center items-center gap-3 cursor-pointer"
             >
               {loading ? (
                 <div className="w-6 h-6 border-3 border-white/30 border-t-white rounded-full animate-spin"></div>

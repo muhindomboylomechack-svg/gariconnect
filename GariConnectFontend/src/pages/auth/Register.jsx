@@ -58,14 +58,13 @@ const Register = () => {
     // Vérifie si le rôle nécessite d'être rattaché à une agence parente
     const requiresAgency = formData.role === 'CHAUFFEUR' || formData.role === 'AGENCY_MANAGER';
 
-    // Payload nettoyé et structuré de manière cohérente avec le AuthController backend
+    // Payload nettoyé et structuré
     const dataToSubmit = {
       nom: formData.nom,
       email: formData.email,
       telephone: formData.telephone,
       password: formData.password,
       role: formData.role,
-      // On envoie directement agenceId à la racine pour correspondre au request.get("agenceId") du backend
       agenceId: requiresAgency ? formData.agenceId : null
     };
 
@@ -73,11 +72,26 @@ const Register = () => {
       const response = await api.post('/auth/register', dataToSubmit);
       const userData = response.data;
 
-      // Logique post-inscription alignée sur les statuts du AuthService backend
+      // 🟢 CAS DU CLIENT : Connexion automatique immédiate + Redirection
       if (formData.role === 'CLIENT') {
-        login(userData); 
-        navigate('/client');
-      } else if (formData.role === 'AGENCY_ADMIN') {
+        // Sauvegarde du token s'il est renvoyé par l'endpoint d'inscription
+        if (userData.token) {
+          localStorage.setItem('token', userData.token);
+        }
+        if (userData.role) {
+          localStorage.setItem('role', userData.role);
+        }
+
+        // Met à jour l'état d'authentification global
+        await login(userData); 
+        
+        // Redirige directement vers l'espace client sans repasser par le Login
+        navigate('/client', { replace: true });
+        return;
+      } 
+      
+      // CAS DES AUTRES RÔLES (Soumis à validation administrative)
+      if (formData.role === 'AGENCY_ADMIN') {
         setSuccess("Inscription réussie ! Votre compte Entreprise/Agence de transport a été créé et est en attente de validation par le Super Administrateur de la plateforme.");
       } else if (formData.role === 'CHAUFFEUR') {
         setSuccess("Inscription réussie ! Votre compte Chauffeur a été créé et est en attente de validation par l'Administrateur de votre agence.");
@@ -295,7 +309,7 @@ const Register = () => {
                 {loading ? (
                   <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 ) : (
-                  <>Créer le compte <FaChevronRight size={10} /></>
+                  <>{formData.role === 'CLIENT' ? 'Créer mon compte et accéder à mon espace' : 'Créer le compte'} <FaChevronRight size={10} /></>
                 )}
               </motion.button>
             </form>

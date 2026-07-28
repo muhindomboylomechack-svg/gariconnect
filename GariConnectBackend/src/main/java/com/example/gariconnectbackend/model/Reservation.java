@@ -120,6 +120,17 @@ public class Reservation {
 //
 //        return prixBase;
 //    }
+@Column(name = "masque_pour_client")
+private boolean masquePourClient = false;
+
+    // Getters et Setters
+    public boolean isMasquePourClient() {
+        return masquePourClient;
+    }
+
+    public void setMasquePourClient(boolean masquePourClient) {
+        this.masquePourClient = masquePourClient;
+    }
 
     // 🟢 Arrêt où le client attend le bus
     @ManyToOne(fetch = FetchType.EAGER)
@@ -142,19 +153,33 @@ public class Reservation {
     @JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
     private Course courseAssignee;
 
-    // --- Compatibilité JSON Frontend ---
-    @JsonProperty("client")
-    public User getClient() {
-        return this.client;
+
+
+//    // --- Compatibilité JSON Frontend ---
+//    @JsonProperty("client")
+//    public User getClient() {
+//        return this.client;
+//    }
+//
+//    @JsonProperty("user")
+//    public User getUser() {
+//        return this.client;
+//    }
+//
+//    @JsonProperty("user")
+//    public void setUser(User user) {
+//        this.client = user;
+//    }
+    // Dans Reservation.java
+
+    // Getters et Setters
+    public Boolean getMasquePourClient() {
+        return masquePourClient;
     }
 
-    @JsonProperty("user")
-    public User getUser() {
-        return this.client;
+    public void setMasquePourClient(Boolean masquePourClient) {
+        this.masquePourClient = masquePourClient;
     }
 
-    @JsonProperty("user")
-    public void setUser(User user) {
-        this.client = user;
-    }
+
 }

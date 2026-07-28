@@ -422,6 +422,85 @@ public class PaiementController {
         return ResponseEntity.ok(paiementsAgence);
     }
 
+//    /**
+//     * 🔥 EXCLUSIF INTERFACE AGENT : Récupérer le calcul dynamique de la facture réelle avec SÉCURITÉ
+//     */
+//    @GetMapping("/details-facture/{reservationId}")
+//    @PreAuthorize("hasAnyRole('AGENCE', 'AGENCY_MANAGER', 'AGENCY_ADMIN')")
+//    public ResponseEntity<?> obtenirDetailsFacturePourAgent(@PathVariable Long reservationId) {
+//        String email = SecurityContextHolder.getContext().getAuthentication().getName();
+//        User userConnecte = userRepository.findByEmail(email).orElseThrow();
+//
+//        Reservation res = reservationRepository.findById(reservationId)
+//                .orElseThrow(() -> new RuntimeException("Réservation introuvable"));
+//
+//        // 🛑 SÉCURITÉ : Vérifier que la réservation appartient bien à l'agence de l'agent
+//        User agenceAgent = (userConnecte.getRole() == Role.AGENCY_ADMIN) ? userConnecte : userConnecte.getAgenceEmployeur();
+//        if (agenceAgent == null || !res.getTrajet().getAgence().getId().equals(agenceAgent.getId())) {
+//            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+//                    .body(Map.of("message", "Accès refusé : Cette réservation n'appartient pas à votre agence."));
+//        }
+//
+//        double prixBillet = (res.getMontantPaye() != null && res.getMontantPaye() > 0)
+//                ? res.getMontantPaye()
+//                : (res.getTrajet() != null ? res.getTrajet().getPrix() : 0.0);
+//
+//        double fraisVIP = 0.0;
+//
+//        Optional<DemandeRecuperation> demandeOpt = demandeRecuperationRepository.findByReservationId(res.getId());
+//        if (demandeOpt.isPresent() && demandeOpt.get().getPrixSupplementaire() != null) {
+//            fraisVIP = demandeOpt.get().getPrixSupplementaire();
+//        }
+//
+//        Map<String, Object> response = new HashMap<>();
+//        response.put("reservationId", res.getId());
+//        response.put("codeTicket", res.getCodeTicket());
+//        response.put("prixBilletNormal", prixBillet);
+//        response.put("fraisRecuperationDomicile", fraisVIP);
+//        response.put("montantTotalAEncaisser", (prixBillet + fraisVIP));
+//        response.put("statutActuel", res.getStatut());
+//
+//        return ResponseEntity.ok(response);
+//    }
+
+//    /**
+//     * 🔥 ACTION DIRECTE ENCAISSEMENT CASH AU GUICHET PAR L'AGENT AVEC VÉRIFICATION D'APPARTENANCE
+//     */
+//    @PostMapping("/encaisser-guichet")
+//    @PreAuthorize("hasAnyRole('AGENCE', 'AGENCY_MANAGER', 'AGENCY_ADMIN')")
+//    public ResponseEntity<?> encaisserAuGuichet(@RequestBody Map<String, Object> payload) {
+//        try {
+//            String email = SecurityContextHolder.getContext().getAuthentication().getName();
+//            User userConnecte = userRepository.findByEmail(email).orElseThrow();
+//
+//            Long reservationId = Long.valueOf(payload.get("reservationId").toString());
+//
+//            Reservation res = reservationRepository.findById(reservationId)
+//                    .orElseThrow(() -> new RuntimeException("Réservation introuvable"));
+//
+//            // 🛑 SÉCURITÉ : Empêcher un agent d'encaisser l'argent d'une autre agence
+//            User agenceAgent = (userConnecte.getRole() == Role.AGENCY_ADMIN) ? userConnecte : userConnecte.getAgenceEmployeur();
+//            if (agenceAgent == null || !res.getTrajet().getAgence().getId().equals(agenceAgent.getId())) {
+//                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+//                        .body(Map.of("success", false, "message", "Action non autorisée : Cette réservation dépend d'une autre agence."));
+//            }
+//
+//            String mode = payload.get("modePaiement") != null ? payload.get("modePaiement").toString() : "CASH";
+//            String referenceClient = payload.get("reference") != null ? payload.get("reference").toString() : "CASH-GUICHET";
+//
+//            Paiement paiementEffectue = paiementService.effectuerPaiement(reservationId, mode, referenceClient);
+//
+//            return ResponseEntity.ok(Map.of(
+//                    "success", true,
+//                    "message", "Facture complète enregistrée avec succès !",
+//                    "montantEncaisse", paiementEffectue.getMontant(),
+//                    "statutReservation", "PAYE" // En majuscule pour correspondre à vos standards de statut
+//            ));
+//        } catch (Exception e) {
+//            return ResponseEntity.badRequest().body(Map.of("success", false, "message", e.getMessage()));
+//        }
+//    }
+
     /**
      * 🔥 EXCLUSIF INTERFACE AGENT : Récupérer le calcul dynamique de la facture réelle avec SÉCURITÉ
      */
@@ -433,6 +512,12 @@ public class PaiementController {
 
         Reservation res = reservationRepository.findById(reservationId)
                 .orElseThrow(() -> new RuntimeException("Réservation introuvable"));
+
+        // 🟢 CORRECTION : Bloquer immédiatement si la réservation est annulée
+        if ("ANNULEE".equalsIgnoreCase(res.getStatut())) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                    .body(Map.of("message", "Cette réservation a été annulée et ne nécessite plus de paiement."));
+        }
 
         // 🛑 SÉCURITÉ : Vérifier que la réservation appartient bien à l'agence de l'agent
         User agenceAgent = (userConnecte.getRole() == Role.AGENCY_ADMIN) ? userConnecte : userConnecte.getAgenceEmployeur();
@@ -477,6 +562,12 @@ public class PaiementController {
 
             Reservation res = reservationRepository.findById(reservationId)
                     .orElseThrow(() -> new RuntimeException("Réservation introuvable"));
+
+            // 🟢 CORRECTION : Empêcher l'encaissement physique d'une réservation annulée
+            if ("ANNULEE".equalsIgnoreCase(res.getStatut())) {
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                        .body(Map.of("success", false, "message", "Impossible d'encaisser une réservation préalablement annulée."));
+            }
 
             // 🛑 SÉCURITÉ : Empêcher un agent d'encaisser l'argent d'une autre agence
             User agenceAgent = (userConnecte.getRole() == Role.AGENCY_ADMIN) ? userConnecte : userConnecte.getAgenceEmployeur();

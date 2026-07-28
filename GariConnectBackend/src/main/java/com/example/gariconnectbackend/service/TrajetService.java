@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.TextStyle;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -205,5 +206,21 @@ public class TrajetService {
 
         trajet.setStatut("PROGRAMME");
         return trajetRepository.save(trajet);
+    }
+    /**
+     * Création de plusieurs trajets en une seule transaction (Aller & Retour simultanés)
+     */
+    @Transactional
+    public List<Trajet> creerTrajetsMultiples(List<Trajet> trajets, Long agenceId) {
+        List<Trajet> trajetsCrees = new ArrayList<>();
+
+        for (Trajet trajet : trajets) {
+            // On boucle et on réutilise ta méthode existante "creerTrajet"
+            // qui contient déjà toutes tes règles métier (assignation agence, statut, etc.)
+            Trajet nouveauTrajet = creerTrajet(trajet, agenceId);
+            trajetsCrees.add(nouveauTrajet);
+        }
+
+        return trajetsCrees;
     }
 }

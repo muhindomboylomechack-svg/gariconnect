@@ -142,26 +142,26 @@ public class DemandeRecuperationController {
                     .body(Map.of("message", "Erreur lors de la recherche de la demande : " + e.getMessage()));
         }
     }
-    /**
-     * ❌ SUPPRIMER UNE DEMANDE DE RAMASSAGE (Action de l'Agent ou du Client)
-     * Gère les requêtes DELETE vers /api/recuperations/{id}
-     */
-    @DeleteMapping({"/recuperations/{id}", "/agences/demandes-recuperation/{id}"})
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CLIENT')")
-    public ResponseEntity<?> supprimerDemande(@PathVariable Long id) {
-        try {
-            recuperationService.supprimerDemande(id);
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "La demande de ramassage a été annulée et supprimée avec succès."
-            ));
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "success", false,
-                    "message", "Erreur lors de la suppression : " + e.getMessage()
-            ));
-        }
-    }
+//    /**
+//     * ❌ SUPPRIMER UNE DEMANDE DE RAMASSAGE (Action de l'Agent ou du Client)
+//     * Gère les requêtes DELETE vers /api/recuperations/{id}
+//     */
+//    @DeleteMapping({"/recuperations/{id}", "/agences/demandes-recuperation/{id}"})
+//    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CLIENT')")
+//    public ResponseEntity<?> supprimerDemande(@PathVariable Long id) {
+//        try {
+//            recuperationService.supprimerDemande(id);
+//            return ResponseEntity.ok(Map.of(
+//                    "success", true,
+//                    "message", "La demande de ramassage a été annulée et supprimée avec succès."
+//            ));
+//        } catch (Exception e) {
+//            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+//                    "success", false,
+//                    "message", "Erreur lors de la suppression : " + e.getMessage()
+//            ));
+//        }
+//    }
 
 
     /**
@@ -224,6 +224,72 @@ public class DemandeRecuperationController {
             return ResponseEntity.ok(historique);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body(Map.of("message", "Erreur lors du chargement de l'historique : " + e.getMessage()));
+        }
+    }
+
+    /**
+     * NOUVEAU - CLIENT : Modifier la localisation d'une demande VIP
+     * Si la localisation change, le statut repasse en EN_ATTENTE_COTATION.
+     */
+    @PutMapping("/recuperations/{id}/modifier-localisation")
+    @PreAuthorize("hasRole('CLIENT') or isAuthenticated()")
+    public ResponseEntity<?> modifierLocalisation(@PathVariable Long id, @RequestBody DemandeRecuperationRequest request) {
+        try {
+            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
+            DemandeRecuperation demandeModifiee = recuperationService.modifierLocalisation(id, request, emailConnecte);
+            return ResponseEntity.ok(Map.of(
+                    "message", "Localisation évaluée et mise à jour avec succès.",
+                    "demande", demandeModifiee
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    /**
+     * NOUVEAU - CLIENT : Annuler une demande de ramassage VIP
+     */
+    @PutMapping("/recuperations/{id}/annuler")
+    @PreAuthorize("hasRole('CLIENT') or isAuthenticated()")
+    public ResponseEntity<?> annulerDemandeClient(@PathVariable Long id) {
+        try {
+            String emailConnecte = SecurityContextHolder.getContext().getAuthentication().getName();
+            DemandeRecuperation demandeAnnulee = recuperationService.annulerDemandeClient(id, emailConnecte);
+            return ResponseEntity.ok(Map.of(
+                    "message", "La demande a été annulée avec succès.",
+                    "demande", demandeAnnulee
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body(Map.of("message", e.getMessage()));
+        }
+    }
+
+    /**
+     * MODIFICATION - SUPPRIMER UNE DEMANDE DE RAMASSAGE (Action de l'Agent ou du Client)
+     */
+    @DeleteMapping({"/recuperations/{id}", "/agences/demandes-recuperation/{id}"})
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER', 'CLIENT')")
+    public ResponseEntity<?> supprimerDemande(@PathVariable Long id) {
+        try {
+            var auth = SecurityContextHolder.getContext().getAuthentication();
+            String emailConnecte = auth.getName();
+
+            // On vérifie si l'utilisateur qui fait la requête a des droits administratifs
+            boolean isAgentOrAdmin = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().contains("ADMIN") || a.getAuthority().contains("MANAGER"));
+
+            // On passe ces paramètres au service mis à jour
+            recuperationService.supprimerDemande(id, emailConnecte, isAgentOrAdmin);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "La demande de ramassage a été supprimée avec succès."
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "success", false,
+                    "message", "Erreur lors de la suppression : " + e.getMessage()
+            ));
         }
     }
 }

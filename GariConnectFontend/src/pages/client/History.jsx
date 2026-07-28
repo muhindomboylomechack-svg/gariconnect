@@ -10,9 +10,12 @@ import {
     FaArrowRight, 
     FaSearch, 
     FaExclamationCircle,
-    FaUsers 
+    FaUsers,
+    FaEdit,
+    FaBan,
+    FaTrashAlt,
+    FaTimes
 } from 'react-icons/fa';
-
 // 🌐 Import de l'instance API centralisée
 import api from '../../services/api';
 
@@ -22,72 +25,207 @@ const HistoriqueReservations = () => {
     const [filter, setFilter] = useState('TOUTES'); // TOUTES, ATTENTE_PAIEMENT, RAMASSAGE
     const [isLoading, setIsLoading] = useState(true);
     const [errorMsg, setErrorMsg] = useState(null);
+    const [successMsg, setSuccessMsg] = useState(null);
+
+    // 🛠️ ÉTATS POUR LES MODALES (Edition / Suppression)
+    const [reservationAEditer, setReservationAEditer] = useState(null);
+    const [nombrePlacesEdit, setNombrePlacesEdit] = useState(1);
+    const [adresseRamassageEdit, setAdresseRamassageEdit] = useState('');
+    const [changerLocalisation, setChangerLocalisation] = useState(false); // NOUVEL ÉTAT POUR VIP
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [reservationASupprimer, setReservationASupprimer] = useState(null);
+
+    // 🔄 Chargement initial de l'historique
+    const chargerHistorique = async () => {
+        setIsLoading(true);
+        setErrorMsg(null);
+        try {
+            const token = localStorage.getItem('token'); 
+            
+            if (!token) {
+                setErrorMsg("Vous devez être connecté pour voir votre historique.");
+                setIsLoading(false); 
+                return;
+            }
+            const response = await api.get('/reservations/mon-historique');
+            const rawData = response.data !== undefined ? response.data : response;
+            const arrayData = Array.isArray(rawData) ? rawData : [];
+
+            // 🛠️ MAPPING FRONTEND : Forcer le statut de paiement à "ANNULEE" si la réservation est annulée
+            const dataTraitee = arrayData.map(res => {
+                const st = (res.statut || res.statutPaiement || '')?.toUpperCase();
+                if (['ANNULEE', 'ANNULE', 'CANCELLED'].includes(st)) {
+                    return {
+                        ...res,
+                        statutPaiement: 'ANNULEE'
+                    };
+                }
+                return res;
+            });
+            setReservations(dataTraitee);
+        } catch (error) {
+            console.error("Erreur lors du chargement de l'historique :", error);
+            
+            if (error.response?.status === 401 || error.status === 401) {
+                localStorage.removeItem('token');
+                setErrorMsg("Votre session a expiré ou est invalide. Redirection vers la page de connexion...");
+                
+                setTimeout(() => {
+                    navigate('/login');
+                }, 3000);
+            } else {
+                setErrorMsg("Impossible de charger votre historique de voyages. Veuillez réessayer plus tard.");
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     useEffect(() => {
-        const chargerHistorique = async () => {
-            setIsLoading(true);
-            setErrorMsg(null);
-            try {
-                // 🔐 Vérification locale du jeton d'authentification utilisateur
-                const token = localStorage.getItem('token'); 
-                
-                if (!token) {
-                    setErrorMsg("Vous devez être connecté pour voir votre historique.");
-                    setIsLoading(false); 
-                    return;
-                }
-
-                // 🚀 Appel via l'instance API centralisée
-                const response = await api.get('/reservations/mon-historique');
-                
-                // Extraction des données de manière sécurisée
-                const data = response.data !== undefined ? response.data : response;
-                setReservations(Array.isArray(data) ? data : []);
-
-            } catch (error) {
-                console.error("Erreur lors du chargement de l'historique :", error);
-                
-                if (error.response?.status === 401 || error.status === 401) {
-                    localStorage.removeItem('token'); // Nettoyage du token expiré
-                    setErrorMsg("Votre session a expiré ou est invalide. Redirection vers la page de connexion...");
-                    
-                    setTimeout(() => {
-                        navigate('/login');
-                    }, 3000);
-                } else {
-                    setErrorMsg("Impossible de charger votre historique de voyages. Veuillez réessayer plus tard.");
-                }
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
         chargerHistorique();
     }, [navigate]);
 
-    // 💰 Redirection vers la caisse virtuelle de paiement selon le statut
+    // 💰 Redirection paiement
     const gererPaiement = (res, event) => {
-        event.stopPropagation(); // Évite de déclencher d'éventuels événements parents
-        
-        console.log("Tentative de paiement pour la réservation :", res.id, "avec le statut :", res.statutPaiement);
-
+        event.stopPropagation();
         if (res.statutPaiement === "ATTENTE_PAIEMENT_SURPLUS") {
-            // Redirection vers le formulaire spécifique du surplus de récupération à domicile
             navigate(`/client/reservation-recuperation/${res.id}`);
         } else {
-            // Sécurité : Redirection par défaut vers la page de paiement standard pour débloquer l'utilisateur
             navigate(`/client/paiement-reservation/${res.id}`);
         }
     };
 
+    // ✏️ 1. MODIFIER UNE RÉSERVATION
+    const ouvrirModalEdition = (res) => {
+        setReservationAEditer(res);
+        setNombrePlacesEdit(res.nombrePlaces || 1);
+        setAdresseRamassageEdit(res.adresseRamassage || '');
+        setChangerLocalisation(false); // Par défaut, on conserve l'ancienne localisation
+    };
+
+    const enregistrerModification = async (e) => {
+        e.preventDefault();
+        if (!reservationAEditer) return;
+        
+        setIsSubmitting(true);
+        setErrorMsg(null);
+        setSuccessMsg(null);
+        
+        try {
+            // Construction du payload envoyé à l'API
+            const payload = {
+                nombrePlaces: parseInt(nombrePlacesEdit, 10),
+                adresseRamassage: changerLocalisation ? adresseRamassageEdit : reservationAEditer.adresseRamassage,
+                demandeRecalculLocalisation: changerLocalisation 
+            };
+            
+            await api.put(`/reservations/${reservationAEditer.id}`, payload);
+            
+            setSuccessMsg(`La réservation N° ${reservationAEditer.id} a été mise à jour avec succès ! ${changerLocalisation ? "Votre agence va recalculer le prix de récupération." : ""}`);
+            setReservationAEditer(null);
+            
+            // Recharger les données fraîches depuis le serveur
+            await chargerHistorique();
+        } catch (error) {
+            console.error("Erreur modification réservation :", error);
+            setErrorMsg(error.response?.data?.message || "Erreur lors de la modification de la réservation.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    // 🚫 2. ANNULER UNE RÉSERVATION
+    const gererAnnulation = async (res) => {
+        const confirmation = window.confirm(`Êtes-vous sûr de vouloir annuler la réservation N° ${res.id} ?`);
+        if (!confirmation) return;
+        setIsLoading(true);
+        setErrorMsg(null);
+        setSuccessMsg(null);
+        try {
+            await api.patch(`/reservations/${res.id}/annuler`);
+            
+            setSuccessMsg(`La réservation N° ${res.id} a bien été annulée.`);
+            await chargerHistorique();
+        } catch (error) {
+            console.error("Erreur complète lors de l'annulation :", error);
+            
+            let messageErreur = "Impossible d'annuler cette réservation.";
+            if (error.response?.data) {
+                if (typeof error.response.data === 'string') {
+                    messageErreur = error.response.data;
+                } else if (error.response.data.message) {
+                    messageErreur = error.response.data.message;
+                } else if (error.response.data.error) {
+                    messageErreur = error.response.data.error;
+                }
+            } else if (error.message) {
+                messageErreur = error.message;
+            }
+            
+            setErrorMsg(`Échec de l'annulation : ${messageErreur}`);
+            setIsLoading(false);
+        }
+    };
+
+    // 🗑️ 3. SUPPRIMER UNE RÉSERVATION (Gestion propre du clic)
+    const handleDelete = (res, event) => {
+        if (event) event.stopPropagation();
+        
+        const statut = (res.statut || res.statutPaiement || '')?.toUpperCase();
+        
+        // Empêcher la suppression si la réservation est payée
+        if (['PAYE', 'VALIDEE', 'CONFIRMEE', 'EMBARQUE'].includes(statut)) {
+            setErrorMsg("Une réservation payée ne peut pas être supprimée.");
+            return;
+        }
+
+        setReservationASupprimer(res);
+    };
+
+const confirmerSuppression = async () => {
+    if (!reservationASupprimer) return;
+    setIsSubmitting(true);
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+        // Appeler l'endpoint de masquage
+        await api.put(`/reservations/${reservationASupprimer.id}/masquer-client`);
+        
+        // Retirer la réservation de l'affichage local du client
+        setReservations(prev => prev.filter(r => r.id !== reservationASupprimer.id));
+        setSuccessMsg(`La réservation N° ${reservationASupprimer.id} a été retirée de votre historique.`);
+        setReservationASupprimer(null);
+    } catch (error) {
+        console.error("Erreur masquage réservation :", error);
+        
+        let messageErreur = "Impossible de retirer cette réservation de votre historique.";
+        if (error.response?.data) {
+            if (typeof error.response.data === 'string') {
+                messageErreur = error.response.data;
+            } else if (error.response.data.message) {
+                messageErreur = error.response.data.message;
+            }
+        }
+        setErrorMsg(messageErreur);
+        setReservationASupprimer(null);
+    } finally {
+        setIsSubmitting(false);
+    }
+};
+
     // Filtrage des données de la liste
     const reservationsFiltrees = reservations.filter(res => {
+        const statut = (res.statut || res.statutPaiement)?.toUpperCase();
+        
         if (filter === 'ATTENTE_PAIEMENT') {
             return (
-                res.statutPaiement !== 'PAYE' && 
-                res.statutPaiement !== 'VALIDEE' && 
-                res.statutPaiement !== 'CONFIRMEE' && 
-                res.statutPaiement !== 'EMBARQUE'
+                statut !== 'PAYE' && 
+                statut !== 'VALIDEE' && 
+                statut !== 'CONFIRMEE' && 
+                statut !== 'EMBARQUE' &&
+                statut !== 'ANNULEE' &&
+                statut !== 'ANNULE' &&
+                statut !== 'CANCELLED'
             );
         }
         if (filter === 'RAMASSAGE') {
@@ -96,7 +234,7 @@ const HistoriqueReservations = () => {
         return true;
     });
 
-    // Rendu du Badge de Statut de Paiement
+    // Badge Statut
     const renderBadgeStatut = (statut) => {
         if (!statut) {
             return (
@@ -105,7 +243,6 @@ const HistoriqueReservations = () => {
                 </span>
             );
         }
-
         switch (statut.toUpperCase()) {
             case 'PAYE':
             case 'VALIDEE':
@@ -116,10 +253,19 @@ const HistoriqueReservations = () => {
                         <FaCheckCircle size={12} /> Payé
                     </span>
                 );
+            case 'ATTENTE_RECALCUL':
             case 'ATTENTE_PAIEMENT_SURPLUS':
                 return (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 animate-pulse">
-                        <FaClock size={12} /> Surplus à payer (VID)
+                        <FaClock size={12} /> Surplus à calculer/payer
+                    </span>
+                );
+            case 'ANNULEE':
+            case 'ANNULE':
+            case 'CANCELLED':
+                return (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400">
+                        <FaBan size={12} /> Annulée
                     </span>
                 );
             case 'ATTENTE_PAIEMENT':
@@ -131,7 +277,6 @@ const HistoriqueReservations = () => {
                     </span>
                 );
             default:
-                // Fallback si le backend renvoie une chaîne customisée non listée
                 return (
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400">
                         <FaExclamationCircle size={12} /> {statut}
@@ -150,15 +295,21 @@ const HistoriqueReservations = () => {
                         Mon Historique de Voyages
                     </h1>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                        Consultez vos réservations, vérifiez vos statuts de ramassage à domicile et finalisez vos paiements en toute sécurité.
+                        Consultez, modifiez, annulez ou gérez vos réservations en toute simplicité.
                     </p>
                 </div>
 
-                {/* --- MESSAGE D'ERREUR DYNAMIQUE --- */}
+                {/* --- NOTIFICATIONS --- */}
                 {errorMsg && (
                     <div className="mb-6 p-4 bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-400 rounded-2xl text-sm font-semibold flex items-center gap-2 shadow-sm">
                         <FaExclamationCircle className="flex-shrink-0" />
                         <span>{errorMsg}</span>
+                    </div>
+                )}
+                {successMsg && (
+                    <div className="mb-6 p-4 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-400 rounded-2xl text-sm font-semibold flex items-center gap-2 shadow-sm">
+                        <FaCheckCircle className="flex-shrink-0" />
+                        <span>{successMsg}</span>
                     </div>
                 )}
 
@@ -175,6 +326,7 @@ const HistoriqueReservations = () => {
                         >
                             Toutes ({reservations.length})
                         </button>
+                        
                         <button
                             onClick={() => setFilter('ATTENTE_PAIEMENT')}
                             className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer ${
@@ -183,8 +335,14 @@ const HistoriqueReservations = () => {
                                 : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
                             }`}
                         >
-                            Attente Paiement ({reservations.filter(r => r.statutPaiement !== 'PAYE' && r.statutPaiement !== 'VALIDEE' && r.statutPaiement !== 'CONFIRMEE' && r.statutPaiement !== 'EMBARQUE').length})
+                            Attente Paiement ({
+                                reservations.filter(r => {
+                                    const st = (r.statut || r.statutPaiement)?.toUpperCase();
+                                    return st !== 'PAYE' && st !== 'VALIDEE' && st !== 'CONFIRMEE' && st !== 'EMBARQUE' && st !== 'ANNULEE' && st !== 'ANNULE' && st !== 'CANCELLED';
+                                }).length
+                            })
                         </button>
+                        
                         <button
                             onClick={() => setFilter('RAMASSAGE')}
                             className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer ${
@@ -194,7 +352,7 @@ const HistoriqueReservations = () => {
                             }`}
                         >
                             <span className="inline-flex items-center gap-1">
-                                <FaCar size={11} /> Options VID / À domicile
+                                <FaCar size={11} /> Options VID / VIP
                             </span>
                         </button>
                     </div>
@@ -219,26 +377,23 @@ const HistoriqueReservations = () => {
                             const nombrePlaces = res.nombrePlaces || 1;
                             const totalFacture = res.montantTotal || 0; 
                             const montantSupplementaire = res.prixSupplementaire || 0;
-                            
-                            // Calcul du prix unitaire par billet
                             const prixUnitaireBillet = nombrePlaces > 0 ? (totalFacture - montantSupplementaire) / nombrePlaces : 0;
-
-                            // Le bouton s'affiche TOUJOURS sauf si c'est explicitement payé ou validé
-                            const afficherBoutonPayer = res.statutPaiement !== 'PAYE' && 
-                                                         res.statutPaiement !== 'VALIDEE' && 
-                                                         res.statutPaiement !== 'CONFIRMEE' && 
-                                                         res.statutPaiement !== 'EMBARQUE';
+                            
+                            const statutUpper = (res.statut || res.statutPaiement)?.toUpperCase();
+                            const estPayeOuValide = ['PAYE', 'VALIDEE', 'CONFIRMEE', 'EMBARQUE'].includes(statutUpper);
+                            const estAnnule = ['ANNULEE', 'ANNULE', 'CANCELLED'].includes(statutUpper);
+                            const afficherBoutonPayer = !estPayeOuValide && !estAnnule;
 
                             return (
                                 <div 
                                     key={res.id}
                                     className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800/50 shadow-sm p-5 hover:shadow-md transition-shadow relative overflow-hidden"
                                 >
-                                    {/* Tag distinctif VID / Normal */}
+                                    {/* Tag VIP/VID / Normal */}
                                     <div className="absolute top-4 right-4 flex items-center gap-2">
                                         {res.typeReservation === 'VID' || res.typeReservation === 'VIP' ? (
                                             <span className="px-2.5 py-1 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-[10px] font-black tracking-widest rounded-lg uppercase shadow-sm flex items-center gap-1">
-                                                <FaCar size={10} /> VID / À Domicile
+                                                <FaCar size={10} /> {res.typeReservation} / À Domicile
                                             </span>
                                         ) : (
                                             <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[10px] font-bold tracking-wider rounded-lg uppercase">
@@ -259,7 +414,6 @@ const HistoriqueReservations = () => {
                                                     Fait le {res.dateReservation ? new Date(res.dateReservation).toLocaleDateString('fr-FR', {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'}) : 'Date inconnue'}
                                                 </span>
                                             </div>
-
                                             {/* Trajet */}
                                             <div className="flex items-center gap-3 text-lg font-black text-slate-800 dark:text-white">
                                                 <span>{res.villeDepart}</span>
@@ -269,7 +423,6 @@ const HistoriqueReservations = () => {
                                                     {res.heureDepart || '--:--'}
                                                 </span>
                                             </div>
-
                                             {/* Places */}
                                             <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-slate-600 dark:text-slate-300 font-semibold">
                                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 rounded-xl">
@@ -282,19 +435,17 @@ const HistoriqueReservations = () => {
                                                     </span>
                                                 )}
                                             </div>
-
                                             {/* Adresse de ramassage */}
                                             {(res.typeReservation === 'VID' || res.typeReservation === 'VIP') && res.adresseRamassage && (
-                                                <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/40 px-3 py-1.5 rounded-xl w-full max-w-md border border-slate-100 dark:border-indigo-950/20">
+                                                <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/40 px-3 py-1.5 rounded-xl w-full max-w-md border border-slate-100 dark:border-indigo-950/20 mt-2">
                                                     <FaMapMarkerAlt className="text-indigo-500 flex-shrink-0" />
-                                                    <span className="truncate"><strong>Ramassage :</strong> {res.adresseRamassage}</span>
+                                                    <span className="truncate"><strong>Localisation (GPS/Dom.) :</strong> {res.adresseRamassage}</span>
                                                 </div>
                                             )}
                                         </div>
 
                                         {/* Prix & Statut financiers */}
                                         <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-4 pt-4 md:pt-0 border-t md:border-t-0 border-slate-50 dark:border-slate-800/50">
-                                            
                                             <div className="md:text-right">
                                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Montant total du voyage</p>
                                                 <p className="text-xl font-black text-slate-900 dark:text-white">
@@ -305,7 +456,7 @@ const HistoriqueReservations = () => {
                                                 <div className="mt-1 text-[11px] space-y-0.5 font-semibold text-slate-500 dark:text-slate-400">
                                                     <p>Billets ({nombrePlaces}x) : {(prixUnitaireBillet * nombrePlaces).toLocaleString('fr-FR')} FC</p>
                                                     {montantSupplementaire > 0 && (
-                                                        <p className={res.statutPaiement === 'ATTENTE_PAIEMENT_SURPLUS' ? "text-amber-600 dark:text-amber-400 font-bold animate-pulse" : "text-emerald-600 dark:text-emerald-400"}>
+                                                        <p className={res.statutPaiement === 'ATTENTE_PAIEMENT_SURPLUS' || res.statut === 'ATTENTE_RECALCUL' ? "text-amber-600 dark:text-amber-400 font-bold animate-pulse" : "text-emerald-600 dark:text-emerald-400"}>
                                                             Frais de ramassage : {montantSupplementaire.toLocaleString('fr-FR')} FC
                                                             {res.statutPaiement === 'ATTENTE_PAIEMENT_SURPLUS' ? " (En attente)" : " (Payé)"}
                                                         </p>
@@ -313,23 +464,55 @@ const HistoriqueReservations = () => {
                                                 </div>
                                             </div>
 
-                                            {/* Actions et Badges */}
-                                            <div className="flex items-center gap-3">
-                                                {renderBadgeStatut(res.statutPaiement)}
-
-                                                {/* Bouton Payer débloqué */}
+                                            {/* Actions & Badges */}
+                                            <div className="flex items-center gap-2">
+                                                {renderBadgeStatut(res.statutPaiement || res.statut)}
+                                                
+                                                {/* Bouton Payer */}
                                                 {afficherBoutonPayer && (
                                                     <button
                                                         onClick={(e) => gererPaiement(res, e)}
-                                                        className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-indigo-100 dark:shadow-none cursor-pointer border-0"
+                                                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl transition-all shadow-md shadow-indigo-100 dark:shadow-none cursor-pointer border-0"
                                                     >
-                                                        <FaCreditCard size={12} />
+                                                        <FaCreditCard size={11} />
                                                         <span>Payer</span>
+                                                    </button>
+                                                )}
+
+                                                {/* Bouton Modifier */}
+                                                {!estAnnule && (
+                                                    <button
+                                                        onClick={() => ouvrirModalEdition(res)}
+                                                        title="Modifier la réservation"
+                                                        className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border-0 cursor-pointer"
+                                                    >
+                                                        <FaEdit size={14} />
+                                                    </button>
+                                                )}
+
+                                                {/* Bouton Annuler */}
+                                                {!estAnnule && (
+                                                    <button
+                                                        onClick={() => gererAnnulation(res)}
+                                                        title="Annuler la réservation"
+                                                        className="p-2 text-slate-500 hover:text-amber-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border-0 cursor-pointer"
+                                                    >
+                                                        <FaBan size={14} />
+                                                    </button>
+                                                )}
+
+                                                {/* Bouton Supprimer : Masqué si statut === 'PAYE' ou statut de confirmation */}
+                                                {!estPayeOuValide && (
+                                                    <button
+                                                        onClick={(e) => handleDelete(res, e)}
+                                                        title="Supprimer la réservation"
+                                                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border-0 cursor-pointer"
+                                                    >
+                                                        <FaTrashAlt size={14} />
                                                     </button>
                                                 )}
                                             </div>
                                         </div>
-
                                     </div>
                                 </div>
                             );
@@ -337,6 +520,151 @@ const HistoriqueReservations = () => {
                     </div>
                 )}
             </div>
+
+            {/* --- MODALE DE MODIFICATION (EDIT) --- */}
+            {reservationAEditer && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+                        <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+                            <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                                <FaEdit className="text-indigo-600" />
+                                Modifier la réservation N° {reservationAEditer.id}
+                            </h3>
+                            <button 
+                                onClick={() => setReservationAEditer(null)}
+                                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 border-0 bg-transparent cursor-pointer"
+                            >
+                                <FaTimes size={18} />
+                            </button>
+                        </div>
+                        
+                        <form onSubmit={enregistrerModification} className="mt-4 space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                                    Nombre de places
+                                </label>
+                                <input 
+                                    type="number" 
+                                    min="1" 
+                                    max="10" 
+                                    value={nombrePlacesEdit} 
+                                    onChange={(e) => setNombrePlacesEdit(e.target.value)}
+                                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    required
+                                />
+                            </div>
+
+                            {/* Section Spécifique VIP / VID pour la localisation */}
+                            {(reservationAEditer.typeReservation === 'VID' || reservationAEditer.typeReservation === 'VIP') && (
+                                <div className="p-4 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 mt-4">
+                                    <h4 className="text-sm font-bold text-slate-700 dark:text-slate-200 flex items-center gap-2 mb-3">
+                                        <FaMapMarkerAlt className="text-indigo-500"/>
+                                        Gestion de la localisation (Récupération)
+                                    </h4>
+                                    
+                                    <label className="flex items-start gap-3 cursor-pointer group mb-3">
+                                        <div className="flex items-center h-5">
+                                            <input 
+                                                type="checkbox" 
+                                                checked={changerLocalisation} 
+                                                onChange={(e) => {
+                                                    setChangerLocalisation(e.target.checked);
+                                                    if (!e.target.checked) setAdresseRamassageEdit('');
+                                                }}
+                                                className="w-4 h-4 text-indigo-600 bg-white border-slate-300 rounded focus:ring-indigo-500 focus:ring-2 cursor-pointer"
+                                            />
+                                        </div>
+                                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-indigo-600 transition-colors">
+                                            Je souhaite changer ma localisation / adresse de récupération
+                                        </span>
+                                    </label>
+
+                                    {changerLocalisation ? (
+                                        <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
+                                                    Nouvelle adresse ou coordonnées GPS
+                                                </label>
+                                                <input 
+                                                    type="text" 
+                                                    value={adresseRamassageEdit} 
+                                                    onChange={(e) => setAdresseRamassageEdit(e.target.value)}
+                                                    className="w-full px-4 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                    placeholder="Ex: Quartier HIMBI, Av. Du lac N° 12 ou Lien Maps"
+                                                    required={changerLocalisation}
+                                                />
+                                            </div>
+                                            <div className="flex items-start gap-2 text-amber-700 dark:text-amber-400 text-xs font-semibold bg-amber-100 dark:bg-amber-900/30 p-3 rounded-lg border border-amber-200 dark:border-amber-800">
+                                                <FaExclamationCircle className="flex-shrink-0 mt-0.5 text-amber-500" size={14} />
+                                                <p>
+                                                    <strong>Attention :</strong> En modifiant votre localisation, le système renverra cette réservation à l'agence pour recalculer le prix de récupération.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="text-xs text-slate-500 dark:text-slate-400 p-3 bg-white dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-700">
+                                            <span className="font-semibold block mb-1">Localisation actuelle conservée :</span>
+                                            <span className="italic">{reservationAEditer.adresseRamassage || 'Aucune adresse spécifiée (Point par défaut)'}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* BOUTONS DU FORMULAIRE */}
+                            <div className="flex gap-3 pt-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setReservationAEditer(null)}
+                                    className="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm font-bold rounded-xl transition-colors border-0 cursor-pointer"
+                                >
+                                    Annuler
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isSubmitting}
+                                    className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-colors shadow-md shadow-indigo-200 dark:shadow-none border-0 cursor-pointer disabled:opacity-50 flex items-center justify-center"
+                                >
+                                    {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* --- MODALE DE SUPPRESSION (DELETE) --- */}
+            {reservationASupprimer && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in duration-200 text-center">
+                        <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-4">
+                            <FaTrashAlt size={20} />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+                            Supprimer la réservation ?
+                        </h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
+                            Voulez-vous vraiment retirer la réservation N° <strong className="text-slate-700 dark:text-slate-200">{reservationASupprimer.id}</strong> de votre historique ? Cette action est irréversible.
+                        </p>
+                        <div className="flex gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setReservationASupprimer(null)}
+                                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl transition-colors border-0 cursor-pointer"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                type="button"
+                                onClick={confirmerSuppression}
+                                disabled={isSubmitting}
+                                className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors shadow-md shadow-rose-200 dark:shadow-none border-0 cursor-pointer disabled:opacity-50 flex items-center justify-center"
+                            >
+                                {isSubmitting ? 'Suppression...' : 'Supprimer'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

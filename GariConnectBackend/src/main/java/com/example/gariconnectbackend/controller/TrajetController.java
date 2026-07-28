@@ -765,4 +765,35 @@ public class TrajetController {
                     .body(Map.of("message", "Erreur lors de la mise à jour du statut : " + e.getMessage()));
         }
     }
+
+    /**
+     * Endpoint pour créer plusieurs trajets simultanément (ex: Aller et Retour)
+     * URL cible : POST http://localhost:8080/api/trajets/batch
+     */
+    @PostMapping("/batch")
+    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> creerTrajetsMultiples(@RequestBody List<Trajet> trajets) {
+        try {
+            User utilisateurConnecte = getConnectedUser();
+            Long agenceId = getAgenceIdPourUtilisateur(utilisateurConnecte);
+
+            if (agenceId == null) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body("Création impossible : Agence de rattachement introuvable.");
+            }
+
+            // Vérification de sécurité
+            if (trajets == null || trajets.isEmpty()) {
+                return ResponseEntity.badRequest().body("Aucun trajet n'a été fourni.");
+            }
+
+            // Appel du service pour la création par lot
+            List<Trajet> nouveauxTrajets = trajetService.creerTrajetsMultiples(trajets, agenceId);
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(nouveauxTrajets);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Erreur lors de la création (Aller/Retour) : " + e.getMessage());
+        }
+    }
 }

@@ -16,4 +16,7 @@ public class HistoriqueVoyageDTO {
     private String adresseRamassage; // null si STANDARD
     private Double prixSupplementaire; // 0 si STANDARD
     private Integer nombrePlaces; // 🟢 Ajouté pour remonter la quantité de sièges réservés
+
+    public void setStatut(String statut) {
+    }
 }

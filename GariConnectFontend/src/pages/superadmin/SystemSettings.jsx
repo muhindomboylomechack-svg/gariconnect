@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+// Importation de l'instance API centralisée
+import api from '../../services/api';
 
 export default function SystemSettings() {
   // --- ÉTATS POUR LES PARAMÈTRES ---
@@ -17,67 +19,47 @@ export default function SystemSettings() {
     uptime: "--- %"
   });
   const [isMetricsLoading, setIsMetricsLoading] = useState(true);
-  const [authError, setAuthError] = useState(false); // Nouvel état pour gérer l'erreur 403
+  const [authError, setAuthError] = useState(false);
 
   // --- EFFET POUR LIER LE SYSTEME REEL (POLLING TOUTES LES 15s) ---
   useEffect(() => {
     let interval;
 
     const fetchSystemHealth = async () => {
-      // Si on a déjà détecté une erreur de droits, on arrête d'interroger le serveur
+      // Si une erreur de droit/authentification est déjà détectée, on stoppe le polling
       if (authError) return;
 
       try {
-        // Récupération du token depuis le stockage local
-        const token = localStorage.getItem('token');
-        
-        if (!token) {
-          console.warn("Aucun token trouvé. Requête annulée pour éviter une erreur 403.");
-          setAuthError(true);
-          setIsMetricsLoading(false);
-          return;
-        }
-
-        const response = await fetch('http://localhost:8080/api/admin/system-health', {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            // CORRECTION : Le token est maintenant envoyé correctement au backend
-            'Authorization': `Bearer ${token}` 
-          }
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setSystemHealth(data);
-        } else if (response.status === 401 || response.status === 403) {
-          // Gestion de l'erreur 403 (Accès refusé) ou 401 (Non authentifié)
-          console.error(`Erreur d'autorisation (${response.status}) : Vous n'avez pas les droits nécessaires ou le token est invalide.`);
-          setAuthError(true); // Bloque les prochaines requêtes
-          clearInterval(interval); // Arrête le polling
-        } else {
-          console.error("Erreur lors de la récupération des métriques système");
-        }
+        // Utilisation de l'instance API centralisée (gestion automatique de la base URL, des tokens et du basculement)
+        const response = await api.get('/admin/system-health');
+        setSystemHealth(response.data);
       } catch (error) {
-        console.error("Impossible de joindre le serveur backend :", error);
+        console.error("Erreur lors de la récupération des métriques système :", error);
+        
+        // Gestion des erreurs d'authentification ou d'autorisation
+        if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+          setAuthError(true);
+          if (interval) clearInterval(interval);
+        }
       } finally {
         setIsMetricsLoading(false);
       }
     };
 
-    // Premier appel immédiat au montage du composant
+    // Premier appel immédiat
     fetchSystemHealth();
 
-    // Actualisation automatique en tâche de fond toutes les 15 secondes
+    // Polling toutes les 15 secondes si aucune erreur d'auth n'a eu lieu
     if (!authError) {
       interval = setInterval(fetchSystemHealth, 15000);
     }
 
-    // Nettoyage de l'intervalle si l'utilisateur quitte la page
-    return () => clearInterval(interval);
+    return () => {
+      if (interval) clearInterval(interval);
+    };
   }, [authError]);
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     const configPayload = {
       commissionRate,
@@ -85,8 +67,15 @@ export default function SystemSettings() {
       activeGateways: gateways,
       notificationTemplate: smsTemplate
     };
-    console.log("Configuration sauvegardée :", configPayload);
-    alert("Configurations système mises à jour avec succès !");
+
+    try {
+      // Sauvegarde des configurations via l'instance API centralisée
+      await api.post('/admin/system-settings', configPayload);
+      alert("Configurations système mises à jour avec succès !");
+    } catch (error) {
+      console.error("Erreur lors de la sauvegarde des configurations :", error);
+      alert("Échec lors de l'enregistrement de la configuration.");
+    }
   };
 
   return (
@@ -102,7 +91,7 @@ export default function SystemSettings() {
         </div>
       </div>
 
-      {/* Alerte si l'utilisateur n'a pas les droits SUPER_ADMIN */}
+      {/* Alerte si l'utilisateur n'a pas les droits nécessaires */}
       {authError && (
         <div className="mb-6 max-w-6xl p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl flex items-center gap-3 text-red-700 dark:text-red-400">
           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
@@ -131,10 +120,10 @@ export default function SystemSettings() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           
-          {/* 1. Métriques Matérielles (Serveur API Render) */}
+          {/* 1. Métriques Matérielles */}
           <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm space-y-4">
             <div className="flex justify-between items-center">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">1. Serveur Central (Render)</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">1. Serveur Central</h3>
               <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold ${isMetricsLoading ? 'bg-gray-500/10 text-gray-500' : 'bg-green-500/10 text-green-500'}`}>
                 {isMetricsLoading ? 'Calcul...' : 'Stable'}
               </span>
@@ -195,7 +184,7 @@ export default function SystemSettings() {
                 <span className="text-sm font-bold font-mono">14.2 Mbps</span>
               </div>
               <div className="flex justify-between items-center border-b border-gray-100 dark:border-slate-800/60 pb-2">
-                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Connexion DB (Supabase)</span>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Connexion DB</span>
                 <span className={`text-sm font-bold font-mono ${systemHealth.databaseConnected ? 'text-green-500' : 'text-red-500'}`}>
                   {systemHealth.databaseConnected ? 'Opérationnelle' : 'Déconnectée'}
                 </span>
@@ -257,8 +246,8 @@ export default function SystemSettings() {
                 <span className="text-gray-400">Logs Critiques/Fatal</span>
                 <span className="text-green-500 font-bold font-mono">0 anomalie</span>
               </div>
-              <div className="p-2 bg-slate-50 dark:bg-slate-950 border border-gray-100 border-slate-800/80 rounded-xl flex items-center justify-between">
-                <span className="text-[10px] text-gray-400 font-medium">Backup Supabase</span>
+              <div className="p-2 bg-slate-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800/80 rounded-xl flex items-center justify-between">
+                <span className="text-[10px] text-gray-400 font-medium">Backup Base de Données</span>
                 <span className="text-[10px] text-green-500 font-bold">Réussi (Automatique)</span>
               </div>
             </div>

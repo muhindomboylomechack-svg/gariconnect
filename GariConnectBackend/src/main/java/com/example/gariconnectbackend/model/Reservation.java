@@ -73,64 +73,13 @@ public class Reservation {
     @JsonProperty("demande_recuperation")
     @JsonIgnoreProperties("reservation")
     private DemandeRecuperation demandeRecuperation;
-    // À AJOUTER : Le nombre de places réservées par le client
+
     @Column(name = "nombre_places", columnDefinition = "integer default 1")
     private Integer nombrePlaces = 1;
 
-
-    // 💵 CALCUL DYNAMIQUE DU MONTANT TOTAL (Mis à jour)
-    @Transient
-    @JsonProperty("montant_total")
-    public Double getMontantTotal() {
-        Double prixBase = 0.0;
-
-        // Sécurité : au moins 1 place si non spécifié
-        int places = (this.nombrePlaces != null && this.nombrePlaces > 0) ? this.nombrePlaces : 1;
-
-        if (this.montantPaye != null && this.montantPaye > 0) {
-            prixBase = this.montantPaye;
-        } else if (this.trajet != null && this.trajet.getPrix() != null) {
-            // MULTIPLICATION DU PRIX PAR LE NOMBRE DE PLACES
-            prixBase = this.trajet.getPrix() * places;
-        }
-
-        if (this.demandeRecuperation != null && this.demandeRecuperation.getPrixSupplementaire() != null) {
-            prixBase += this.demandeRecuperation.getPrixSupplementaire();
-        }
-
-        return prixBase;
-    }
-//    // 💵 CALCUL DYNAMIQUE DU MONTANT TOTAL (Billet + VIP si applicable)
-//    @Transient
-//    @JsonProperty("montant_total")
-//    public Double getMontantTotal() {
-//        Double prixBase = 0.0;
-//
-//        // 1. Prix de base : Si déjà payé ou partiellement payé, sinon prix officiel du trajet
-//        if (this.montantPaye != null && this.montantPaye > 0) {
-//            prixBase = this.montantPaye;
-//        } else if (this.trajet != null && this.trajet.getPrix() != null) {
-//            prixBase = this.trajet.getPrix();
-//        }
-//
-//        // 2. Ajout du supplément de récupération (VIP)
-//        if (this.demandeRecuperation != null && this.demandeRecuperation.getPrixSupplementaire() != null) {
-//            prixBase += this.demandeRecuperation.getPrixSupplementaire();
-//        }
-//
-//        return prixBase;
-//    }
-@Column(name = "masque_pour_client")
-private boolean masquePourClient = false;
-
-    // Getters et Setters
-    public boolean isMasquePourClient() {
-        return masquePourClient;
-    }
-
-    public void setMasquePourClient(boolean masquePourClient) {
-        this.masquePourClient = masquePourClient;
-    }
+    // 🟢 CHAMP CORRIGÉ : Type Wrapper 'Boolean' pour éviter les crashs sur NULL en BDD
+    @Column(name = "masque_pour_client")
+    private Boolean masquePourClient = false;
 
     // 🟢 Arrêt où le client attend le bus
     @ManyToOne(fetch = FetchType.EAGER)
@@ -154,32 +103,35 @@ private boolean masquePourClient = false;
     private Course courseAssignee;
 
 
+    // 💵 CALCUL DYNAMIQUE DU MONTANT TOTAL
+    @Transient
+    @JsonProperty("montant_total")
+    public Double getMontantTotal() {
+        Double prixBase = 0.0;
 
-//    // --- Compatibilité JSON Frontend ---
-//    @JsonProperty("client")
-//    public User getClient() {
-//        return this.client;
-//    }
-//
-//    @JsonProperty("user")
-//    public User getUser() {
-//        return this.client;
-//    }
-//
-//    @JsonProperty("user")
-//    public void setUser(User user) {
-//        this.client = user;
-//    }
-    // Dans Reservation.java
+        // Sécurité : au moins 1 place si non spécifié
+        int places = (this.nombrePlaces != null && this.nombrePlaces > 0) ? this.nombrePlaces : 1;
 
-    // Getters et Setters
+        if (this.montantPaye != null && this.montantPaye > 0) {
+            prixBase = this.montantPaye;
+        } else if (this.trajet != null && this.trajet.getPrix() != null) {
+            // MULTIPLICATION DU PRIX PAR LE NOMBRE DE PLACES
+            prixBase = this.trajet.getPrix() * places;
+        }
+
+        if (this.demandeRecuperation != null && this.demandeRecuperation.getPrixSupplementaire() != null) {
+            prixBase += this.demandeRecuperation.getPrixSupplementaire();
+        }
+
+        return prixBase;
+    }
+
+    // 🟢 GETTER SÉCURISÉ POUR MASQUE_POUR_CLIENT
     public Boolean getMasquePourClient() {
-        return masquePourClient;
+        return masquePourClient != null ? masquePourClient : false;
     }
 
     public void setMasquePourClient(Boolean masquePourClient) {
-        this.masquePourClient = masquePourClient;
+        this.masquePourClient = masquePourClient != null ? masquePourClient : false;
     }
-
-
 }

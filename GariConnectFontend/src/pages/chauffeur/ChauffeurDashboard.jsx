@@ -28,7 +28,7 @@ const EspaceChauffeur = () => {
         try {
             const [profileRes, trajetsRes] = await Promise.allSettled([
                 api.get('/users/profile'),
-                api.get('/trajets/mon-historique/aujourdhui') // Endpoint filtré par jour
+                api.get('/trajets/mon-historique/aujourdhui')
             ]);
 
             if (profileRes.status === 'fulfilled') {
@@ -52,60 +52,39 @@ const EspaceChauffeur = () => {
         initData();
     }, [initData]);
 
-    // Trouver s'il y a un trajet actuellement "EN_ROUTE"
     const trajetActif = trajets.find(t => t.statut === 'EN_ROUTE');
 
-    // 📍 Effet pour suivre la localisation GPS en temps réel
     useEffect(() => {
         let watchId;
-
-        // Si un trajet est actif, on démarre le tracking GPS
         if (trajetActif) {
             if ('geolocation' in navigator) {
                 watchId = navigator.geolocation.watchPosition(
                     async (position) => {
                         const { latitude, longitude } = position.coords;
                         try {
-                            // Envoi des coordonnées au backend
                             await api.put(`/trajets/${trajetActif.id}/localisation`, {
                                 latitude: latitude,
                                 longitude: longitude
                             });
-                            console.log("📍 Position mise à jour :", latitude, longitude);
                         } catch (err) {
                             console.error("Erreur lors de l'envoi de la position GPS :", err);
                         }
                     },
-                    (error) => {
-                        console.error("Erreur GPS :", error.message);
-                    },
-                    {
-                        enableHighAccuracy: true, // Demande la puce GPS pour plus de précision
-                        maximumAge: 10000,
-                        timeout: 5000
-                    }
+                    (error) => console.error("Erreur GPS :", error.message),
+                    { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
                 );
-            } else {
-                console.error("La géolocalisation n'est pas supportée par ce navigateur.");
             }
         }
-
-        // Nettoyage : Coupe le GPS quand le trajet se termine ou change
         return () => {
-            if (watchId) {
-                navigator.geolocation.clearWatch(watchId);
-            }
+            if (watchId) navigator.geolocation.clearWatch(watchId);
         };
     }, [trajetActif]);
 
-    // 🟢 CORRECTION APPORTÉE ICI : Retour à ton endpoint initial qui fonctionne
     const handleUpdateStatus = async (id, nouveauStatut) => {
         try {
-            // On utilise ta route unique et validée par ton backend pour tous les statuts
             await api.put(`/trajets/${id}/statut?statut=${nouveauStatut}`);
-            
             alert("Statut mis à jour !");
-            initData(); // Rechargement pour mettre à jour l'état global et activer le GPS si nécessaire
+            initData(); 
         } catch (err) {
             console.error("Erreur mise à jour statut:", err);
             alert("Erreur lors de la mise à jour : " + (err.response?.data?.message || err.response?.data?.error || "Serveur indisponible"));
@@ -146,14 +125,14 @@ const EspaceChauffeur = () => {
             {/* Corps de la page */}
             <div className="px-5 -mt-16 space-y-5">
                 
-                {/* Widget dynamique de Course en Cours */}
                 <AnimatePresence>
                     {trajetActif && (
                         <motion.div
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.95 }}
-                            onClick={() => navigate('/chauffeur/course-actuelle')}
+                            // 🟢 CORRECTION : Passage de l'objet trajet dans le state
+                            onClick={() => navigate('/chauffeur/course-actuelle', { state: { trajet: trajetActif } })}
                             className="p-5 rounded-[2.5rem] bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-xl shadow-emerald-500/20 border border-emerald-400/30 cursor-pointer flex items-center justify-between gap-4 active:scale-[0.99] transition-transform"
                         >
                             <div className="flex items-center gap-4 min-w-0">
@@ -224,9 +203,9 @@ const EspaceChauffeur = () => {
 
                                     {t.statut === 'EN_ROUTE' && (
                                         <button 
-                                            onClick={() => navigate('/chauffeur/course-actuelle')}
+                                            // 🟢 CORRECTION : Passage de l'objet trajet
+                                            onClick={() => navigate('/chauffeur/course-actuelle', { state: { trajet: t } })}
                                             className="px-4 bg-emerald-500 text-white rounded-2xl text-xs font-black flex items-center justify-center active:scale-95 transition-transform shadow-lg shadow-emerald-500/20"
-                                            title="Ouvrir le suivi de course"
                                         >
                                             Suivre
                                         </button>
@@ -250,7 +229,6 @@ const EspaceChauffeur = () => {
                 </div>
             </div>
 
-            {/* Scan Modal */}
             <AnimatePresence>
                 {scanOuvert && <ScannerTicket onFermer={() => setScanOuvert(false)} />}
             </AnimatePresence>

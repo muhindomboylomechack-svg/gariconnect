@@ -51,7 +51,7 @@ public class ArretBusController {
 
     // 📊 3. STATISTIQUES EN TEMPS RÉEL DES ARRÊTS (Cœur de la régulation - Avec filtrage intelligent)
     @GetMapping("/statistiques")
-    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER')") // Ajout de SUPER_ADMIN par sécurité
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'AGENCY_ADMIN', 'AGENCY_MANAGER','CHAUFFEUR')") // Ajout de SUPER_ADMIN par sécurité
     public ResponseEntity<?> getStatistiquesArrets(@RequestParam(required = false) Long trajetId) {
         try {
             User currentUser = getAuthenticatedUser(); // On vérifie qui fait la requête
@@ -354,35 +354,29 @@ public class ArretBusController {
     }
 // Dans ArretBusController.java
 
+
     // 🚌 5. LISTER LES CLIENTS PHYSIQUEMENT PRÉSENTS À UN ARRÊT
     @GetMapping("/{id}/clients")
-    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER', 'SUPER_ADMIN')") // Ajout Super Admin pour la sécurité
+    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER', 'SUPER_ADMIN', 'CHAUFFEUR')") // 🟢 CORRECTION : Ajout de 'CHAUFFEUR'
     public ResponseEntity<?> getClientsAArret(@PathVariable Long id) {
         try {
-            // 🟢 CORRECTION 1 : On s'assure que la requête cherche bien les passagers
-            // en attente à l'arrêt spécifié (ID 3 dans ton exemple).
+            // On s'assure que la requête cherche bien les passagers en attente à l'arrêt spécifié[cite: 2].
             List<Reservation> clientsEnAttente = reservationRepository.findByArretMontageIdAndStatutEmbarquement(
                     id,
                     StatutPassagerArret.EN_ATTENTE_A_L_ARRET
             );
 
-            // 🟢 CORRECTION 2 : Si tu veux voir AUSSI ceux qui ont déjà embarqué pour tes tests,
-            // tu pourrais utiliser :
-            // List<Reservation> clientsEnAttente = reservationRepository.findAll().stream()
-            //      .filter(r -> r.getArretMontage() != null && r.getArretMontage().getId().equals(id))
-            //      .collect(Collectors.toList());
-
-            // 3. Création d'une structure qui respecte ce que votre frontend attend
+            // Création d'une structure qui respecte ce que le frontend attend[cite: 2]
             List<Map<String, Object>> response = clientsEnAttente.stream().map(res -> {
                 Map<String, Object> clientInfo = new java.util.HashMap<>();
                 clientInfo.put("id", res.getId());
                 clientInfo.put("codeTicket", res.getCodeTicket());
                 clientInfo.put("numeroSiege", res.getNumeroSiege());
-                // On s'assure que le statut est envoyé sous forme de chaîne (String) au Frontend
+                // On s'assure que le statut est envoyé sous forme de chaîne (String) au Frontend[cite: 2]
                 clientInfo.put("statutEmbarquement", res.getStatutEmbarquement() != null ? res.getStatutEmbarquement().name() : "NON_DEFINI");
-                clientInfo.put("nombrePlaces", res.getNombrePlaces()); // Très utile pour le guichetier
+                clientInfo.put("nombrePlaces", res.getNombrePlaces());
 
-                // 🛠️ Restauration de l'objet "client" pour que le frontend puisse faire "item.client.nom"
+                // Restauration de l'objet "client" pour que le frontend puisse faire "item.client.nom"[cite: 2]
                 Map<String, Object> clientData = new java.util.HashMap<>();
                 if (res.getClient() != null) {
                     clientData.put("nom", res.getClient().getNom());
@@ -399,7 +393,7 @@ public class ArretBusController {
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            e.printStackTrace(); // Loggue l'erreur dans ta console Spring Boot
+            e.printStackTrace();
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("message", "Erreur lors de la récupération des clients: " + e.getMessage()));
         }

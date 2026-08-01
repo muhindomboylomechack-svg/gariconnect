@@ -23,17 +23,19 @@ export default defineConfig({
         theme_color: '#2563eb', // Bleu de votre charte graphique
         background_color: '#ffffff',
         display: 'standalone', // Cache la barre d'adresse pour faire comme une vraie application
+        orientation: 'portrait', // 🟢 Force l'affichage vertical sur mobile (optionnel mais recommandé)
         icons: [
           {
             src: 'pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any' // 🟢 Icône normale avec fond transparent
           },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'maskable' // 🟢 Requis par Android pour générer la WebAPK sans le badge Google
           }
         ]
       }

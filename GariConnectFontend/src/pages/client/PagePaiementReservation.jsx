@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   FaArrowLeft, FaReceipt, FaMoneyBillWave, FaMobileAlt, 
-  FaCheckCircle, FaSpinner, FaCar, FaTicketAlt, FaUsers
+  FaCheckCircle, FaSpinner, FaCar, FaTicketAlt, FaUsers, FaBan
 } from 'react-icons/fa';
 import api from '../../services/api';
-import { useTheme } from '../../App'; // Importation du hook depuis App.jsx
+import { useTheme } from '../../App';
 
 const PaiementDemande = ({ onPaymentSuccess }) => {
   const { reservationId } = useParams();
@@ -41,13 +41,21 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
 
         // 1. Charger la réservation principale
         const resResponse = await api.get(`/reservations/${reservationId}`);
-        setReservation(resResponse.data);
+        const dataReservation = resResponse.data;
+        setReservation(dataReservation);
         
-        if (resResponse.data.nombrePlaces) {
-            setNombrePlaces(resResponse.data.nombrePlaces);
+        // Vérification si la réservation est annulée
+        const statut = dataReservation.statut?.toUpperCase();
+        if (statut === 'ANNULE' || statut === 'ANNULEE' || statut === 'CANCELLED') {
+            setIsError(true);
+            setMessage("🚫 Cette réservation a été annulée. Aucun paiement n'est possible.");
         }
 
-        // 2. Tenter de charger le surplus de récupération
+        if (dataReservation.nombrePlaces) {
+            setNombrePlaces(dataReservation.nombrePlaces);
+        }
+
+        // 2. Tenter de charger le surplus de récupération (si VIP)
         try {
             const reqResponse = await api.get(`/recuperations/reservation/${reservationId}`);
             if (reqResponse.data && Object.keys(reqResponse.data).length > 0) {
@@ -89,6 +97,10 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
      );
   }
 
+  // Vérification de l'état d'annulation
+  const statutReservation = reservation?.statut?.toUpperCase();
+  const isAnnulee = statutReservation === 'ANNULE' || statutReservation === 'ANNULEE' || statutReservation === 'CANCELLED';
+
   // Vérification du type de réservation
   const isVip = reservation?.typeReservation === 'VIP' || reservation?.typeReservation === 'VID';
 
@@ -102,6 +114,9 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
   const handlePaiement = async (e) => {
     e.preventDefault();
     
+    // Garde-fou supplémentaire pour empêcher la soumission si annulée
+    if (isAnnulee) return;
+
     if (modePaiement !== 'CASH' && !referenceTransaction.trim()) {
       setIsError(true);
       setMessage("Veuillez saisir le numéro de téléphone utilisé pour le paiement Mobile Money.");
@@ -159,6 +174,19 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
             <FaReceipt className="text-indigo-500 dark:text-indigo-400" /> Caisse Virtuelle
         </h1>
 
+        {/* ALERTE SI LA RÉSERVATION EST ANNULÉE */}
+        {isAnnulee && (
+            <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-600 dark:text-red-400 flex items-center gap-4">
+                <FaBan className="text-2xl flex-shrink-0" />
+                <div>
+                    <h3 className="font-black text-sm uppercase">Réservation Annulée</h3>
+                    <p className="text-xs font-semibold mt-1">
+                        Cette réservation a été annulée. Il n'est plus possible d'effectuer un paiement ou de modifier son nombre de places.
+                    </p>
+                </div>
+            </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
           
           {/* --- FACTURE --- */}
@@ -176,14 +204,16 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
                       <div className="flex items-center gap-3 bg-white dark:bg-slate-900 rounded-lg p-1 shadow-sm border border-slate-200 dark:border-slate-700">
                           <button 
                               type="button" 
+                              disabled={isAnnulee}
                               onClick={() => setNombrePlaces(Math.max(1, nombrePlaces - 1))} 
-                              className="w-8 h-8 flex items-center justify-center rounded-md text-slate-700 dark:text-slate-300 font-black hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                              className="w-8 h-8 flex items-center justify-center rounded-md text-slate-700 dark:text-slate-300 font-black hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                           >-</button>
                           <span className="font-black text-slate-900 dark:text-white w-4 text-center">{nombrePlaces}</span>
                           <button 
                               type="button" 
+                              disabled={isAnnulee}
                               onClick={() => setNombrePlaces(nombrePlaces + 1)} 
-                              className="w-8 h-8 flex items-center justify-center rounded-md text-slate-700 dark:text-slate-300 font-black hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                              className="w-8 h-8 flex items-center justify-center rounded-md text-slate-700 dark:text-slate-300 font-black hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
                           >+</button>
                       </div>
                   </div>
@@ -223,56 +253,62 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
                   Méthode de paiement
               </h2>
 
-              <div className="flex p-1 rounded-2xl mb-6 bg-slate-100 dark:bg-slate-950 transition-colors duration-500">
-                  <button 
-                      type="button"
-                      onClick={() => { setModePaiement('M-PESA'); setReferenceTransaction(''); setIsError(false); }}
-                      className={`flex-1 py-3 flex items-center justify-center gap-2 rounded-xl text-xs font-bold transition-all duration-300 ${modePaiement !== 'CASH' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
-                  >
-                      <FaMobileAlt /> Mobile
-                  </button>
-                  <button 
-                      type="button"
-                      onClick={() => { setModePaiement('CASH'); setReferenceTransaction(''); setIsError(false); }}
-                      className={`flex-1 py-3 flex items-center justify-center gap-2 rounded-xl text-xs font-bold transition-all duration-300 ${modePaiement === 'CASH' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
-                  >
-                      <FaMoneyBillWave /> Guichet (Cash)
-                  </button>
-              </div>
+              <fieldset disabled={isAnnulee} className="space-y-6 disabled:opacity-40">
+                <div className="flex p-1 rounded-2xl bg-slate-100 dark:bg-slate-950 transition-colors duration-500">
+                    <button 
+                        type="button"
+                        disabled={isAnnulee}
+                        onClick={() => { setModePaiement('M-PESA'); setReferenceTransaction(''); setIsError(false); }}
+                        className={`flex-1 py-3 flex items-center justify-center gap-2 rounded-xl text-xs font-bold transition-all duration-300 ${modePaiement !== 'CASH' ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
+                    >
+                        <FaMobileAlt /> Mobile
+                    </button>
+                    <button 
+                        type="button"
+                        disabled={isAnnulee}
+                        onClick={() => { setModePaiement('CASH'); setReferenceTransaction(''); setIsError(false); }}
+                        className={`flex-1 py-3 flex items-center justify-center gap-2 rounded-xl text-xs font-bold transition-all duration-300 ${modePaiement === 'CASH' ? 'bg-emerald-500 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}
+                    >
+                        <FaMoneyBillWave /> Guichet (Cash)
+                    </button>
+                </div>
 
-              {modePaiement !== 'CASH' ? (
-                  <div className="space-y-4">
-                      <div>
-                          <label className="block text-[10px] font-black uppercase mb-2 text-slate-400 dark:text-slate-500">Réseau</label>
-                          <select 
-                              className={`w-full p-4 rounded-xl font-bold border-2 outline-none transition-all duration-500 ${darkMode ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-indigo-400'}`}
-                              value={modePaiement}
-                              onChange={(e) => setModePaiement(e.target.value)}
-                          >
-                              <option value="M-PESA" className="dark:bg-slate-950">Vodacom M-PESA</option>
-                              <option value="ORANGE_MONEY" className="dark:bg-slate-950">Orange Money</option>
-                              <option value="AIRTEL_MONEY" className="dark:bg-slate-950">Airtel Money</option>
-                          </select>
-                      </div>
+                {modePaiement !== 'CASH' ? (
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-[10px] font-black uppercase mb-2 text-slate-400 dark:text-slate-500">Réseau</label>
+                            <select 
+                                disabled={isAnnulee}
+                                className={`w-full p-4 rounded-xl font-bold border-2 outline-none transition-all duration-500 ${darkMode ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500' : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-indigo-400'}`}
+                                value={modePaiement}
+                                onChange={(e) => setModePaiement(e.target.value)}
+                            >
+                                <option value="M-PESA" className="dark:bg-slate-950">Vodacom M-PESA</option>
+                                <option value="ORANGE_MONEY" className="dark:bg-slate-950">Orange Money</option>
+                                <option value="AIRTEL_MONEY" className="dark:bg-slate-950">Airtel Money</option>
+                            </select>
+                        </div>
 
-                      <div>
-                          <label className="block text-[10px] font-black uppercase mb-2 text-slate-400 dark:text-slate-500">Numéro de téléphone</label>
-                          <input 
-                              type="text" 
-                              placeholder="Ex: 0812345678" 
-                              className={`w-full p-4 rounded-xl font-bold border-2 outline-none transition-all duration-500 tracking-wider ${darkMode ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500 placeholder-slate-700' : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-indigo-400 placeholder-slate-400'}`}
-                              value={referenceTransaction}
-                              onChange={(e) => setReferenceTransaction(e.target.value)}
-                          />
-                      </div>
-                  </div>
-              ) : (
-                  <div className="p-4 border rounded-xl text-center bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/30">
-                      <p className="text-xs font-bold leading-relaxed text-emerald-700 dark:text-emerald-400">
-                          Vous déclarez vouloir payer en espèces. Présentez-vous à l'agence pour régler votre facture. Un <strong>Agent de comptoir</strong> validera votre ticket dès réception de l'argent.
-                      </p>
-                  </div>
-              )}
+                        <div>
+                            <label className="block text-[10px] font-black uppercase mb-2 text-slate-400 dark:text-slate-500">Numéro de téléphone</label>
+                            <input 
+                                type="text" 
+                                disabled={isAnnulee}
+                                placeholder="Ex: 0812345678" 
+                                className={`w-full p-4 rounded-xl font-bold border-2 outline-none transition-all duration-500 tracking-wider ${darkMode ? 'bg-slate-950 border-slate-800 text-white focus:border-indigo-500 placeholder-slate-700' : 'bg-slate-50 border-slate-200 text-slate-800 focus:border-indigo-400 placeholder-slate-400'}`}
+                                value={referenceTransaction}
+                                onChange={(e) => setReferenceTransaction(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                ) : (
+                    <div className="p-4 border rounded-xl text-center bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/30">
+                        <p className="text-xs font-bold leading-relaxed text-emerald-700 dark:text-emerald-400">
+                            Vous déclarez vouloir payer en espèces. Présentez-vous à l'agence pour régler votre facture. Un <strong>Agent de comptoir</strong> validera votre ticket dès réception de l'argent.
+                        </p>
+                    </div>
+                )}
+              </fieldset>
 
               {message && (
                   <div className={`mt-4 p-4 rounded-xl text-sm font-bold text-center border transition-all duration-500 ${isError ? 'bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/30' : 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/30'}`}>
@@ -282,11 +318,11 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
 
               <button 
                   type="submit"
-                  disabled={isSubmitting || (isVip && supplementRamassage === 0)}
-                  className={`mt-6 w-full py-5 flex items-center justify-center gap-2 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all duration-300 ${isSubmitting || (isVip && supplementRamassage === 0) ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-500/20 dark:shadow-indigo-950/30'}`}
+                  disabled={isSubmitting || isAnnulee || (isVip && supplementRamassage === 0)}
+                  className={`mt-6 w-full py-5 flex items-center justify-center gap-2 rounded-[1.5rem] font-black text-xs uppercase tracking-widest transition-all duration-300 ${isSubmitting || isAnnulee || (isVip && supplementRamassage === 0) ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-xl shadow-indigo-500/20 dark:shadow-indigo-950/30'}`}
               >
                   {isSubmitting ? <FaSpinner className="animate-spin" /> : <FaCheckCircle />}
-                  {isSubmitting ? "Traitement..." : modePaiement === 'CASH' ? "Confirmer mon passage au guichet" : `Soumettre mon paiement`}
+                  {isAnnulee ? "Paiement impossible (Annulé)" : isSubmitting ? "Traitement..." : modePaiement === 'CASH' ? "Confirmer mon passage au guichet" : `Soumettre mon paiement`}
               </button>
           </form>
         </div>

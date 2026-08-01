@@ -4,19 +4,22 @@ import {
   FaArrowLeft, FaReceipt, FaMoneyBillWave, FaMobileAlt, 
   FaCheckCircle, FaSpinner, FaCar, FaTicketAlt, FaUsers
 } from 'react-icons/fa';
-
 import api from '../../services/api';
+import { useTheme } from '../../App'; // Importation du hook depuis App.jsx
 
 const PaiementDemande = ({ onPaymentSuccess }) => {
   const { reservationId } = useParams();
   const navigate = useNavigate();
+
+  // Récupération du thème global de l'application
+  const { theme } = useTheme();
+  const darkMode = theme === 'dark';
 
   // États des données backend
   const [reservation, setReservation] = useState(null);
   const [demandeRecuperation, setDemandeRecuperation] = useState(null);
   
   // États de l'interface
-  const [darkMode, setDarkMode] = useState(localStorage.getItem('client-theme') === 'dark');
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState(null);
@@ -28,19 +31,6 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
   
   // État pour gérer le nombre de places
   const [nombrePlaces, setNombrePlaces] = useState(1);
-
-  // Gestion du Dark Mode Tailwind
-  useEffect(() => {
-    if (darkMode) {
-        document.documentElement.classList.add('dark');
-        document.body.classList.add('bg-slate-950');
-        document.body.classList.remove('bg-slate-50');
-    } else {
-        document.documentElement.classList.remove('dark');
-        document.body.classList.add('bg-slate-50');
-        document.body.classList.remove('bg-slate-950');
-    }
-  }, [darkMode]);
 
   // Chargement des données de la facture
   useEffect(() => {
@@ -60,7 +50,6 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
         // 2. Tenter de charger le surplus de récupération
         try {
             const reqResponse = await api.get(`/recuperations/reservation/${reservationId}`);
-            // Sécurité : on s'assure que la donnée reçue n'est pas vide
             if (reqResponse.data && Object.keys(reqResponse.data).length > 0) {
                 setDemandeRecuperation(reqResponse.data);
             } else {
@@ -70,7 +59,6 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
             console.log("Trajet standard (Aucune demande VIP associée).");
             setDemandeRecuperation(null);
         }
-
       } catch (error) {
         setIsError(true);
         setMessage("Impossible de charger les détails de cette facture.");
@@ -101,7 +89,7 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
      );
   }
 
-  // 🟢 LA CORRECTION EST ICI : On vérifie STRICTEMENT le type de réservation depuis la base de données
+  // Vérification du type de réservation
   const isVip = reservation?.typeReservation === 'VIP' || reservation?.typeReservation === 'VID';
 
   // Calcul dynamique basé sur le nombre de places
@@ -130,11 +118,9 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
             montantTotal: totalGeneral,
             nombrePlaces: nombrePlaces
         });
-
         setIsError(false);
         setMessage("💵 Choix enregistré ! Veuillez vous rendre au guichet d'une agence pour payer. Votre réservation sera validée par l'agent de comptoir après réception des fonds.");
         setTimeout(() => navigate('/client/historique'), 5000);
-
       } else {
         const payload = {
           reservationId: reservation.id,
@@ -150,7 +136,6 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
         setMessage("🎉 Paiement mobile encaissé avec succès ! Vos reçus ont été générés.");
         setTimeout(() => navigate('/client/historique'), 3000);
       }
-
     } catch (error) {
       setIsError(true);
       setMessage(
@@ -210,7 +195,7 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
                       <span className="font-black text-slate-900 dark:text-white">{totalBillets.toLocaleString()} FC</span>
                   </div>
 
-                  {/* Bloc VIP : Strictement affiché que si la réservation est du type VIP/VID */}
+                  {/* Bloc VIP */}
                   {isVip && (
                       <div className="flex justify-between items-center p-3 rounded-xl border transition-all duration-500 bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100 dark:border-emerald-900/30">
                           <span className="flex items-center gap-2 text-sm font-bold text-emerald-700 dark:text-emerald-400">
@@ -264,11 +249,12 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
                               value={modePaiement}
                               onChange={(e) => setModePaiement(e.target.value)}
                           >
-                              <option value="M-PESA">Vodacom M-PESA</option>
-                              <option value="ORANGE_MONEY">Orange Money</option>
-                              <option value="AIRTEL_MONEY">Airtel Money</option>
+                              <option value="M-PESA" className="dark:bg-slate-950">Vodacom M-PESA</option>
+                              <option value="ORANGE_MONEY" className="dark:bg-slate-950">Orange Money</option>
+                              <option value="AIRTEL_MONEY" className="dark:bg-slate-950">Airtel Money</option>
                           </select>
                       </div>
+
                       <div>
                           <label className="block text-[10px] font-black uppercase mb-2 text-slate-400 dark:text-slate-500">Numéro de téléphone</label>
                           <input 
@@ -303,7 +289,6 @@ const PaiementDemande = ({ onPaymentSuccess }) => {
                   {isSubmitting ? "Traitement..." : modePaiement === 'CASH' ? "Confirmer mon passage au guichet" : `Soumettre mon paiement`}
               </button>
           </form>
-
         </div>
       </div>
     </div>

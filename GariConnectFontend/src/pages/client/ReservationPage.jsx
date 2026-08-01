@@ -3,8 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../services/api';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../App'; // Assurez-vous que le chemin vers App.jsx est correct
 import { 
-    FaMoon, FaSun, FaTimes, FaUsers, 
+    FaTimes, FaUsers, 
     FaCheck, FaMoneyBillWave, FaHome, FaTicketAlt, FaPaperPlane, FaMapMarkerAlt,
     FaMinus, FaPlus
 } from 'react-icons/fa';
@@ -16,12 +17,15 @@ const ReservationPage = () => {
     const { user } = useAuth();
     const { t } = useTranslation();
     
+    // Utilisation du contexte global pour le thème
+    const { theme } = useTheme();
+    const darkMode = theme === 'dark';
+    
     const [trajet, setTrajet] = useState(null);
     const [arretsDisponibles, setArretsDisponibles] = useState([]);
     const [nombrePlaces, setNombrePlaces] = useState(1);
     const [selectedArret, setSelectedArret] = useState('');
     const [loading, setLoading] = useState(true);
-    const [darkMode, setDarkMode] = useState(localStorage.getItem('client-theme') === 'dark');
     
     const [showModal, setShowModal] = useState(false);
     const [paymentStep, setPaymentStep] = useState(1);
@@ -48,24 +52,6 @@ const ReservationPage = () => {
                response.data.reservation?.id ||
                null;
     };
-
-    useEffect(() => {
-        const handleSyncTheme = (e) => {
-            if (e.key === 'client-theme') {
-                setDarkMode(e.newValue === 'dark');
-            }
-        };
-        window.addEventListener('storage', handleSyncTheme);
-        return () => window.removeEventListener('storage', handleSyncTheme);
-    }, []);
-
-    useEffect(() => {
-        if (darkMode) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
-    }, [darkMode]);
 
     const fetchInitialData = async () => {
         try {
@@ -116,12 +102,6 @@ const ReservationPage = () => {
             fetchInitialData();
         }
     }, [id]);
-
-    const toggleTheme = () => {
-        const newMode = !darkMode;
-        setDarkMode(newMode);
-        localStorage.setItem('client-theme', newMode ? 'dark' : 'light');
-    };
 
     const incrementPlaces = () => {
         const maxPlaces = placesDisponibles ? Math.min(placesDisponibles, 10) : 10;
@@ -174,17 +154,14 @@ const ReservationPage = () => {
                 longitude: parseFloat(recuperationData.longitudeClient) || 0.0,
                 coutRecuperation: parseFloat(recuperationData.coutRecuperation) || 0.0
             };
-
             console.log("🚀 Payload envoyé au Backend (VIP) :", reservationPayload);
             const resReservation = await api.post('/reservations/creer', reservationPayload);
             
             console.log("🔍 Réponse brute du serveur (VIP) :", resReservation.data);
             const reservationId = getReservationId(resReservation);
-
             if (!reservationId) {
                 throw new Error("Le serveur Spring Boot n'a pas renvoyé d'identifiant (ID) de réservation valide.");
             }
-
             alert("Succès ! Vos places ont été bloquées (En attente de paiement) et vos coordonnées de récupération GPS ont bien été enregistrées.");
             navigate('/client/historique');
         } catch (error) {
@@ -224,7 +201,6 @@ const ReservationPage = () => {
             if (!reservationId) {
                 throw new Error("Le serveur Spring Boot n'a pas renvoyé d'identifiant (ID) de réservation valide.");
             }
-
             if (isCash) {
                 await api.post(`/reservations/${reservationId}/intention-cash`, {
                     modePaiement: "CASH"
@@ -271,13 +247,6 @@ const ReservationPage = () => {
     return (
         <div className={`min-h-screen w-full transition-colors duration-500 flex flex-col items-center justify-center py-6 px-4 md:py-12 ${darkMode ? 'bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
             
-            <button 
-                onClick={toggleTheme} 
-                className={`fixed top-4 right-4 md:top-6 md:right-6 p-3 md:p-4 rounded-2xl shadow-lg border z-10 transition-all active:scale-[0.95] ${darkMode ? 'bg-slate-900 border-slate-800 text-yellow-400 hover:bg-slate-800' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-100'}`}
-            >
-                {darkMode ? <FaSun size={20}/> : <FaMoon size={20}/>}
-            </button>
-
             <div className={`w-full max-w-md md:max-w-2xl lg:max-w-4xl rounded-[2rem] md:rounded-[3rem] shadow-2xl overflow-hidden border transition-all duration-500 ${darkMode ? 'bg-slate-900 border-slate-800/80' : 'bg-white border-slate-100'}`}>
                 <div className="lg:grid lg:grid-cols-12 min-h-[500px]">
                     
@@ -366,7 +335,6 @@ const ReservationPage = () => {
                                                 {nombrePlaces > 1 ? 'Places sélectionnées' : 'Place sélectionnée'}
                                             </span>
                                         </div>
-
                                         <button
                                             type="button"
                                             onClick={incrementPlaces}

@@ -3,11 +3,13 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavig
 import { FaBan, FaWhatsapp, FaEnvelope, FaSignOutAlt, FaArrowLeft } from 'react-icons/fa';
 
 // ==========================================
-// 0. CONFIGURATION DU THEME CONTEXT
+// 0. CONFIGURATION DU THEME CONTEXT & PWA MODAL
 // ==========================================
 const ThemeContext = createContext();
 
 export const useTheme = () => useContext(ThemeContext);
+
+import InstallPromptModal from './component/InstallPromptModal'; // 🟢 Ajout de la modale PWA
 
 // ==========================================
 // 1. CONTEXTE & PROTECTION DES ROUTES
@@ -216,6 +218,93 @@ const HomeRedirect = () => {
   return <Navigate to={path} replace />;
 };
 
+// ==========================================
+// 🟢 SOUS-COMPOSANT AVEC DÉTECTION PWA
+// ==========================================
+const AppContent = () => {
+  const { user } = useAuth(); // Détecte la présence de l'utilisateur connecté
+
+  return (
+    <>
+      <Routes>
+        {/* --- AUTHENTIFICATION & RACINE --- */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/" element={<HomeRedirect />} />
+        <Route path="/change-password-obligatoire" element={<ChangePasswordObligatoire />} />
+        <Route path="/compte-bloque" element={<EcranBloque />} />
+
+        {/* --- ESPACE 1 : SUPER ADMIN --- */}
+        <Route path="/admin" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><BlockGuard><SuperAdminLayout /></BlockGuard></ProtectedRoute>}>
+          <Route index element={<DashboardAdmin />} />
+          <Route path="utilisateurs" element={<GestionUtilisateurs />} />
+          <Route path="commissions" element={<GestionCommissions />} />
+          <Route path="finances" element={<DashboardFinancierAdmin />} />
+          <Route path="settings" element={<SystemSettings />} />
+        </Route>
+
+        {/* --- ESPACE 2 : AGENCY ADMIN --- */}
+        <Route path="/admin-agence" element={<ProtectedRoute allowedRoles={['AGENCY_ADMIN']}><BlockGuard><AgencyAdminLayout /></BlockGuard></ProtectedRoute>}>
+          <Route index element={<AgencyAdminDashboard />} />
+          <Route path="dashboard" element={<AgencyAdminDashboard />} />
+          <Route path="profile" element={<AgencyAdminProfile />} />
+        </Route>
+
+        {/* --- ESPACE 3 : AGENCY MANAGER & ADMIN --- */}
+        <Route path="/agence" element={<ProtectedRoute allowedRoles={['AGENCY_MANAGER', 'AGENCY_ADMIN']}><BlockGuard><AgenceLayout /></BlockGuard></ProtectedRoute>}>
+          <Route index element={<DashboardAgence />} />
+          <Route path="flotte" element={<GestionFlotte />} />
+          <Route path="trajets" element={<Trajets />} />
+          <Route path="reservations" element={<GestionReservations />} />
+          <Route path="ramassages-vip" element={<InterfaceCotationAgent />} />
+          <Route path="regulation" element={<RegulationAgence />} />
+          <Route path="paiements" element={<GestionPaiements />} />
+          <Route path="chauffeurs" element={<GestionChauffeurs />} />
+          <Route path="courriers" element={<CourriersPage />} />
+          <Route path="cotation-colis" element={<InterfaceCotationAgent />} />
+          <Route path="finances" element={<GestionFinance />} />
+          <Route path="performance" element={<DashboardPerformance />} />
+        </Route>
+
+        {/* --- ESPACE 4 : CHAUFFEUR --- */}
+        <Route path="/chauffeur" element={<ProtectedRoute allowedRoles={['CHAUFFEUR']}><BlockGuard><ChauffeurLayout /></BlockGuard></ProtectedRoute>}>
+          <Route index element={<ChauffeurDashboard />} />
+          <Route path="historique" element={<HistoriqueCourses />} />
+          <Route path="vip" element={<RamassageVipChauffeur />} />
+          <Route path="vip/:trajetId" element={<RamassageVipChauffeur />} />
+          <Route path="course-actuelle" element={<CourseActuelle />} />
+          <Route path="liste-ramassage" element={<ListeRamassage />} />
+          <Route path="liste-ramassage/:arretId" element={<ListeRamassage />} />
+          <Route path="performance" element={<PerformanceHistory />} />
+          <Route path="profil" element={<ChauffeurProfil />} />
+        </Route>
+
+        {/* --- ESPACE 5 : CLIENT --- */}
+        <Route path="/client" element={<ProtectedRoute allowedRoles={['CLIENT', 'USER']}><BlockGuard><ClientLayout /></BlockGuard></ProtectedRoute>}>
+          <Route index element={<HomeClient />} />
+          <Route path="tickets" element={<MesTickets />} />
+          <Route path="historique" element={<History />} />
+          <Route path="profil" element={<Profil />} />
+          <Route path="reservation/:id" element={<ReservationPage />} />
+          <Route path="evaluer/:id" element={<FormulaireEvaluation />} />
+          <Route path="paiement-reservation/:reservationId" element={<PagePaiementReservation />} />
+          <Route path="reservation-normale/:id" element={<CheckoutPage />} />
+          <Route path="reservation-recuperation/:id" element={<ReservationRecuperationPage />} />
+          <Route path="finaliser-reservation/:id" element={<CheckoutPage />} />
+          <Route path="colis" element={<ClientCourrierHub />} />
+          <Route path="courriers" element={<ClientCourrierHub />} />
+        </Route>
+
+        {/* --- ROUTE DE SECOURS --- */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+
+      {/* 🟢 Déclenche la modale PWA uniquement quand un utilisateur est identifié */}
+      {user && <InstallPromptModal />}
+    </>
+  );
+};
+
 function App() {
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('theme') || 'light';
@@ -238,78 +327,7 @@ function App() {
   return (
     <ThemeContext.Provider value={{ theme, toggleTheme }}>
       <Router>
-        <Routes>
-          {/* --- AUTHENTIFICATION & RACINE --- */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/" element={<HomeRedirect />} />
-          <Route path="/change-password-obligatoire" element={<ChangePasswordObligatoire />} />
-          <Route path="/compte-bloque" element={<EcranBloque />} />
-
-          {/* --- ESPACE 1 : SUPER ADMIN --- */}
-          <Route path="/admin" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><BlockGuard><SuperAdminLayout /></BlockGuard></ProtectedRoute>}>
-            <Route index element={<DashboardAdmin />} />
-            <Route path="utilisateurs" element={<GestionUtilisateurs />} />
-            <Route path="commissions" element={<GestionCommissions />} />
-            <Route path="finances" element={<DashboardFinancierAdmin />} />
-            <Route path="settings" element={<SystemSettings />} />
-          </Route>
-
-          {/* --- ESPACE 2 : AGENCY ADMIN --- */}
-          <Route path="/admin-agence" element={<ProtectedRoute allowedRoles={['AGENCY_ADMIN']}><BlockGuard><AgencyAdminLayout /></BlockGuard></ProtectedRoute>}>
-            <Route index element={<AgencyAdminDashboard />} />
-            <Route path="dashboard" element={<AgencyAdminDashboard />} />
-            <Route path="profile" element={<AgencyAdminProfile />} />
-          </Route>
-
-          {/* --- ESPACE 3 : AGENCY MANAGER & ADMIN --- */}
-          <Route path="/agence" element={<ProtectedRoute allowedRoles={['AGENCY_MANAGER', 'AGENCY_ADMIN']}><BlockGuard><AgenceLayout /></BlockGuard></ProtectedRoute>}>
-            <Route index element={<DashboardAgence />} />
-            <Route path="flotte" element={<GestionFlotte />} />
-            <Route path="trajets" element={<Trajets />} />
-            <Route path="reservations" element={<GestionReservations />} />
-            <Route path="ramassages-vip" element={<InterfaceCotationAgent />} />
-            <Route path="regulation" element={<RegulationAgence />} />
-            <Route path="paiements" element={<GestionPaiements />} />
-            <Route path="chauffeurs" element={<GestionChauffeurs />} />
-            <Route path="courriers" element={<CourriersPage />} />
-            <Route path="cotation-colis" element={<InterfaceCotationAgent />} />
-            <Route path="finances" element={<GestionFinance />} />
-            <Route path="performance" element={<DashboardPerformance />} />
-          </Route>
-
-          {/* --- ESPACE 4 : CHAUFFEUR --- */}
-          <Route path="/chauffeur" element={<ProtectedRoute allowedRoles={['CHAUFFEUR']}><BlockGuard><ChauffeurLayout /></BlockGuard></ProtectedRoute>}>
-            <Route index element={<ChauffeurDashboard />} />
-            <Route path="historique" element={<HistoriqueCourses />} />
-            <Route path="vip" element={<RamassageVipChauffeur />} />
-            <Route path="vip/:trajetId" element={<RamassageVipChauffeur />} />
-            <Route path="course-actuelle" element={<CourseActuelle />} />
-            <Route path="liste-ramassage" element={<ListeRamassage />} />
-            <Route path="liste-ramassage/:arretId" element={<ListeRamassage />} />
-            <Route path="performance" element={<PerformanceHistory />} />
-            <Route path="profil" element={<ChauffeurProfil />} />
-          </Route>
-
-          {/* --- ESPACE 5 : CLIENT --- */}
-          <Route path="/client" element={<ProtectedRoute allowedRoles={['CLIENT', 'USER']}><BlockGuard><ClientLayout /></BlockGuard></ProtectedRoute>}>
-            <Route index element={<HomeClient />} />
-            <Route path="tickets" element={<MesTickets />} />
-            <Route path="historique" element={<History />} />
-            <Route path="profil" element={<Profil />} />
-            <Route path="reservation/:id" element={<ReservationPage />} />
-            <Route path="evaluer/:id" element={<FormulaireEvaluation />} />
-            <Route path="paiement-reservation/:reservationId" element={<PagePaiementReservation />} />
-            <Route path="reservation-normale/:id" element={<CheckoutPage />} />
-            <Route path="reservation-recuperation/:id" element={<ReservationRecuperationPage />} />
-            <Route path="finaliser-reservation/:id" element={<CheckoutPage />} />
-            <Route path="colis" element={<ClientCourrierHub />} />
-            <Route path="courriers" element={<ClientCourrierHub />} />
-          </Route>
-
-          {/* --- ROUTE DE SECOURS --- */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
+        <AppContent />
       </Router>
     </ThemeContext.Provider>
   );

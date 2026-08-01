@@ -1,12 +1,43 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      // 🟢 AJOUT : Force le fonctionnement de la PWA et du Service Worker en environnement LOCAL (npm run dev)
+      devOptions: {
+        enabled: true,
+        type: 'module'
+      },
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
+      manifest: {
+        name: 'GariConnect',
+        short_name: 'GariConnect',
+        description: 'L\'avenir du transport - Gestion des flottes et réservations',
+        theme_color: '#2563eb', // Bleu de votre charte graphique
+        background_color: '#ffffff',
+        display: 'standalone', // Cache la barre d'adresse pour faire comme une vraie application
+        icons: [
+          {
+            src: 'pwa-192x192.png',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: 'pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable'
+          }
+        ]
+      }
+    })
   ],
   server: {
     host: true, // Autorise les connexions externes

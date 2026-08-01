@@ -10,7 +10,6 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      // 🟢 AJOUT : Force le fonctionnement de la PWA et du Service Worker en environnement LOCAL (npm run dev)
       devOptions: {
         enabled: true,
         type: 'module'
@@ -19,23 +18,24 @@ export default defineConfig({
       manifest: {
         name: 'GariConnect',
         short_name: 'GariConnect',
+        start_url: '/', // 🟢 OBLIGATOIRE : Définit la racine pour générer l'APK native sans logo Google
         description: 'L\'avenir du transport - Gestion des flottes et réservations',
         theme_color: '#2563eb', // Bleu de votre charte graphique
         background_color: '#ffffff',
         display: 'standalone', // Cache la barre d'adresse pour faire comme une vraie application
-        orientation: 'portrait', // 🟢 Force l'affichage vertical sur mobile (optionnel mais recommandé)
+        orientation: 'portrait', // Force l'affichage vertical sur mobile
         icons: [
           {
             src: 'pwa-192x192.png',
             sizes: '192x192',
             type: 'image/png',
-            purpose: 'any' // 🟢 Icône normale avec fond transparent
+            purpose: 'any'
           },
           {
             src: 'pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'maskable' // 🟢 Requis par Android pour générer la WebAPK sans le badge Google
+            purpose: 'maskable' // Requis par Android pour générer la WebAPK sans le badge Google
           }
         ]
       }
@@ -45,7 +45,6 @@ export default defineConfig({
     host: true, // Autorise les connexions externes
     port: 5173,
     strictPort: true,
-    // Ajout d'une option pour forcer le rafraîchissement en cas de bug
     watch: {
       usePolling: true,
     },

@@ -9,7 +9,7 @@ const ThemeContext = createContext();
 
 export const useTheme = () => useContext(ThemeContext);
 
-import InstallPromptModal from './component/InstallPromptModal'; // 🟢 Ajout de la modale PWA
+import InstallPromptModal from './component/InstallPromptModal';
 
 // ==========================================
 // 1. CONTEXTE & PROTECTION DES ROUTES
@@ -90,20 +90,14 @@ const EcranBloque = ({ user: propUser }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Priorité aux données passées par la page Login via location.state
   const user = location.state?.user || propUser || authUser;
 
-  console.log("Utilisateur connecté dans EcranBloque :", user);
-
-  // --- CONFIGURATION PAR DÉFAUT (SUPER ADMIN) ---
   const defaultPhone = "243993726409";
   const defaultEmail = "support@gariconnect.com";
 
-  // Normalisation du rôle
   const role = user?.role?.replace('ROLE_', '');
   const isAgencyStaff = role === 'CHAUFFEUR' || role === 'AGENCY_MANAGER' || role === 'AGENCY_ADMIN';
 
-  // Extraction dynamique selon l'entité
   let rawPhone = defaultPhone;
   let targetEmail = defaultEmail;
 
@@ -134,7 +128,6 @@ const EcranBloque = ({ user: propUser }) => {
         </p>
 
         <div className="space-y-4">
-          {/* Bouton WhatsApp */}
           <a
             href={`https://wa.me/${formattedPhone}?text=Bonjour,%20mon%20compte%20${encodeURIComponent(user?.email || '')}%20est%20bloqué.`}
             target="_blank"
@@ -143,16 +136,12 @@ const EcranBloque = ({ user: propUser }) => {
           >
             <FaWhatsapp size={20} /> Contacter via WhatsApp ({rawPhone})
           </a>
-
-          {/* Bouton Email */}
           <a
             href={`mailto:${targetEmail}?subject=Demande%20de%20déblocage%20de%20compte&body=Bonjour,%20mon%20compte%20(${user?.email})%20a%20été%20suspendu.`}
             className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition"
           >
             <FaEnvelope size={18} /> Envoyer un Email ({targetEmail})
           </a>
-
-          {/* Bouton Retour à la connexion */}
           <button
             onClick={() => {
               if (logout) logout();
@@ -168,14 +157,11 @@ const EcranBloque = ({ user: propUser }) => {
   );
 };
 
-// Guard qui vérifie le statut du compte sur toutes les routes protégées
 const BlockGuard = ({ children }) => {
   const { user } = useAuth();
-
   if (user?.statut === 'INACTIF' || user?.statut === 'BLOQUE') {
     return <Navigate to="/compte-bloque" replace />;
   }
-
   return children;
 };
 
@@ -222,19 +208,33 @@ const HomeRedirect = () => {
 // 🟢 SOUS-COMPOSANT AVEC DÉTECTION PWA
 // ==========================================
 const AppContent = () => {
-  const { user } = useAuth(); // Détecte la présence de l'utilisateur connecté
+  const { user } = useAuth(); 
+  const [deferredPrompt, setDeferredPrompt] = useState(null); // 🟢 État global de l'installation
+
+  // 🟢 Capture silencieuse de l'événement dès le lancement
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
 
   return (
     <>
       <Routes>
-        {/* --- AUTHENTIFICATION & RACINE --- */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/" element={<HomeRedirect />} />
         <Route path="/change-password-obligatoire" element={<ChangePasswordObligatoire />} />
         <Route path="/compte-bloque" element={<EcranBloque />} />
 
-        {/* --- ESPACE 1 : SUPER ADMIN --- */}
+        {/* --- ESPACES --- */}
         <Route path="/admin" element={<ProtectedRoute allowedRoles={['SUPER_ADMIN']}><BlockGuard><SuperAdminLayout /></BlockGuard></ProtectedRoute>}>
           <Route index element={<DashboardAdmin />} />
           <Route path="utilisateurs" element={<GestionUtilisateurs />} />
@@ -243,14 +243,12 @@ const AppContent = () => {
           <Route path="settings" element={<SystemSettings />} />
         </Route>
 
-        {/* --- ESPACE 2 : AGENCY ADMIN --- */}
         <Route path="/admin-agence" element={<ProtectedRoute allowedRoles={['AGENCY_ADMIN']}><BlockGuard><AgencyAdminLayout /></BlockGuard></ProtectedRoute>}>
           <Route index element={<AgencyAdminDashboard />} />
           <Route path="dashboard" element={<AgencyAdminDashboard />} />
           <Route path="profile" element={<AgencyAdminProfile />} />
         </Route>
 
-        {/* --- ESPACE 3 : AGENCY MANAGER & ADMIN --- */}
         <Route path="/agence" element={<ProtectedRoute allowedRoles={['AGENCY_MANAGER', 'AGENCY_ADMIN']}><BlockGuard><AgenceLayout /></BlockGuard></ProtectedRoute>}>
           <Route index element={<DashboardAgence />} />
           <Route path="flotte" element={<GestionFlotte />} />
@@ -266,7 +264,6 @@ const AppContent = () => {
           <Route path="performance" element={<DashboardPerformance />} />
         </Route>
 
-        {/* --- ESPACE 4 : CHAUFFEUR --- */}
         <Route path="/chauffeur" element={<ProtectedRoute allowedRoles={['CHAUFFEUR']}><BlockGuard><ChauffeurLayout /></BlockGuard></ProtectedRoute>}>
           <Route index element={<ChauffeurDashboard />} />
           <Route path="historique" element={<HistoriqueCourses />} />
@@ -279,7 +276,6 @@ const AppContent = () => {
           <Route path="profil" element={<ChauffeurProfil />} />
         </Route>
 
-        {/* --- ESPACE 5 : CLIENT --- */}
         <Route path="/client" element={<ProtectedRoute allowedRoles={['CLIENT', 'USER']}><BlockGuard><ClientLayout /></BlockGuard></ProtectedRoute>}>
           <Route index element={<HomeClient />} />
           <Route path="tickets" element={<MesTickets />} />
@@ -295,12 +291,16 @@ const AppContent = () => {
           <Route path="courriers" element={<ClientCourrierHub />} />
         </Route>
 
-        {/* --- ROUTE DE SECOURS --- */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* 🟢 Déclenche la modale PWA uniquement quand un utilisateur est identifié */}
-      {user && <InstallPromptModal />}
+      {/* 🟢 La modale n'est injectée QUE si l'utilisateur est connecté ET qu'on a bien capturé l'événement */}
+      {user && deferredPrompt && (
+        <InstallPromptModal 
+          deferredPrompt={deferredPrompt} 
+          setDeferredPrompt={setDeferredPrompt} 
+        />
+      )}
     </>
   );
 };

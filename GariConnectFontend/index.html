@@ -1,10 +1,21 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>gariconnect-front</title>
+    <title>GariConnect</title>
+    
+    <!-- 🟢 AJOUT : Piège global très rapide pour l'installation PWA sur mobile -->
+    <script>
+      window.deferredPWA = null;
+      window.addEventListener('beforeinstallprompt', (e) => {
+        // Empêche la bannière native par défaut
+        e.preventDefault();
+        // On sauvegarde l'événement pour que React puisse le récupérer plus tard
+        window.deferredPWA = e;
+      });
+    </script>
   </head>
   <body>
     <div id="root"></div>

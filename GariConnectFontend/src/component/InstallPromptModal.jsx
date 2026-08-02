@@ -1,27 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { FaBus, FaDownload, FaTimes } from 'react-icons/fa';
 
-const InstallPromptModal = () => {
-  const [deferredPrompt, setDeferredPrompt] = useState(null);
-  const [showModal, setShowModal] = useState(false);
-
-  useEffect(() => {
-    // Écoute l'événement natif du navigateur
-    const handleBeforeInstallPrompt = (e) => {
-      // Empêche le navigateur d'afficher sa propre petite bannière tout de suite
-      e.preventDefault();
-      // Sauvegarde l'événement pour le déclencher plus tard
-      setDeferredPrompt(e);
-      // Affiche notre modale personnalisée
-      setShowModal(true);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
-    };
-  }, []);
+const InstallPromptModal = ({ deferredPrompt, setDeferredPrompt }) => {
+  const [showModal, setShowModal] = useState(true);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
@@ -29,7 +10,7 @@ const InstallPromptModal = () => {
     // Déclenche l'invite d'installation native du navigateur
     deferredPrompt.prompt();
 
-    // Attend que l'utilisateur réponde à l'invite native (Installer ou Annuler)
+    // Attend la réponse de l'utilisateur
     const { outcome } = await deferredPrompt.userChoice;
     
     if (outcome === 'accepted') {
@@ -38,7 +19,7 @@ const InstallPromptModal = () => {
       console.log('L\'utilisateur a refusé l\'installation');
     }
 
-    // On réinitialise l'état et on ferme la modale
+    // Réinitialisation de l'état
     setDeferredPrompt(null);
     setShowModal(false);
   };

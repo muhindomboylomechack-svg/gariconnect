@@ -209,13 +209,19 @@ const HomeRedirect = () => {
 // ==========================================
 const AppContent = () => {
   const { user } = useAuth(); 
-  const [deferredPrompt, setDeferredPrompt] = useState(null); // 🟢 État global de l'installation
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
 
-  // 🟢 Capture silencieuse de l'événement dès le lancement
   useEffect(() => {
+    // 1. On vérifie immédiatement si index.html a déjà capturé l'événement (cas fréquent sur Mobile)
+    if (window.deferredPWA) {
+      setDeferredPrompt(window.deferredPWA);
+    }
+
+    // 2. On continue d'écouter au cas où il se déclenche plus tard (cas fréquent sur PC)
     const handleBeforeInstallPrompt = (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      window.deferredPWA = e;
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -294,7 +300,7 @@ const AppContent = () => {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* 🟢 La modale n'est injectée QUE si l'utilisateur est connecté ET qu'on a bien capturé l'événement */}
+      {/* 🟢 Affichage géré de la Modale */}
       {user && deferredPrompt && (
         <InstallPromptModal 
           deferredPrompt={deferredPrompt} 

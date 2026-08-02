@@ -23,7 +23,7 @@ import api from '../../services/api';
 const HistoriqueReservations = () => {
     const navigate = useNavigate();
     const [reservations, setReservations] = useState([]);
-    const [filter, setFilter] = useState('TOUTES'); // TOUTES, ATTENTE_PAIEMENT, RAMASSAGE
+    const [filter, setFilter] = useState('TOUTES'); // TOUTES, PAYEES, ATTENTE_PAIEMENT, RAMASSAGE
     const [isLoading, setIsLoading] = useState(true);
     const [errorMsg, setErrorMsg] = useState(null);
     const [successMsg, setSuccessMsg] = useState(null);
@@ -40,6 +40,7 @@ const HistoriqueReservations = () => {
     const chargerHistorique = async () => {
         setIsLoading(true);
         setErrorMsg(null);
+
         try {
             const token = localStorage.getItem('token'); 
             
@@ -66,6 +67,7 @@ const HistoriqueReservations = () => {
             });
 
             setReservations(dataTraitee);
+
         } catch (error) {
             console.error("Erreur lors du chargement de l'historique :", error);
             
@@ -141,9 +143,11 @@ const HistoriqueReservations = () => {
     const gererAnnulation = async (res) => {
         const confirmation = window.confirm(`Êtes-vous sûr de vouloir annuler la réservation N° ${res.id} ?`);
         if (!confirmation) return;
+
         setIsLoading(true);
         setErrorMsg(null);
         setSuccessMsg(null);
+
         try {
             await api.patch(`/reservations/${res.id}/annuler`);
             
@@ -186,9 +190,11 @@ const HistoriqueReservations = () => {
 
     const confirmerSuppression = async () => {
         if (!reservationASupprimer) return;
+
         setIsSubmitting(true);
         setErrorMsg(null);
         setSuccessMsg(null);
+
         try {
             // Appeler l'endpoint de masquage
             await api.put(`/reservations/${reservationASupprimer.id}/masquer-client`);
@@ -215,10 +221,13 @@ const HistoriqueReservations = () => {
         }
     };
 
-    // Filtrage des données de la liste
+    // 🔍 Filtrage des données de la liste
     const reservationsFiltrees = reservations.filter(res => {
         const statut = (res.statut || res.statutPaiement)?.toUpperCase();
         
+        if (filter === 'PAYEES') {
+            return ['PAYE', 'VALIDEE', 'CONFIRMEE', 'EMBARQUE'].includes(statut);
+        }
         if (filter === 'ATTENTE_PAIEMENT') {
             return (
                 statut !== 'PAYE' && 
@@ -233,10 +242,10 @@ const HistoriqueReservations = () => {
         if (filter === 'RAMASSAGE') {
             return res.typeReservation === 'VID' || res.typeReservation === 'VIP';
         }
-        return true;
+        return true; // Pour 'TOUTES'
     });
 
-    // Badge Statut
+    // 🏷️ Badge Statut
     const renderBadgeStatut = (statut) => {
         if (!statut) {
             return (
@@ -245,6 +254,7 @@ const HistoriqueReservations = () => {
                 </span>
             );
         }
+
         switch (statut.toUpperCase()) {
             case 'PAYE':
             case 'VALIDEE':
@@ -329,6 +339,23 @@ const HistoriqueReservations = () => {
                             Toutes ({reservations.length})
                         </button>
                         
+                        {/* 🌟 NOUVEAU BOUTON : PAYÉES */}
+                        <button
+                            onClick={() => setFilter('PAYEES')}
+                            className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer ${
+                                filter === 'PAYEES'
+                                ? 'bg-emerald-500 text-white shadow-md shadow-emerald-100 dark:shadow-none'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                            }`}
+                        >
+                            Payées ({
+                                reservations.filter(r => {
+                                    const st = (r.statut || r.statutPaiement)?.toUpperCase();
+                                    return ['PAYE', 'VALIDEE', 'CONFIRMEE', 'EMBARQUE'].includes(st);
+                                }).length
+                            })
+                        </button>
+
                         <button
                             onClick={() => setFilter('ATTENTE_PAIEMENT')}
                             className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border-0 cursor-pointer ${
@@ -449,7 +476,7 @@ const HistoriqueReservations = () => {
                                             )}
                                         </div>
 
-                                        {/* Prix & Statut financiers (CORRIGÉ POUR MOBILE) */}
+                                        {/* Prix & Statut financiers */}
                                         <div className="flex flex-col sm:flex-row md:flex-col items-start sm:items-center md:items-end justify-between md:justify-center gap-4 pt-4 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-slate-800/50 w-full md:w-auto mt-4 md:mt-0">
                                             <div className="w-full sm:w-auto md:text-right">
                                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Montant total du voyage</p>
@@ -469,7 +496,7 @@ const HistoriqueReservations = () => {
                                                 </div>
                                             </div>
 
-                                            {/* Actions & Badges (CORRIGÉ AVEC FLEX-WRAP) */}
+                                            {/* Actions & Badges */}
                                             <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 w-full sm:w-auto">
                                                 {renderBadgeStatut(res.statutPaiement || res.statut)}
                                                 
@@ -526,7 +553,7 @@ const HistoriqueReservations = () => {
                 )}
             </div>
 
-            {/* --- MODALE DE SUPPRESSION (Vérification et exécution) --- */}
+            {/* --- MODALE DE SUPPRESSION --- */}
             {reservationASupprimer && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in duration-200 text-center">
@@ -599,7 +626,6 @@ const HistoriqueReservations = () => {
                                         Gestion de la localisation (Récupération)
                                     </h4>
                                     
-                                    {/* CONTENU COMPLÉTÉ ICI */}
                                     <label className="flex items-start gap-3 cursor-pointer group mb-3">
                                         <div className="flex items-center h-5 mt-0.5">
                                             <input 
@@ -637,20 +663,21 @@ const HistoriqueReservations = () => {
                                 </div>
                             )}
 
-                            <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-                                <button 
-                                    type="button" 
+                            {/* Actions du Formulaire */}
+                            <div className="flex gap-3 mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                <button
+                                    type="button"
                                     onClick={() => setReservationAEditer(null)}
-                                    className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                                    className="flex-1 px-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                                 >
                                     Annuler
                                 </button>
-                                <button 
-                                    type="submit" 
+                                <button
+                                    type="submit"
                                     disabled={isSubmitting}
-                                    className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-200 dark:shadow-none disabled:opacity-50"
+                                    className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
                                 >
-                                    {isSubmitting ? "Enregistrement..." : "Enregistrer"}
+                                    {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
                                 </button>
                             </div>
                         </form>

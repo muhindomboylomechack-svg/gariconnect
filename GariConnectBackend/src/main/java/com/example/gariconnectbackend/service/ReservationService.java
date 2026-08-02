@@ -838,6 +838,49 @@ public class ReservationService {
         reservation.setMasquePourClient(true);
         reservationRepository.save(reservation);
     }
+//    private HistoriqueVoyageDTO convertirEnHistoriqueDTO(Reservation res) {
+//        HistoriqueVoyageDTO dto = new HistoriqueVoyageDTO();
+//
+//        // 1. Informations directes de la Réservation
+//        dto.setId(res.getId());
+//        dto.setDateReservation(res.getDateReservation());
+//        dto.setTypeReservation(res.getTypeReservation());
+//        dto.setNombrePlaces(res.getNombrePlaces());
+//        dto.setMontantTotal(res.getMontantTotal());
+//
+//        // 2. Mapping des informations du Trajet
+//        if (res.getTrajet() != null) {
+//            dto.setVilleDepart(res.getTrajet().getDepart());
+//            dto.setVilleArrivee(res.getTrajet().getDestination());
+//
+//            // 🟢 Utilisation de dateHeureDepart au lieu de heureDepart
+//            if (res.getTrajet().getDateHeureDepart() != null) {
+//                dto.setHeureDepart(res.getTrajet().getDateHeureDepart().toString());
+//            }
+//        }
+//
+//        // 3. Mapping des informations VIP / Demande de Récupération
+//        if (res.getDemandeRecuperation() != null) {
+//            dto.setAdresseRamassage(res.getDemandeRecuperation().getAdresseTextuelle());
+//            dto.setPrixSupplementaire(res.getDemandeRecuperation().getPrixSupplementaire());
+//        } else {
+//            dto.setAdresseRamassage(null);
+//            dto.setPrixSupplementaire(0.0);
+//        }
+//
+//        // 4. Gestion de l'état du paiement pour le frontend
+//        if ("ANNULEE".equalsIgnoreCase(res.getStatut())) {
+//            dto.setStatutPaiement("ANNULÉE");
+//        } else if (Boolean.TRUE.equals(res.getEstPaye())) {
+//            dto.setStatutPaiement("PAYE");
+//        } else {
+//            dto.setStatutPaiement("ATTENTE_PAIEMENT");
+//        }
+//
+//        return dto;
+//    }
+
+
     private HistoriqueVoyageDTO convertirEnHistoriqueDTO(Reservation res) {
         HistoriqueVoyageDTO dto = new HistoriqueVoyageDTO();
 
@@ -868,14 +911,8 @@ public class ReservationService {
             dto.setPrixSupplementaire(0.0);
         }
 
-        // 4. Gestion de l'état du paiement pour le frontend
-        if ("ANNULEE".equalsIgnoreCase(res.getStatut())) {
-            dto.setStatutPaiement("ANNULÉE");
-        } else if (Boolean.TRUE.equals(res.getEstPaye())) {
-            dto.setStatutPaiement("PAYE");
-        } else {
-            dto.setStatutPaiement("ATTENTE_PAIEMENT");
-        }
+        // 4. Renvoyer le VRAI statut enregistré dans la base de données
+        dto.setStatutPaiement(res.getStatut());
 
         return dto;
     }

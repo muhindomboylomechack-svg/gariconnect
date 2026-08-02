@@ -205,31 +205,56 @@ const HomeRedirect = () => {
 };
 
 // ==========================================
-// 🟢 SOUS-COMPOSANT AVEC DÉTECTION PWA
+// 🟢 SOUS-COMPOSANT AVEC DÉTECTION PWA ULTRA-RAPIDE
 // ==========================================
 const AppContent = () => {
   const { user } = useAuth(); 
   const [deferredPrompt, setDeferredPrompt] = useState(null);
 
   useEffect(() => {
-    // 1. On vérifie immédiatement si index.html a déjà capturé l'événement (cas fréquent sur Mobile)
+    // Fonction centrale pour forcer l'enregistrement de l'événement PWA
+    const triggerPrompt = (e) => {
+      if (e && typeof e.preventDefault === 'function') {
+        e.preventDefault();
+      }
+      // Récupère l'événement passé en paramètre ou celui sauvegardé globalement
+      const promptEvent = e || window.deferredPWA;
+      if (promptEvent) {
+        setDeferredPrompt(promptEvent);
+        window.deferredPWA = promptEvent;
+      }
+    };
+
+    // 1. Vérification immédiate
     if (window.deferredPWA) {
-      setDeferredPrompt(window.deferredPWA);
+      triggerPrompt();
     }
 
-    // 2. On continue d'écouter au cas où il se déclenche plus tard (cas fréquent sur PC)
-    const handleBeforeInstallPrompt = (e) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
-      window.deferredPWA = e;
-    };
+    // 2. Écouteurs classiques et personnalisés
+    window.addEventListener('beforeinstallprompt', triggerPrompt);
+    window.addEventListener('pwa-ready', triggerPrompt);
 
-    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    // 3. Radar de vérification (Polling)
+    // On vérifie toutes les 500ms pendant 10 secondes au cas où le Service Worker s'initialise lentement
+    let attempts = 0;
+    const interval = setInterval(() => {
+      if (window.deferredPWA && !deferredPrompt) {
+        triggerPrompt();
+        clearInterval(interval);
+      }
+      attempts++;
+      if (attempts > 20) { // On arrête de chercher après 10 secondes pour économiser des ressources
+        clearInterval(interval);
+      }
+    }, 500);
 
+    // Nettoyage à la fermeture
     return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('beforeinstallprompt', triggerPrompt);
+      window.removeEventListener('pwa-ready', triggerPrompt);
+      clearInterval(interval);
     };
-  }, []);
+  }, [deferredPrompt]);
 
   return (
     <>
@@ -300,7 +325,7 @@ const AppContent = () => {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
 
-      {/* 🟢 Affichage géré de la Modale */}
+      {/* 🟢 Affichage de la Modale si l'utilisateur est connecté ET qu'on a le prompt PWA */}
       {user && deferredPrompt && (
         <InstallPromptModal 
           deferredPrompt={deferredPrompt} 

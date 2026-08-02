@@ -6,14 +6,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GariConnect</title>
     
-    <!-- 🟢 AJOUT : Piège global très rapide pour l'installation PWA sur mobile -->
+    <!-- 🟢 Script ultra-rapide pour capturer la PWA -->
     <script>
       window.deferredPWA = null;
       window.addEventListener('beforeinstallprompt', (e) => {
-        // Empêche la bannière native par défaut
         e.preventDefault();
-        // On sauvegarde l'événement pour que React puisse le récupérer plus tard
         window.deferredPWA = e;
+        // Diffuse un signal instantané que notre composant React va attraper
+        window.dispatchEvent(new Event('pwa-ready'));
       });
     </script>
   </head>

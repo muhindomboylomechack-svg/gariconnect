@@ -16,6 +16,7 @@ import {
     FaTrashAlt,
     FaTimes
 } from 'react-icons/fa';
+
 // 🌐 Import de l'instance API centralisée
 import api from '../../services/api';
 
@@ -47,6 +48,7 @@ const HistoriqueReservations = () => {
                 setIsLoading(false); 
                 return;
             }
+
             const response = await api.get('/reservations/mon-historique');
             const rawData = response.data !== undefined ? response.data : response;
             const arrayData = Array.isArray(rawData) ? rawData : [];
@@ -62,6 +64,7 @@ const HistoriqueReservations = () => {
                 }
                 return res;
             });
+
             setReservations(dataTraitee);
         } catch (error) {
             console.error("Erreur lors du chargement de l'historique :", error);
@@ -178,40 +181,39 @@ const HistoriqueReservations = () => {
             setErrorMsg("Une réservation payée ne peut pas être supprimée.");
             return;
         }
-
         setReservationASupprimer(res);
     };
 
-const confirmerSuppression = async () => {
-    if (!reservationASupprimer) return;
-    setIsSubmitting(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-    try {
-        // Appeler l'endpoint de masquage
-        await api.put(`/reservations/${reservationASupprimer.id}/masquer-client`);
-        
-        // Retirer la réservation de l'affichage local du client
-        setReservations(prev => prev.filter(r => r.id !== reservationASupprimer.id));
-        setSuccessMsg(`La réservation N° ${reservationASupprimer.id} a été retirée de votre historique.`);
-        setReservationASupprimer(null);
-    } catch (error) {
-        console.error("Erreur masquage réservation :", error);
-        
-        let messageErreur = "Impossible de retirer cette réservation de votre historique.";
-        if (error.response?.data) {
-            if (typeof error.response.data === 'string') {
-                messageErreur = error.response.data;
-            } else if (error.response.data.message) {
-                messageErreur = error.response.data.message;
+    const confirmerSuppression = async () => {
+        if (!reservationASupprimer) return;
+        setIsSubmitting(true);
+        setErrorMsg(null);
+        setSuccessMsg(null);
+        try {
+            // Appeler l'endpoint de masquage
+            await api.put(`/reservations/${reservationASupprimer.id}/masquer-client`);
+            
+            // Retirer la réservation de l'affichage local du client
+            setReservations(prev => prev.filter(r => r.id !== reservationASupprimer.id));
+            setSuccessMsg(`La réservation N° ${reservationASupprimer.id} a été retirée de votre historique.`);
+            setReservationASupprimer(null);
+        } catch (error) {
+            console.error("Erreur masquage réservation :", error);
+            
+            let messageErreur = "Impossible de retirer cette réservation de votre historique.";
+            if (error.response?.data) {
+                if (typeof error.response.data === 'string') {
+                    messageErreur = error.response.data;
+                } else if (error.response.data.message) {
+                    messageErreur = error.response.data.message;
+                }
             }
+            setErrorMsg(messageErreur);
+            setReservationASupprimer(null);
+        } finally {
+            setIsSubmitting(false);
         }
-        setErrorMsg(messageErreur);
-        setReservationASupprimer(null);
-    } finally {
-        setIsSubmitting(false);
-    }
-};
+    };
 
     // Filtrage des données de la liste
     const reservationsFiltrees = reservations.filter(res => {
@@ -402,7 +404,7 @@ const confirmerSuppression = async () => {
                                         )}
                                     </div>
 
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mt-6 sm:mt-0">
                                         
                                         {/* Infos du trajet */}
                                         <div className="space-y-3 flex-1">
@@ -414,8 +416,9 @@ const confirmerSuppression = async () => {
                                                     Fait le {res.dateReservation ? new Date(res.dateReservation).toLocaleDateString('fr-FR', {day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'}) : 'Date inconnue'}
                                                 </span>
                                             </div>
+
                                             {/* Trajet */}
-                                            <div className="flex items-center gap-3 text-lg font-black text-slate-800 dark:text-white">
+                                            <div className="flex flex-wrap items-center gap-3 text-lg font-black text-slate-800 dark:text-white">
                                                 <span>{res.villeDepart}</span>
                                                 <FaArrowRight size={14} className="text-slate-400 mt-0.5" />
                                                 <span>{res.villeArrivee}</span>
@@ -423,6 +426,7 @@ const confirmerSuppression = async () => {
                                                     {res.heureDepart || '--:--'}
                                                 </span>
                                             </div>
+
                                             {/* Places */}
                                             <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-slate-600 dark:text-slate-300 font-semibold">
                                                 <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-400 rounded-xl">
@@ -435,6 +439,7 @@ const confirmerSuppression = async () => {
                                                     </span>
                                                 )}
                                             </div>
+
                                             {/* Adresse de ramassage */}
                                             {(res.typeReservation === 'VID' || res.typeReservation === 'VIP') && res.adresseRamassage && (
                                                 <div className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/40 px-3 py-1.5 rounded-xl w-full max-w-md border border-slate-100 dark:border-indigo-950/20 mt-2">
@@ -444,9 +449,9 @@ const confirmerSuppression = async () => {
                                             )}
                                         </div>
 
-                                        {/* Prix & Statut financiers */}
-                                        <div className="flex flex-row md:flex-col items-center md:items-end justify-between md:justify-center gap-4 pt-4 md:pt-0 border-t md:border-t-0 border-slate-50 dark:border-slate-800/50">
-                                            <div className="md:text-right">
+                                        {/* Prix & Statut financiers (CORRIGÉ POUR MOBILE) */}
+                                        <div className="flex flex-col sm:flex-row md:flex-col items-start sm:items-center md:items-end justify-between md:justify-center gap-4 pt-4 md:pt-0 border-t md:border-t-0 border-slate-100 dark:border-slate-800/50 w-full md:w-auto mt-4 md:mt-0">
+                                            <div className="w-full sm:w-auto md:text-right">
                                                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Montant total du voyage</p>
                                                 <p className="text-xl font-black text-slate-900 dark:text-white">
                                                     {totalFacture.toLocaleString('fr-FR')}{' '}
@@ -464,8 +469,8 @@ const confirmerSuppression = async () => {
                                                 </div>
                                             </div>
 
-                                            {/* Actions & Badges */}
-                                            <div className="flex items-center gap-2">
+                                            {/* Actions & Badges (CORRIGÉ AVEC FLEX-WRAP) */}
+                                            <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2 w-full sm:w-auto">
                                                 {renderBadgeStatut(res.statutPaiement || res.statut)}
                                                 
                                                 {/* Bouton Payer */}
@@ -484,7 +489,7 @@ const confirmerSuppression = async () => {
                                                     <button
                                                         onClick={() => ouvrirModalEdition(res)}
                                                         title="Modifier la réservation"
-                                                        className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border-0 cursor-pointer"
+                                                        className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border-0 cursor-pointer flex-shrink-0"
                                                     >
                                                         <FaEdit size={14} />
                                                     </button>
@@ -495,18 +500,18 @@ const confirmerSuppression = async () => {
                                                     <button
                                                         onClick={() => gererAnnulation(res)}
                                                         title="Annuler la réservation"
-                                                        className="p-2 text-slate-500 hover:text-amber-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border-0 cursor-pointer"
+                                                        className="p-2 text-slate-500 hover:text-amber-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border-0 cursor-pointer flex-shrink-0"
                                                     >
                                                         <FaBan size={14} />
                                                     </button>
                                                 )}
 
-                                                {/* Bouton Supprimer : Masqué si statut === 'PAYE' ou statut de confirmation */}
+                                                {/* Bouton Supprimer */}
                                                 {!estPayeOuValide && (
                                                     <button
                                                         onClick={(e) => handleDelete(res, e)}
                                                         title="Supprimer la réservation"
-                                                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border-0 cursor-pointer"
+                                                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-all border-0 cursor-pointer flex-shrink-0"
                                                     >
                                                         <FaTrashAlt size={14} />
                                                     </button>
@@ -521,10 +526,42 @@ const confirmerSuppression = async () => {
                 )}
             </div>
 
+            {/* --- MODALE DE SUPPRESSION (Vérification et exécution) --- */}
+            {reservationASupprimer && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in duration-200 text-center">
+                        <div className="w-16 h-16 rounded-full bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center mx-auto text-rose-500 mb-4">
+                            <FaTrashAlt size={24} />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+                            Supprimer la réservation ?
+                        </h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">
+                            Cette action masquera la réservation N° {reservationASupprimer.id} de votre historique de manière permanente.
+                        </p>
+                        <div className="flex gap-3 justify-center">
+                            <button
+                                onClick={() => setReservationASupprimer(null)}
+                                className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                            >
+                                Annuler
+                            </button>
+                            <button
+                                onClick={confirmerSuppression}
+                                disabled={isSubmitting}
+                                className="px-5 py-2.5 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-colors disabled:opacity-50"
+                            >
+                                {isSubmitting ? 'Suppression...' : 'Oui, supprimer'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* --- MODALE DE MODIFICATION (EDIT) --- */}
             {reservationAEditer && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in duration-200">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
                         <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
                             <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
                                 <FaEdit className="text-indigo-600" />
@@ -562,106 +599,61 @@ const confirmerSuppression = async () => {
                                         Gestion de la localisation (Récupération)
                                     </h4>
                                     
+                                    {/* CONTENU COMPLÉTÉ ICI */}
                                     <label className="flex items-start gap-3 cursor-pointer group mb-3">
-                                        <div className="flex items-center h-5">
+                                        <div className="flex items-center h-5 mt-0.5">
                                             <input 
                                                 type="checkbox" 
-                                                checked={changerLocalisation} 
-                                                onChange={(e) => {
-                                                    setChangerLocalisation(e.target.checked);
-                                                    if (!e.target.checked) setAdresseRamassageEdit('');
-                                                }}
-                                                className="w-4 h-4 text-indigo-600 bg-white border-slate-300 rounded focus:ring-indigo-500 focus:ring-2 cursor-pointer"
+                                                checked={changerLocalisation}
+                                                onChange={(e) => setChangerLocalisation(e.target.checked)}
+                                                className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer"
                                             />
                                         </div>
-                                        <span className="text-sm font-medium text-slate-700 dark:text-slate-300 group-hover:text-indigo-600 transition-colors">
-                                            Je souhaite changer ma localisation / adresse de récupération
-                                        </span>
+                                        <div className="flex flex-col">
+                                            <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
+                                                Je souhaite changer l'adresse
+                                            </span>
+                                            <span className="text-[11px] text-slate-500 mt-1">
+                                                Cela déclenchera un recalcul automatique des frais de récupération.
+                                            </span>
+                                        </div>
                                     </label>
 
-                                    {changerLocalisation ? (
-                                        <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                                            <div>
-                                                <label className="block text-xs font-bold text-slate-600 dark:text-slate-400 mb-1">
-                                                    Nouvelle adresse ou coordonnées GPS
-                                                </label>
-                                                <input 
-                                                    type="text" 
-                                                    value={adresseRamassageEdit} 
-                                                    onChange={(e) => setAdresseRamassageEdit(e.target.value)}
-                                                    className="w-full px-4 py-2.5 rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
-                                                    placeholder="Ex: Quartier HIMBI, Av. Du lac N° 12 ou Lien Maps"
-                                                    required={changerLocalisation}
-                                                />
-                                            </div>
-                                            <div className="flex items-start gap-2 text-amber-700 dark:text-amber-400 text-xs font-semibold bg-amber-100 dark:bg-amber-900/30 p-3 rounded-lg border border-amber-200 dark:border-amber-800">
-                                                <FaExclamationCircle className="flex-shrink-0 mt-0.5 text-amber-500" size={14} />
-                                                <p>
-                                                    <strong>Attention :</strong> En modifiant votre localisation, le système renverra cette réservation à l'agence pour recalculer le prix de récupération.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="text-xs text-slate-500 dark:text-slate-400 p-3 bg-white dark:bg-slate-900 rounded-lg border border-slate-100 dark:border-slate-700">
-                                            <span className="font-semibold block mb-1">Localisation actuelle conservée :</span>
-                                            <span className="italic">{reservationAEditer.adresseRamassage || 'Aucune adresse spécifiée (Point par défaut)'}</span>
+                                    {changerLocalisation && (
+                                        <div className="mt-4 animate-in fade-in duration-200">
+                                            <label className="block text-xs font-bold text-slate-600 dark:text-slate-300 mb-1">
+                                                Nouvelle adresse de récupération
+                                            </label>
+                                            <input 
+                                                type="text" 
+                                                value={adresseRamassageEdit} 
+                                                onChange={(e) => setAdresseRamassageEdit(e.target.value)}
+                                                placeholder="Ex: Quartier, Avenue, N° de parcelle"
+                                                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium focus:ring-2 focus:ring-indigo-500 outline-none"
+                                                required={changerLocalisation}
+                                            />
                                         </div>
                                     )}
                                 </div>
                             )}
 
-                            {/* BOUTONS DU FORMULAIRE */}
-                            <div className="flex gap-3 pt-4">
-                                <button
-                                    type="button"
+                            <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
+                                <button 
+                                    type="button" 
                                     onClick={() => setReservationAEditer(null)}
-                                    className="flex-1 px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-sm font-bold rounded-xl transition-colors border-0 cursor-pointer"
+                                    className="px-5 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
                                 >
                                     Annuler
                                 </button>
-                                <button
-                                    type="submit"
+                                <button 
+                                    type="submit" 
                                     disabled={isSubmitting}
-                                    className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-colors shadow-md shadow-indigo-200 dark:shadow-none border-0 cursor-pointer disabled:opacity-50 flex items-center justify-center"
+                                    className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors shadow-md shadow-indigo-200 dark:shadow-none disabled:opacity-50"
                                 >
-                                    {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
+                                    {isSubmitting ? "Enregistrement..." : "Enregistrer"}
                                 </button>
                             </div>
                         </form>
-                    </div>
-                </div>
-            )}
-
-            {/* --- MODALE DE SUPPRESSION (DELETE) --- */}
-            {reservationASupprimer && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-100 dark:border-slate-800 animate-in fade-in zoom-in duration-200 text-center">
-                        <div className="w-12 h-12 rounded-full bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto mb-4">
-                            <FaTrashAlt size={20} />
-                        </div>
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
-                            Supprimer la réservation ?
-                        </h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-6">
-                            Voulez-vous vraiment retirer la réservation N° <strong className="text-slate-700 dark:text-slate-200">{reservationASupprimer.id}</strong> de votre historique ? Cette action est irréversible.
-                        </p>
-                        <div className="flex gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setReservationASupprimer(null)}
-                                className="flex-1 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl transition-colors border-0 cursor-pointer"
-                            >
-                                Annuler
-                            </button>
-                            <button
-                                type="button"
-                                onClick={confirmerSuppression}
-                                disabled={isSubmitting}
-                                className="flex-1 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl transition-colors shadow-md shadow-rose-200 dark:shadow-none border-0 cursor-pointer disabled:opacity-50 flex items-center justify-center"
-                            >
-                                {isSubmitting ? 'Suppression...' : 'Supprimer'}
-                            </button>
-                        </div>
                     </div>
                 </div>
             )}

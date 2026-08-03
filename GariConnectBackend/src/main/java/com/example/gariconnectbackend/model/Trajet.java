@@ -6,16 +6,17 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.UpdateTimestamp;
+
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+
 @Entity
 @Table(name = "trajets")
 @Getter
 @Setter
-@NoArgsConstructor  // 🔥 Indispensable pour Jackson (génère le constructeur vide proprement)
-@AllArgsConstructor // Génère le constructeur avec tous les arguments
+@NoArgsConstructor
+@AllArgsConstructor
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Trajet {
 
@@ -25,7 +26,6 @@ public class Trajet {
 
     private String depart;
     private String destination;
-    //private LocalDateTime dateHeureDepart;
     private String joursSemaine;
     private Double prix;
 
@@ -50,8 +50,10 @@ public class Trajet {
     @JoinColumn(name = "chauffeur_id")
     @JsonIgnoreProperties({"trajets", "password", "agenceEmployeur"})
     private User chauffeur;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime dateHeureDepart;
+
     @ManyToOne
     @JoinColumn(name = "vehicule_id")
     @JsonIgnoreProperties({"trajets", "agence"})
@@ -65,15 +67,15 @@ public class Trajet {
     )
     private List<ArretBus> arrets = new ArrayList<>();
 
-
-    // N'oubliez pas le getter et le setter si vous n'utilisez pas Lombok (@Data)
-    public Integer getPlacesDisponibles() {
-        return placesDisponibles;
+    // 🔥 Alias explicites pour la compatibilité avec getLatitude() et getLongitude()
+    public Double getLatitude() {
+        return latitudeActuelle;
     }
 
-    public void setPlacesDisponibles(Integer placesDisponibles) {
-        this.placesDisponibles = placesDisponibles;
+    public Double getLongitude() {
+        return longitudeActuelle;
     }
+
     @JsonProperty("label")
     public String getLabel() {
         if (depart == null || destination == null) return "Trajet non défini";

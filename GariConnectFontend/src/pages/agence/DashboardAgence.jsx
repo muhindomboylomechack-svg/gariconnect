@@ -25,16 +25,13 @@ const RecenterAutomatically = ({ trajets }) => {
     const [hasCentered, setHasCentered] = useState(false);
 
     useEffect(() => {
-        // On ne recentre que si on ne l'a pas encore fait et qu'il y a des trajets valides
         if (trajets && trajets.length > 0 && !hasCentered) {
             const activeTrajets = trajets.filter(t => t.latitude && t.longitude);
             
             if (activeTrajets.length > 0) {
-                // Calcule la zone englobant tous les véhicules
                 const bounds = L.latLngBounds(activeTrajets.map(t => [t.latitude, t.longitude]));
-                // Ajuste la vue avec un peu d'espace (padding) et limite le zoom max
                 map.fitBounds(bounds, { padding: [50, 50], maxZoom: 15 });
-                setHasCentered(true); // Empêche le recentrage lors des prochaines mises à jour GPS
+                setHasCentered(true);
             }
         }
     }, [trajets, map, hasCentered]);
@@ -123,15 +120,16 @@ const DashboardAgence = () => {
         if (showMap) {
             const updatePositions = async () => {
                 try {
-                    const response = await api.get('/trajets/en-route-agence');
+                    const response = await api.get('/agences/trajets/en-route-agence');
+                    console.log("DONNÉES GPS RECUES :", response.data);
                     setTrajetsEnRoute(Array.isArray(response.data) ? response.data : []);
                 } catch (error) {
                     console.error("Erreur GPS:", error);
                 }
             };
             
-            updatePositions(); // Appel immédiat à l'ouverture
-            interval = setInterval(updatePositions, 8000); // Rafraîchissement toutes les 8s pour le live
+            updatePositions();
+            interval = setInterval(updatePositions, 30000); 
         }
         return () => clearInterval(interval);
     }, [showMap]);
@@ -369,7 +367,7 @@ const DashboardAgence = () => {
                 </div>
             )}
 
-            {/* --- MODAL CARTES GPS CORRIGÉE --- */}
+            {/* --- MODAL CARTES GPS --- */}
             {showMap && (
                 <div className="fixed inset-0 z-[50] flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-white dark:bg-slate-900 w-full max-w-4xl h-[75vh] rounded-[2.5rem] border border-slate-100 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col">
@@ -395,12 +393,11 @@ const DashboardAgence = () => {
                                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                                 />
                                 
-                                {/* Composant invisible gérant le centrage auto initial */}
                                 <RecenterAutomatically trajets={trajetsEnRoute} />
 
                                 {trajetsEnRoute.filter(t => t.latitude && t.longitude).map((trajet) => (
                                     <Marker 
-                                        key={trajet.id} // La clé stable permet de voir le mouvement sans scintillement
+                                        key={trajet.id}
                                         position={[trajet.latitude, trajet.longitude]} 
                                         icon={busIcon}
                                     >

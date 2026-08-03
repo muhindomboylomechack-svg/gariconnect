@@ -62,6 +62,7 @@ import RegulationAgence from './pages/agence/RegulationAgence';
 // ==========================================
 // 6. PAGES : Espace Chauffeur & Client
 // ==========================================
+import EspaceChauffeur from './pages/chauffeur/ChauffeurDashboard'; // 🟢 Ajout du nouvel espace avec GPS
 import ChauffeurDashboard from './pages/chauffeur/ChauffeurDashboard'; 
 import HistoriqueCourses from './pages/chauffeur/HistoriqueCourses'; 
 import PerformanceHistory from './pages/chauffeur/PerformanceHistory'; 
@@ -295,8 +296,10 @@ const AppContent = () => {
           <Route path="performance" element={<DashboardPerformance />} />
         </Route>
 
+        {/* 🟢 MODIFICATION ESPACE CHAUFFEUR : Intégration de EspaceChauffeur */}
         <Route path="/chauffeur" element={<ProtectedRoute allowedRoles={['CHAUFFEUR']}><BlockGuard><ChauffeurLayout /></BlockGuard></ProtectedRoute>}>
-          <Route index element={<ChauffeurDashboard />} />
+          <Route index element={<EspaceChauffeur />} /> 
+          <Route path="dashboard" element={<ChauffeurDashboard />} />
           <Route path="historique" element={<HistoriqueCourses />} />
           <Route path="vip" element={<RamassageVipChauffeur />} />
           <Route path="vip/:trajetId" element={<RamassageVipChauffeur />} />

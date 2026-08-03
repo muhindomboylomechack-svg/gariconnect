@@ -728,6 +728,75 @@ public class TrajetController {
         }
     }
 
+//    /**
+//     * 🔄 MISE À JOUR DU STATUT DU TRAJET (SÉCURISÉE)
+//     */
+//    @PutMapping("/{id}/statut")
+//    @PreAuthorize("hasAnyRole('CHAUFFEUR', 'AGENCY_ADMIN', 'AGENCY_MANAGER')")
+//    public ResponseEntity<?> mettreAJourStatut(
+//            @PathVariable Long id,
+//            @RequestParam("statut") String statut) {
+//        try {
+//            User userConnecte = getConnectedUser();
+//            Trajet trajet = trajetRepository.findById(id)
+//                    .orElseThrow(() -> new EntityNotFoundException("Trajet introuvable"));
+//
+//            // Validation de sécurité Multi-Tenant & Rôle
+//            if (userConnecte.getRole() == Role.CHAUFFEUR) {
+//                if (trajet.getChauffeur() == null || !trajet.getChauffeur().getId().equals(userConnecte.getId())) {
+//                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+//                            .body(Map.of("message", "Action non autorisée : Vous n'êtes pas assigné à ce trajet."));
+//                }
+//            } else {
+//                Long agenceId = getAgenceIdPourUtilisateur(userConnecte);
+//                if (trajet.getAgence() == null || !trajet.getAgence().getId().equals(agenceId)) {
+//                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+//                            .body(Map.of("message", "Action non autorisée : Ce trajet appartient à une autre agence."));
+//                }
+//            }
+//
+//            trajetService.mettreAJourStatut(id, statut);
+//            return ResponseEntity.ok(Map.of(
+//                    "message", "Statut du trajet mis à jour avec succès.",
+//                    "nouveauStatut", statut
+//            ));
+//        } catch (Exception e) {
+//            return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+//                    .body(Map.of("message", "Erreur lors de la mise à jour du statut : " + e.getMessage()));
+//        }
+//    }
+
+    /**
+     * Endpoint pour créer plusieurs trajets simultanément (ex: Aller et Retour)
+     * URL cible : POST http://localhost:8080/api/trajets/batch
+     */
+    @PostMapping("/batch")
+    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
+    public ResponseEntity<?> creerTrajetsMultiples(@RequestBody List<Trajet> trajets) {
+        try {
+            User utilisateurConnecte = getConnectedUser();
+            Long agenceId = getAgenceIdPourUtilisateur(utilisateurConnecte);
+
+            if (agenceId == null) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                        .body("Création impossible : Agence de rattachement introuvable.");
+            }
+
+            // Vérification de sécurité
+            if (trajets == null || trajets.isEmpty()) {
+                return ResponseEntity.badRequest().body("Aucun trajet n'a été fourni.");
+            }
+
+            // Appel du service pour la création par lot
+            List<Trajet> nouveauxTrajets = trajetService.creerTrajetsMultiples(trajets, agenceId);
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(nouveauxTrajets);
+
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Erreur lors de la création (Aller/Retour) : " + e.getMessage());
+        }
+    }
+
     /**
      * 🔄 MISE À JOUR DU STATUT DU TRAJET (SÉCURISÉE)
      */
@@ -761,39 +830,9 @@ public class TrajetController {
                     "nouveauStatut", statut
             ));
         } catch (Exception e) {
+            // 🔥 CORRECTION : Fermeture correcte des parenthèses qui étaient coupées
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body(Map.of("message", "Erreur lors de la mise à jour du statut : " + e.getMessage()));
         }
     }
-
-    /**
-     * Endpoint pour créer plusieurs trajets simultanément (ex: Aller et Retour)
-     * URL cible : POST http://localhost:8080/api/trajets/batch
-     */
-    @PostMapping("/batch")
-    @PreAuthorize("hasAnyRole('AGENCY_ADMIN', 'AGENCY_MANAGER')")
-    public ResponseEntity<?> creerTrajetsMultiples(@RequestBody List<Trajet> trajets) {
-        try {
-            User utilisateurConnecte = getConnectedUser();
-            Long agenceId = getAgenceIdPourUtilisateur(utilisateurConnecte);
-
-            if (agenceId == null) {
-                return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                        .body("Création impossible : Agence de rattachement introuvable.");
-            }
-
-            // Vérification de sécurité
-            if (trajets == null || trajets.isEmpty()) {
-                return ResponseEntity.badRequest().body("Aucun trajet n'a été fourni.");
-            }
-
-            // Appel du service pour la création par lot
-            List<Trajet> nouveauxTrajets = trajetService.creerTrajetsMultiples(trajets, agenceId);
-
-            return ResponseEntity.status(HttpStatus.CREATED).body(nouveauxTrajets);
-
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Erreur lors de la création (Aller/Retour) : " + e.getMessage());
-        }
-    }
-}
+} // N'oubliez pas l'accolade finale qui ferme la classe TrajetController

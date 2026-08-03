@@ -1,3 +1,75 @@
+//package com.example.gariconnectbackend.dto;
+//
+//import com.example.gariconnectbackend.model.Trajet;
+//import lombok.Data;
+//
+//import java.time.format.TextStyle;
+//import java.util.Locale;
+//
+//@Data
+//public class TrajetDTO {
+//    private Long id;
+//    private String depart;
+//    private String destination;
+//    private String heureDepart;
+//    private String jourDepart;
+//    private String statut;
+//    private Double prix;
+//    // 🔥 AJOUT : Ce champ manquait et bloquait l'interface React en mode "COMPLET"
+//    private Integer placesDisponibles;
+//    private Double latitude;
+//    private Double longitude;
+//    // Sous-objet pour garder la compatibilité avec React (trajet.agence.nom)
+//    private AgenceDTO agence;
+//
+//    @Data
+//    public static class AgenceDTO {
+//        private String nom;
+//    }
+//
+//    // Méthode de conversion (Entité -> DTO)
+//    public static TrajetDTO fromEntity(Trajet trajet) {
+//        TrajetDTO dto = new TrajetDTO();
+//        dto.setId(trajet.getId());
+//        dto.setDepart(trajet.getDepart());
+//        dto.setDestination(trajet.getDestination());
+//        dto.setStatut(trajet.getStatut());
+//        dto.setPrix(trajet.getPrix());
+//        // 🔥 AJOUT : On copie la valeur de l'entité vers le DTO pour l'envoyer au Frontend
+//        dto.setPlacesDisponibles(trajet.getPlacesDisponibles());
+//
+//        if (trajet.getAgence() != null) {
+//            AgenceDTO agenceDTO = new AgenceDTO();
+//            agenceDTO.setNom(trajet.getAgence().getNom());
+//            dto.setAgence(agenceDTO);
+//        }
+//
+//        if (trajet.getDateHeureDepart() != null) {
+//            // 1. Extraire l'heure précise (ex: "14:30")
+//            dto.setHeureDepart(String.format("%02d:%02d",
+//                    trajet.getDateHeureDepart().getHour(),
+//                    trajet.getDateHeureDepart().getMinute()));
+//
+//            // 2. Extraire le jour de la semaine en Français
+//            String jourSemaine = trajet.getDateHeureDepart().getDayOfWeek()
+//                    .getDisplayName(TextStyle.FULL, Locale.FRENCH);
+//            jourSemaine = jourSemaine.substring(0, 1).toUpperCase() + jourSemaine.substring(1);
+//
+//            int jourDuMois = trajet.getDateHeureDepart().getDayOfMonth();
+//            String mois = trajet.getDateHeureDepart().getMonth().getDisplayName(TextStyle.FULL, Locale.FRENCH);
+//
+//            dto.setJourDepart(jourSemaine + " " + jourDuMois + " " + mois);
+//        } else if (trajet.getJoursSemaine() != null) {
+//            dto.setJourDepart(trajet.getJoursSemaine());
+//            dto.setHeureDepart("--:--");
+//        } else {
+//            dto.setJourDepart("Non défini");
+//            dto.setHeureDepart("--:--");
+//        }
+//
+//        return dto;
+//    }
+//}
 package com.example.gariconnectbackend.dto;
 
 import com.example.gariconnectbackend.model.Trajet;
@@ -15,10 +87,14 @@ public class TrajetDTO {
     private String jourDepart;
     private String statut;
     private Double prix;
-    // 🔥 AJOUT : Ce champ manquait et bloquait l'interface React en mode "COMPLET"
     private Integer placesDisponibles;
 
-    // Sous-objet pour garder la compatibilité avec React (trajet.agence.nom)
+    // 🔥 CORRECTION : Ces champs sont nécessaires pour l'affichage de la carte sur React
+    private Double latitude;
+    private Double longitude;
+    private String chauffeurNom;
+    private Double vitesse;
+
     private AgenceDTO agence;
 
     @Data
@@ -34,8 +110,17 @@ public class TrajetDTO {
         dto.setDestination(trajet.getDestination());
         dto.setStatut(trajet.getStatut());
         dto.setPrix(trajet.getPrix());
-        // 🔥 AJOUT : On copie la valeur de l'entité vers le DTO pour l'envoyer au Frontend
         dto.setPlacesDisponibles(trajet.getPlacesDisponibles());
+
+        dto.setLatitude(trajet.getLatitudeActuelle());  // 🔥 au lieu de getLatitude()
+        dto.setLongitude(trajet.getLongitudeActuelle());
+
+        // 🔥 CORRECTION : On mappe le nom du chauffeur si un chauffeur est assigné
+        if (trajet.getChauffeur() != null) {
+            dto.setChauffeurNom(trajet.getChauffeur().getNom());
+        } else {
+            dto.setChauffeurNom("Non assigné");
+        }
 
         if (trajet.getAgence() != null) {
             AgenceDTO agenceDTO = new AgenceDTO();

@@ -6,6 +6,7 @@ import {
 } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 import ScannerTicket from './ScannerTicket'; 
+import GpsEmitter from './GpsEmitter'; // 🟢 Ajout de l'émetteur GPS
 
 const EspaceChauffeur = () => {
     const navigate = useNavigate();
@@ -54,32 +55,6 @@ const EspaceChauffeur = () => {
 
     const trajetActif = trajets.find(t => t.statut === 'EN_ROUTE');
 
-    useEffect(() => {
-        let watchId;
-        if (trajetActif) {
-            if ('geolocation' in navigator) {
-                watchId = navigator.geolocation.watchPosition(
-                    async (position) => {
-                        const { latitude, longitude } = position.coords;
-                        try {
-                            await api.put(`/trajets/${trajetActif.id}/localisation`, {
-                                latitude: latitude,
-                                longitude: longitude
-                            });
-                        } catch (err) {
-                            console.error("Erreur lors de l'envoi de la position GPS :", err);
-                        }
-                    },
-                    (error) => console.error("Erreur GPS :", error.message),
-                    { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
-                );
-            }
-        }
-        return () => {
-            if (watchId) navigator.geolocation.clearWatch(watchId);
-        };
-    }, [trajetActif]);
-
     const handleUpdateStatus = async (id, nouveauStatut) => {
         try {
             await api.put(`/trajets/${id}/statut?statut=${nouveauStatut}`);
@@ -125,13 +100,18 @@ const EspaceChauffeur = () => {
             {/* Corps de la page */}
             <div className="px-5 -mt-16 space-y-5">
                 
+                {/* 🟢 ÉMETTEUR GPS : S'active dynamiquement si un trajet est EN_ROUTE */}
+                <GpsEmitter 
+                    trajetId={trajetActif?.id} 
+                    isEnRoute={!!trajetActif} 
+                />
+
                 <AnimatePresence>
                     {trajetActif && (
                         <motion.div
                             initial={{ opacity: 0, scale: 0.95 }}
                             animate={{ opacity: 1, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.95 }}
-                            // 🟢 CORRECTION : Passage de l'objet trajet dans le state
                             onClick={() => navigate('/chauffeur/course-actuelle', { state: { trajet: trajetActif } })}
                             className="p-5 rounded-[2.5rem] bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-xl shadow-emerald-500/20 border border-emerald-400/30 cursor-pointer flex items-center justify-between gap-4 active:scale-[0.99] transition-transform"
                         >
@@ -203,7 +183,6 @@ const EspaceChauffeur = () => {
 
                                     {t.statut === 'EN_ROUTE' && (
                                         <button 
-                                            // 🟢 CORRECTION : Passage de l'objet trajet
                                             onClick={() => navigate('/chauffeur/course-actuelle', { state: { trajet: t } })}
                                             className="px-4 bg-emerald-500 text-white rounded-2xl text-xs font-black flex items-center justify-center active:scale-95 transition-transform shadow-lg shadow-emerald-500/20"
                                         >
